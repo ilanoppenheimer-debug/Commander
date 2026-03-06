@@ -6,8 +6,8 @@ import {
 } from 'lucide-react';
 
 import InputGroup from "./ui/InputGroup";
-import ToggleSwitch from "./UI/ToggleSwitch";
-import InfoModal from "./UI/InfoModal";
+import ToggleSwitch from "./ui/ToggleSwitch";
+import InfoModal from "./ui/InfoModal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import { EQUIPMENT_TYPES, SET_TYPES } from "../constants/gymConstants";

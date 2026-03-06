@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Dumbbell, TrendingUp, ChevronDown, BarChart2, Minus, Plus, Sparkles } from 'lucide-react';
 import InputGroup from "./ui/InputGroup";
-import InfoModal from "./UI/InfoModal";
+import InfoModal from "./ui/InfoModal";
 import { DEFAULT_EXERCISE_DB } from "../constants/gymConstants";
 import { formatNum } from "../utils/weightUtils";
 import { calculate1RM, calculateTrainingWeight } from "../utils/strengthMath";

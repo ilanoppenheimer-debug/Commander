@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import InputGroup from "./ui/InputGroup";
-import ToggleSwitch from "./UI/ToggleSwitch";
+import ToggleSwitch from "./ui/ToggleSwitch";
 import { PLATE_CONFIG } from "../constants/gymConstants";
 import { toKg, toLb, formatNum } from "../utils/weightUtils";
 

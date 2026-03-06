@@ -19,8 +19,8 @@ import { playTacticalAlarm } from "./services/audioService";
 import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import InputGroup from "./components/ui/InputGroup";
-import ToggleSwitch from "./components/UI/ToggleSwitch";
-import InfoModal from "./components/UI/InfoModal";
+import ToggleSwitch from "./components/ui/ToggleSwitch";
+import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
 import { useTrainingState } from "./hooks/useTrainingState";
 import ExerciseHistoryModal from "./components/modals/ExerciseHistoryModal";
@@ -73,9 +73,6 @@ import {
   Check
 } from 'lucide-react';
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
-
-// --- CONFIGURACIÓN API GLOBAL ---
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 function AppMain() {
   const [activeTab, setActiveTab] = useState('routines'); 
