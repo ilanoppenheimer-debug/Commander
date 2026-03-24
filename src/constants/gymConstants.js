@@ -29,10 +29,130 @@ export const DEFAULT_INVENTORY_STATE = {
   lb: { 45: 8, 35: 4, 25: 4, 10: 6, 5: 4, 2.5: 4, 1.25: 2 }
 };
 
-export const DEFAULT_EXERCISE_DB = [
-  "Press Banca", "Press Banca Inclinado", "Aperturas de Pecho", "Cruce de Poleas",
-  "Fondos en Paralelas", "Sentadilla", "Prensa de Piernas"
-].sort();
+export const MUSCLE_GROUPS = [
+  "chest",
+  "back",
+  "shoulders",
+  "biceps",
+  "triceps",
+  "legs",
+  "glutes",
+  "hamstrings",
+  "calves",
+  "core"
+];
+
+export const EXERCISE_CATEGORIES = {
+
+chest: [
+
+"Press Banca",
+"Press Inclinado",
+"Press Declinado",
+"Aperturas",
+"Cruce de Poleas",
+"Dips Pecho",
+"Push Up",
+"Squeeze Press",
+"Pullover",
+"Chest Press"
+
+],
+
+back: [
+
+"Dominadas",
+"Chin Ups",
+"Jalón al Pecho",
+"Remo",
+"Remo Pendlay",
+"Remo T",
+"Remo Unilateral",
+"Pullover",
+"Straight Arm Pulldown",
+"Inverted Row"
+
+],
+
+shoulders: [
+
+"Press Militar",
+"Press Arnold",
+"Elevaciones Laterales",
+"Elevaciones Frontales",
+"Elevaciones Posteriores",
+"Face Pull",
+"Upright Row",
+"Reverse Pec Deck"
+
+],
+
+arms: [
+
+"Curl Bíceps",
+"Curl Inclinado",
+"Curl Predicador",
+"Hammer Curl",
+"Curl Concentrado",
+"Extensión Tríceps",
+"Skullcrusher",
+"Fondos Tríceps",
+"Kickback"
+
+],
+
+legs: [
+
+"Sentadilla",
+"Sentadilla Frontal",
+"Hack Squat",
+"Prensa",
+"Sentadilla Búlgara",
+"Lunges",
+"Step Up",
+"Extensión Cuádriceps",
+"Curl Femoral"
+
+],
+
+glutes: [
+
+"Hip Thrust",
+"Glute Bridge",
+"Kickback",
+"Pull Through",
+"Frog Pump"
+
+],
+
+calves: [
+
+"Standing Calf Raise",
+"Seated Calf Raise",
+"Donkey Calf Raise",
+"Single Leg Calf Raise"
+
+],
+
+core: [
+
+"Plank",
+"Side Plank",
+"Hanging Leg Raise",
+"Knee Raise",
+"Toes to Bar",
+"Cable Crunch",
+"Crunch",
+"Reverse Crunch",
+"Russian Twist",
+"Ab Wheel"
+
+]
+
+};
+export const DEFAULT_EXERCISE_DB =
+Object.values(EXERCISE_CATEGORIES).flat().sort();
+
 
 export const EQUIPMENT_TYPES = [
   { id: 'barbell', label: 'Barra' },
@@ -59,4 +179,13 @@ export const DEFAULT_ROUTINES = [
     name: 'Plantilla Push Alpha',
     exercises: []
   }
+
+export const EXERCISE_TO_MUSCLE = Object.entries(EXERCISE_CATEGORIES)
+  .reduce((acc, [muscle, exercises]) => {
+    exercises.forEach(ex => {
+      acc[ex] = muscle;
+    });
+    return acc;
+  }, {});
 ];
+

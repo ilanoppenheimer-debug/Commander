@@ -30,6 +30,7 @@ import TargetCalculator, { PlateVisualizer } from "./components/TargetCalculator
 import ReverseCalculator from "./components/ReverseCalculator";
 import WorkCalculator from "./components/WorkCalculator";
 import ActiveSession from "./components/ActiveSession";
+import { analyzeWorkout } from "./utils/analyzeWorkout";
 import { 
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
   X, ChevronLeft, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
@@ -152,7 +153,16 @@ function AppMain() {
       });
   };
 
+
   const handleFinishMission = (sessionName, finalExercises, saveAsTemplate) => {
+const result = analyzeWorkout({ exercises });
+
+alert(
+  Object.entries(result)
+    .map(([m,v]) => `${m}: ${v} sets`)
+    .join("\n")
+);
+
       const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
       const completedSession = {
           historyId: `hist-${Date.now()}`,
