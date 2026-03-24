@@ -1,262 +1,152 @@
-import React, { useState } from "react";
-import { Dumbbell, X, Search, Plus } from "lucide-react";
-import { MUSCLE_GROUPS, EXERCISE_CATEGORIES } from "../../constants/gymConstants";
+import React, { useMemo, useState } from "react";
+import { Dumbbell, X, Search, Plus, Trash2 } from "lucide-react";
+import { DEFAULT_EXERCISE_DB } from "../../constants/gymConstants";
+import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 
 const ExerciseSelectorModal = ({
   onClose,
   onSelect,
   customExercises,
-  setCustomExercises
+  setCustomExercises,
 }) => {
-
   const [search, setSearch] = useState("");
-  const [newExercise, setNewExercise] = useState("");
-  const [muscle, setMuscle] = useState("chest");
-  const [openGroup, setOpenGroup] = useState(null);
 
-  const [favorites, setFavorites] = useState(() => {
-    const saved = localStorage.getItem("favoriteExercises");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const allExercises = useMemo(() => {
+    const safeCustom = Array.isArray(customExercises)
+      ? customExercises.filter(Boolean)
+      : [];
+    const list = [...new Set([...DEFAULT_EXERCISE_DB, ...safeCustom])].sort();
 
-  const [usageStats, setUsageStats] = useState(() => {
-    const saved = localStorage.getItem("exerciseUsage");
-    return saved ? JSON.parse(saved) : {};
-  });
+    return list.filter(
+      (e) =>
+        e &&
+        String(e).toLowerCase().includes((search || "").toLowerCase())
+    );
+  }, [search, customExercises]);
 
-  const toggleFavorite = (exercise) => {
+  const handleAddCustom = () => {
+    const newEx = search.trim();
 
-    let updated;
-
-    if (favorites.includes(exercise)) {
-      updated = favorites.filter(e => e !== exercise);
-    } else {
-      updated = [...favorites, exercise];
+    if (newEx && !allExercises.includes(newEx)) {
+      setCustomExercises((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        newEx,
+      ]);
+      onSelect(newEx);
     }
-
-    setFavorites(updated);
-    localStorage.setItem("favoriteExercises", JSON.stringify(updated));
-
   };
 
-  const registerUsage = (exercise) => {
-
-    const updated = {
-      ...usageStats,
-      [exercise]: (usageStats[exercise] || 0) + 1
-    };
-
-    setUsageStats(updated);
-    localStorage.setItem("exerciseUsage", JSON.stringify(updated));
-
+  const removeCustom = (e, exName) => {
+    e.stopPropagation();
+    setCustomExercises((prev) =>
+      Array.isArray(prev) ? prev.filter((ex) => ex !== exName) : []
+    );
   };
 
-  const deleteExercise = (exerciseName, group) => {
-
-    if (!confirm("Eliminar ejercicio?")) return;
-
-    const updated = {
-      ...customExercises,
-      [group]: (customExercises[group] || []).filter(e => e !== exerciseName)
-    };
-
-    setCustomExercises(updated);
-
-  };
-
-  const addCustomExercise = () => {
-
-    if (!newExercise.trim()) return;
-
-    const updated = {
-      ...customExercises,
-      [muscle]: [...(customExercises[muscle] || []), newExercise]
-    };
-
-    setCustomExercises(updated);
-    setNewExercise("");
-
-  };
-
-  const mostUsed = Object.entries(usageStats)
-    .sort((a,b)=>b[1]-a[1])
-    .slice(0,5)
-    .map(e=>e[0]);
-
-  const groupedExercises = [
-
-    ["mostUsed", mostUsed],
-    ["favorites", favorites],
-
-    ...Object.entries(EXERCISE_CATEGORIES).map(
-      ([group, exercises]) => [
-        group,
-        [
-          ...exercises,
-          ...((customExercises && customExercises[group]) || [])
-        ]
-      ]
-    )
-
-  ];
-
-  return (
-
-    <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center p-4 z-[9999]">
-
-      <div className="bg-slate-900 w-full max-w-md rounded-xl border border-slate-700 p-4">
-
-        <div className="flex items-center justify-between mb-4">
-
-          <h2 className="text-white font-bold flex items-center gap-2">
-            <Dumbbell size={18}/> Seleccionar Ejercicio
-          </h2>
-
-          <button onClick={onClose}>
-            <X className="text-slate-400 hover:text-white"/>
-          </button>
-
-        </div>
-
-        <div className="flex items-center gap-2 bg-slate-800 rounded p-2 mb-3">
-          <Search size={16} className="text-slate-400"/>
-
-          <input
-            value={search}
-            onChange={(e)=>setSearch(e.target.value)}
-            placeholder="Buscar ejercicio..."
-            className="bg-transparent outline-none text-white flex-1 text-sm"
-          />
-        </div>
-
-        <div className="max-h-64 overflow-y-auto flex flex-col gap-2 mb-3">
-
-          {groupedExercises.map(([group, exercises]) => {
-
-            const isOpen = openGroup === group;
-
-            const filtered = exercises.filter(e =>
-              e.toLowerCase().includes(search.toLowerCase())
-            );
-
-            if (search && filtered.length === 0) return null;
-            if (!filtered.length) return null;
-
-            const title =
-              group === "favorites"
-                ? "⭐ FAVORITOS"
-                : group === "mostUsed"
-                ? "🔥 MÁS USADOS"
-                : group.toUpperCase();
-
-            return (
-
-              <div key={group} className="bg-slate-800 rounded">
-
-                <button
-                  onClick={()=>setOpenGroup(isOpen ? null : group)}
-                  className="w-full text-left px-3 py-2 font-semibold text-slate-200 hover:bg-slate-700 rounded"
-                >
-                  {title}
-                </button>
-
-                {isOpen && (
-
-                  <div className="flex flex-col">
-
-                    {filtered.map((name,i)=>{
-
-                      const isCustom =
-                        (customExercises[group] || []).includes(name);
-
-                      return (
-
-                        <div
-                          key={i}
-                          className="flex items-center justify-between border-t border-slate-700"
-                        >
-
-                          <button
-                            onClick={()=>{
-                              registerUsage(name);
-                              onSelect(name);
-                              onClose();
-                            }}
-                            className="flex-1 text-left px-3 py-2 text-sm text-white hover:bg-slate-700"
-                          >
-                            {name}
-                          </button>
-
-                          <button
-                            onClick={()=>toggleFavorite(name)}
-                            className="px-2 text-yellow-400 hover:text-yellow-300"
-                          >
-                            {favorites.includes(name) ? "★" : "☆"}
-                          </button>
-
-                          {isCustom && (
-                            <button
-                              onClick={()=>deleteExercise(name,group)}
-                              className="px-3 text-red-400 hover:text-red-300"
-                            >
-                              🗑
-                            </button>
-                          )}
-
-                        </div>
-
-                      )
-
-                    })}
-
-                  </div>
-
-                )}
-
-              </div>
-
-            )
-
-          })}
-
-        </div>
-
-        <div className="flex gap-2">
-
-          <input
-            value={newExercise}
-            onChange={(e)=>setNewExercise(e.target.value)}
-            placeholder="Agregar ejercicio..."
-            className="flex-1 bg-slate-800 text-white p-2 rounded text-sm"
-          />
-
-          <select
-            value={muscle}
-            onChange={(e)=>setMuscle(e.target.value)}
-            className="bg-slate-800 text-white p-2 rounded text-sm"
-          >
-            {MUSCLE_GROUPS.map(m=>(
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={addCustomExercise}
-            className="bg-purple-600 px-3 rounded flex items-center justify-center"
-          >
-            <Plus size={16}/>
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-
+  const exactMatch = allExercises.find(
+    (e) => e && String(e).toLowerCase() === search.trim().toLowerCase()
   );
 
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-900 w-full max-w-md h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Dumbbell className="text-amber-500" size={20} /> Repertorio
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-4 shrink-0 border-b border-slate-800 bg-slate-900/50">
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              size={18}
+            />
+            <input
+              type="text"
+              placeholder="Buscar ejercicio..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-amber-500 transition-colors placeholder-slate-600"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 overscroll-contain">
+          {allExercises.length > 0 ? (
+            <div className="space-y-1">
+              {allExercises.map((ex) => {
+                const isCustom =
+                  Array.isArray(customExercises) && customExercises.includes(ex);
+                const details = getExerciseDetails(ex);
+
+                return (
+                  <div
+                    key={ex}
+                    onClick={() => onSelect(ex)}
+                    className="flex items-center justify-between p-3 hover:bg-slate-800 rounded-lg cursor-pointer transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}
+                      >
+                        {details.icon}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-slate-200 font-medium">{ex}</span>
+                        <span
+                          className={`text-[9px] uppercase font-bold tracking-widest opacity-80 ${details.color}`}
+                        >
+                          {details.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isCustom && (
+                      <button
+                        onClick={(e) => removeCustom(e, ex)}
+                        className="p-2 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Eliminar personalizado"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-10 px-4">
+              <p className="text-slate-500 mb-4">
+                No se encontraron resultados para "{search}"
+              </p>
+            </div>
+          )}
+
+          {search.trim() && !exactMatch && (
+            <button
+              onClick={handleAddCustom}
+              className="w-full mt-2 py-3 bg-amber-600/10 border border-dashed border-amber-500/50 text-amber-500 rounded-lg font-bold flex justify-center items-center gap-2 hover:bg-amber-600/20 transition-colors"
+            >
+              <Plus size={18} /> Añadir "{search}" a mi Repertorio
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ExerciseSelectorModal;
