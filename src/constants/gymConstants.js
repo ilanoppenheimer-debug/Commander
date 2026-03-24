@@ -151,7 +151,7 @@ core: [
 
 };
 export const DEFAULT_EXERCISE_DB =
-Object.values(EXERCISE_CATEGORIES).flat().sort();
+Array.from(new Set(Object.values(EXERCISE_CATEGORIES).flat())).sort();
 
 
 export const EQUIPMENT_TYPES = [
@@ -179,6 +179,7 @@ export const DEFAULT_ROUTINES = [
     name: 'Plantilla Push Alpha',
     exercises: []
   }
+];
 
 export const EXERCISE_TO_MUSCLE = Object.entries(EXERCISE_CATEGORIES)
   .reduce((acc, [muscle, exercises]) => {
@@ -187,5 +188,3 @@ export const EXERCISE_TO_MUSCLE = Object.entries(EXERCISE_CATEGORIES)
     });
     return acc;
   }, {});
-];
-

@@ -155,15 +155,17 @@ function AppMain() {
 
 
   const handleFinishMission = (sessionName, finalExercises, saveAsTemplate) => {
-const result = analyzeWorkout({ exercises });
-
-alert(
-  Object.entries(result)
-    .map(([m,v]) => `${m}: ${v} sets`)
-    .join("\n")
-);
-
       const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
+      const result = analyzeWorkout({ exercises: safeFinalExercises });
+
+      if (Object.keys(result).length > 0) {
+          alert(
+              Object.entries(result)
+                  .map(([muscle, sets]) => `${muscle}: ${sets} sets`)
+                  .join("\n")
+          );
+      }
+
       const completedSession = {
           historyId: `hist-${Date.now()}`,
           name: sessionName || 'Entrenamiento Libre',
