@@ -8,12 +8,11 @@ import {
   Link as LinkIcon,
   ChevronDown,
   BarChart2,
-  Wand2,
-  RefreshCw,
-  BrainCircuit,
   Trash2,
   X,
-  ClipboardList,
+  Shield,
+  AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 
 import InputGroup from "./ui/InputGroup";
@@ -21,28 +20,40 @@ import ToggleSwitch from "./ui/ToggleSwitch";
 import InfoModal from "./ui/InfoModal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
+import PostSessionReport from "./PostSessionReport";
 import { EQUIPMENT_TYPES, SET_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { callGeminiAPI } from "../services/aiService";
+import { buildSessionAnalysis } from "../ai/sessionAnalysis";
+import { suggestNextSet, getLastFilledSet } from "../ai/progressionModel";
+import { requestSessionBriefing } from "../ai/sessionBriefing";
 
 export const FinishMissionModal = ({
   sessionName,
   onConfirm,
   onDiscard,
   onCancel,
+  analysis,
+  barUnit,
 }) => {
   const [name, setName] = useState(sessionName || "Entrenamiento Libre");
   const [saveTemplate, setSaveTemplate] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-amber-500/50 p-6 shadow-[0_0_50px_rgba(245,158,11,0.2)]">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto">
+      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-amber-500/50 p-6 shadow-[0_0_50px_rgba(245,158,11,0.2)] my-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
           <Target className="text-amber-500" /> Misión Completada
         </h2>
-        <p className="text-xs text-slate-400 mb-6">
-          Elige cómo quieres archivar este registro de combate.
+        <p className="text-xs text-slate-400 mb-4">
+          Revisa el resumen y elige cómo archivar el registro.
         </p>
+
+        {analysis && (
+          <div className="mb-4">
+            <PostSessionReport analysis={analysis} barUnit={barUnit} />
+          </div>
+        )}
 
         <div className="space-y-4">
           <InputGroup
@@ -96,6 +107,7 @@ export default function ActiveSession({
   onDiscardSession,
   mode,
   history,
+  athleteProfile,
   customExercises,
   setCustomExercises,
   barUnit,
@@ -111,12 +123,15 @@ export default function ActiveSession({
     safeInitialExercises.map((e) => e.id)
   );
 
-  const [loadingTipId, setLoadingTipId] = useState(null);
-  const [standardizingId, setStandardizingId] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
   const [warmupPlan, setWarmupPlan] = useState(null);
   const [nutritionPlan, setNutritionPlan] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const [briefing, setBriefing] = useState(null);
+  const [briefingError, setBriefingError] = useState(null);
+  const [isLoadingBriefing, setIsLoadingBriefing] = useState(false);
+  const [subjectiveState, setSubjectiveState] = useState("");
+  const [showBriefingInput, setShowBriefingInput] = useState(false);
 
   const [showExSelector, setShowExSelector] = useState(false);
   const [editingExId, setEditingExId] = useState(null);
@@ -174,77 +189,55 @@ export default function ActiveSession({
     return `Sug: ${targetWeight}${barUnit} | ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
   };
 
-  const getTacticalTip = async (exerciseName, exId) => {
-    setLoadingTipId(exId);
-    const prompt = `Consejo táctico de 1 frase para "${exerciseName}". Tono militar.`;
-
-    try {
-      const tip = await callGeminiAPI(prompt);
-      if (tip) setAnalysisResult({ title: "Tip Táctico", content: tip });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingTipId(null);
+  const fetchBriefing = async () => {
+    if (localExercises.length === 0) {
+      setBriefingError("Agrega ejercicios primero");
+      return;
     }
-  };
-
-  const standardizeName = async (currentName, exId) => {
-    setStandardizingId(exId);
-    const prompt = `Standardize this gym exercise name to Spanish (common universal term). Example: "brench pres" -> "Press Banca con Barra". Input: "${currentName}". Output ONLY the name.`;
-
+    setIsLoadingBriefing(true);
+    setBriefingError(null);
     try {
-      const standardized = await callGeminiAPI(prompt);
-      if (standardized) {
-        setLocalExercises((prev) =>
-          prev.map((e) =>
-            e.id === exId ? { ...e, name: standardized.trim() } : e
-          )
-        );
+      const result = await requestSessionBriefing({
+        sessionName: sessionData.name,
+        exercises: localExercises,
+        mode,
+        history,
+        athleteProfile,
+        subjectiveState: subjectiveState.trim() || null,
+      });
+      if (!result) {
+        setBriefingError("Respuesta de IA inválida. Intenta de nuevo.");
+      } else {
+        setBriefing(result);
+        setShowBriefingInput(false);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      setBriefingError(err?.message || "Error al generar briefing");
     } finally {
-      setStandardizingId(null);
+      setIsLoadingBriefing(false);
     }
   };
 
-  const suggestAlternative = async (currentName, exId) => {
-    setStandardizingId(exId);
-    const prompt = `Sugiere UN ejercicio alternativo de gimnasio para "${currentName}" que trabaje el mismo grupo muscular principal. Devuelve SOLO el nombre del ejercicio en Español.`;
+  const applyBriefingSuggestions = () => {
+    if (!briefing?.perExercise || briefing.perExercise.length === 0) return;
 
-    try {
-      const alternative = await callGeminiAPI(prompt);
-      if (alternative) {
-        setLocalExercises((prev) =>
-          prev.map((e) =>
-            e.id === exId ? { ...e, name: alternative.trim() } : e
-          )
+    setLocalExercises((prev) =>
+      prev.map((ex) => {
+        const suggestion = briefing.perExercise.find(
+          (p) => p?.name?.toLowerCase() === ex.name?.toLowerCase()
         );
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setStandardizingId(null);
-    }
-  };
-
-  const analyzeSession = async () => {
-    if (localExercises.length === 0) return;
-
-    setIsAnalyzing(true);
-    const exerciseList = localExercises
-      .map((e) => `${e?.name || "Ej"} (${e?.sets?.length || 0} series)`)
-      .join(", ");
-    const prompt = `Actúa como el Iron Commander. Analiza brevemente esta sesión: ${exerciseList}. Informe de Combate breve (40 palabras). Intensidad y músculos. Tono militar.`;
-
-    try {
-      const report = await callGeminiAPI(prompt);
-      setAnalysisResult({ title: "Informe de Misión", content: report });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsAnalyzing(false);
-    }
+        if (!suggestion) return ex;
+        const w = parseFloat(suggestion.suggestedWeight) || 0;
+        const r = parseFloat(suggestion.reps) || 0;
+        if (w <= 0 && r <= 0) return ex;
+        const sets = Array.isArray(ex.sets) && ex.sets.length > 0
+          ? [...ex.sets]
+          : [{ weight: 0, reps: 0, rpe: 0, type: "normal" }];
+        sets[0] = { ...sets[0], weight: w || sets[0].weight, reps: r || sets[0].reps };
+        return { ...ex, sets };
+      })
+    );
+    showNotify?.("Sugerencias aplicadas al primer set", "success");
   };
 
   const generateWarmup = async () => {
@@ -334,17 +327,22 @@ export default function ActiveSession({
 
   const addSet = (exId) => {
     setLocalExercises((prev) =>
-      prev.map((e) =>
-        e.id === exId
+      prev.map((e) => {
+        if (e.id !== exId) return e;
+        const safeSets = Array.isArray(e.sets) ? e.sets : [];
+        const lastFilled = getLastFilledSet(safeSets);
+        const targetRPE = parseFloat(mode?.rpe) || 8;
+        const suggestion = suggestNextSet({ lastSet: lastFilled, targetRPE });
+        const nextSet = suggestion
           ? {
-              ...e,
-              sets: [
-                ...(Array.isArray(e.sets) ? e.sets : []),
-                { weight: 0, reps: 0, rpe: 0, type: "normal" },
-              ],
+              weight: suggestion.weight,
+              reps: suggestion.reps,
+              rpe: 0,
+              type: "normal",
             }
-          : e
-      )
+          : { weight: 0, reps: 0, rpe: 0, type: "normal" };
+        return { ...e, sets: [...safeSets, nextSet] };
+      })
     );
   };
 
@@ -407,9 +405,6 @@ export default function ActiveSession({
 
   return (
     <div className="animate-fade-in pb-24 pt-4">
-      {analysisResult && (
-        <InfoModal data={analysisResult} onClose={() => setAnalysisResult(null)} />
-      )}
       {warmupPlan && (
         <InfoModal data={warmupPlan} onClose={() => setWarmupPlan(null)} />
       )}
@@ -454,6 +449,12 @@ export default function ActiveSession({
           }
           onDiscard={onDiscardSession}
           onCancel={() => setShowFinishModal(false)}
+          analysis={buildSessionAnalysis({
+            sessionName: sessionData.name,
+            currentExercises: localExercises,
+            history,
+          })}
+          barUnit={barUnit}
         />
       )}
 
@@ -481,7 +482,18 @@ export default function ActiveSession({
             </span>
           </div>
         </div>
-        <div className="flex gap-2 border-t border-slate-800 pt-3">
+        <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
+          <button
+            onClick={() => setShowBriefingInput((v) => !v)}
+            className="flex items-center gap-1 text-[10px] text-amber-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
+          >
+            {isLoadingBriefing ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Shield size={12} />
+            )}{" "}
+            BRIEFING IA
+          </button>
           <button
             onClick={generateWarmup}
             className="flex items-center gap-1 text-[10px] text-orange-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
@@ -495,6 +507,102 @@ export default function ActiveSession({
             <Utensils size={12} /> SUMINISTROS
           </button>
         </div>
+
+        {showBriefingInput && !briefing && (
+          <div className="bg-slate-950 border border-amber-500/30 rounded-lg p-3 space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+              ¿Cómo te sentís hoy? (opcional)
+            </label>
+            <input
+              type="text"
+              value={subjectiveState}
+              onChange={(e) => setSubjectiveState(e.target.value)}
+              placeholder="ej: dormí poco, lumbar cargada…"
+              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+            />
+            <button
+              onClick={fetchBriefing}
+              disabled={isLoadingBriefing}
+              className="w-full py-2 bg-amber-600 text-black rounded font-bold text-xs uppercase hover:bg-amber-500 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoadingBriefing ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Analizando historial…
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} /> Generar briefing
+                </>
+              )}
+            </button>
+            {briefingError && (
+              <div className="text-[10px] text-red-400 flex items-center gap-1">
+                <AlertTriangle size={10} /> {briefingError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {briefing && (
+          <div className="bg-slate-950 border border-amber-500/40 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Shield size={10} /> Briefing de Misión
+              </span>
+              <button
+                onClick={() => setBriefing(null)}
+                className="text-slate-500 hover:text-white"
+              >
+                <X size={12} />
+              </button>
+            </div>
+
+            {briefing.fatigueWarning && (
+              <div className="bg-orange-900/30 border border-orange-500/40 rounded p-2 text-[11px] text-orange-200 flex items-start gap-2">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>{briefing.fatigueWarning}</span>
+              </div>
+            )}
+
+            {briefing.generalAdvice && (
+              <p className="text-xs text-slate-300 italic">
+                {briefing.generalAdvice}
+              </p>
+            )}
+
+            {Array.isArray(briefing.perExercise) && briefing.perExercise.length > 0 && (
+              <div className="space-y-1">
+                {briefing.perExercise.map((p, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between text-[11px] border-b border-slate-800 pb-1 last:border-0"
+                  >
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="text-slate-200 font-medium truncate">
+                        {p.name}
+                      </div>
+                      {p.note && (
+                        <div className="text-[9px] text-slate-500 italic truncate">
+                          {p.note}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-amber-400 font-mono shrink-0">
+                      {p.suggestedWeight || 0}
+                      {barUnit} × {p.reps || 0} @RPE{p.rpe || "-"}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={applyBriefingSuggestions}
+                  className="w-full mt-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-black rounded hover:bg-amber-500 transition"
+                >
+                  Aplicar al primer set
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1">
@@ -635,31 +743,6 @@ export default function ActiveSession({
                     </div>
 
                     <div className="flex flex-col items-end gap-1 ml-2">
-                      <div className="flex items-center gap-1 bg-slate-900 rounded-lg p-0.5 border border-slate-700">
-                        <button
-                          onClick={() => standardizeName(ex.name, ex.id)}
-                          className="p-1.5 text-slate-500 hover:text-purple-400 rounded hover:bg-slate-700"
-                          title="Corregir Nombre (IA)"
-                        >
-                          {standardizingId === ex.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <Wand2 size={12} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => suggestAlternative(ex.name, ex.id)}
-                          className="p-1.5 text-slate-500 hover:text-green-400 rounded hover:bg-slate-700"
-                          title="Variante (IA)"
-                        >
-                          {standardizingId === ex.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <RefreshCw size={12} />
-                          )}
-                        </button>
-                      </div>
-
                       <div className="flex items-center gap-1 mt-1">
                         <button
                           onClick={() => toggleSuperset(index)}
@@ -670,16 +753,6 @@ export default function ActiveSession({
                           }`}
                         >
                           <LinkIcon size={14} />
-                        </button>
-                        <button
-                          onClick={() => getTacticalTip(ex.name, ex.id)}
-                          className="p-1.5 rounded text-slate-500 hover:text-purple-400 hover:bg-slate-700"
-                        >
-                          {loadingTipId === ex.id ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <BrainCircuit size={14} />
-                          )}
                         </button>
                         <button
                           onClick={() => {
@@ -766,6 +839,30 @@ export default function ActiveSession({
                         </div>
                       );
                     })}
+                    {(() => {
+                      const lastFilled = getLastFilledSet(safeSets);
+                      const targetRPE = parseFloat(mode?.rpe) || 8;
+                      const nextSuggestion = suggestNextSet({
+                        lastSet: lastFilled,
+                        targetRPE,
+                      });
+                      if (!nextSuggestion) return null;
+                      const hintColor = nextSuggestion.shouldStop
+                        ? "text-red-400 border-red-500/40"
+                        : "text-sky-400 border-sky-500/30";
+                      return (
+                        <div
+                          className={`text-[10px] px-2 py-1 mt-1 border rounded bg-slate-900/60 ${hintColor}`}
+                        >
+                          <span className="font-bold">Próxima:</span>{" "}
+                          {nextSuggestion.weight}
+                          {barUnit} × {nextSuggestion.reps}{" "}
+                          <span className="text-slate-500">
+                            · {nextSuggestion.reason}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     <button
                       onClick={() => addSet(ex.id)}
                       className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-amber-500 hover:border-amber-500 transition"
@@ -781,23 +878,15 @@ export default function ActiveSession({
       </div>
 
       <div className="mt-6 flex flex-col gap-2">
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setEditingExId(null);
-              setShowExSelector(true);
-            }}
-            className="flex-1 py-3 bg-slate-800 text-slate-300 rounded-lg font-bold text-sm uppercase border border-slate-700 hover:bg-slate-700 transition"
-          >
-            + Ejercicio
-          </button>
-          <button
-            onClick={analyzeSession}
-            className="px-4 py-3 bg-slate-800 text-purple-400 rounded-lg font-bold text-sm uppercase border border-slate-700 hover:bg-slate-700 hover:text-purple-300 transition flex items-center justify-center gap-2"
-          >
-            <ClipboardList size={18} /> Analizar ✨
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setEditingExId(null);
+            setShowExSelector(true);
+          }}
+          className="w-full py-3 bg-slate-800 text-slate-300 rounded-lg font-bold text-sm uppercase border border-slate-700 hover:bg-slate-700 transition"
+        >
+          + Ejercicio
+        </button>
         <button
           onClick={() => setShowFinishModal(true)}
           className="w-full py-3 bg-amber-600 text-black rounded-lg font-bold text-sm uppercase shadow-lg shadow-amber-900/20 hover:bg-amber-500 transition"

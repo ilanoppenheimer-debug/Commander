@@ -9,12 +9,14 @@ import {
   DEFAULT_ROUTINES
 } from "./constants/gymConstants";
 import { calculatePlates } from "./utils/plateMath";
+import { historyToCSV, csvToHistory, downloadCSV } from "./utils/csvExport";
 import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
 import {
   calculate1RM,
   calculateTrainingWeight
 } from "./utils/strengthMath";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
+import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { playTacticalAlarm } from "./services/audioService";
 import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -22,7 +24,6 @@ import InputGroup from "./components/ui/InputGroup";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
-import { useTrainingState } from "./hooks/useTrainingState";
 import ExerciseHistoryModal from "./components/modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./components/modals/ExerciseSelectorModal";
 import AdvancedTimer from "./features/AdvancedTimer";
@@ -571,10 +572,49 @@ function AppMain() {
     downloadAnchorNode.remove();
   };
 
+  const handleExportHistoryCSV = () => {
+    if (!Array.isArray(history) || history.length === 0) {
+      showNotify("Historial vacío, nada para exportar", "info");
+      return;
+    }
+    const csv = historyToCSV(history);
+    const today = new Date().toISOString().slice(0, 10);
+    downloadCSV(csv, `IronCommander_Historial_${today}.csv`);
+    showNotify(`Exportadas ${history.length} sesiones`, "success");
+  };
+
+  const handleImportHistoryCSV = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const imported = csvToHistory(String(e.target?.result || ""));
+        if (imported.length === 0) {
+          showNotify("CSV vacío o inválido", "error");
+          return;
+        }
+        const existingIds = new Set((Array.isArray(history) ? history : []).map(h => h?.historyId).filter(Boolean));
+        const deduped = imported.filter(h => !existingIds.has(h.historyId));
+        const merged = [...(Array.isArray(history) ? history : []), ...deduped]
+          .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+        setHistory(merged);
+        showNotify(`Importadas ${deduped.length} sesiones nuevas`, "success");
+      } catch (err) {
+        console.error("Import CSV failed", err);
+        showNotify("Error al leer el CSV", "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const safeRoutines = Array.isArray(routines) ? routines : [];
   const safeModes = Array.isArray(modes) && modes.length > 0 ? modes : DEFAULT_MODES;
   const currentMode = safeModes.find(m => m.id === activeModeId) || safeModes[0] || DEFAULT_MODES[0];
   const safeHistory = Array.isArray(history) ? history.filter(Boolean) : [];
+  const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   
   const tabs = [
     { id: 'routines', label: 'Rutinas', icon: ClipboardList },
@@ -640,16 +680,17 @@ function AppMain() {
       <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full p-4 pb-24 relative">
         
         {isTraining && activeTab === 'routines' && activeSession && (
-            <ActiveSession 
+            <ActiveSession
                 key={activeSession.id || 'active-session'}
-                sessionData={activeSession} 
-                updateSessionData={setActiveSession} 
+                sessionData={activeSession}
+                updateSessionData={setActiveSession}
                 onFinishMission={handleFinishMission}
-                onDiscardSession={() => { setActiveSession(null); showNotify("Sesión descartada.", "info"); }} 
-                mode={currentMode} 
+                onDiscardSession={() => { setActiveSession(null); showNotify("Sesión descartada.", "info"); }}
+                mode={currentMode}
                 history={safeHistory}
-                customExercises={customExercises} 
-                setCustomExercises={setCustomExercises} 
+                athleteProfile={athleteProfile}
+                customExercises={customExercises}
+                setCustomExercises={setCustomExercises}
                 barUnit={barUnit}
                 showNotify={showNotify}
             />
@@ -716,9 +757,18 @@ function AppMain() {
                     <span className="text-xs text-slate-500 font-mono">{safeHistory.length} Registros</span>
                 </div>
 
-                <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 mb-4">
+                <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 mb-2">
                     <button onClick={() => setHistoryMode('log')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'log' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Sesiones</button>
                     <button onClick={() => setHistoryMode('stats')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'stats' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Tendencias</button>
+                </div>
+                <div className="flex gap-2 mb-4">
+                    <button onClick={handleExportHistoryCSV} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 bg-slate-900 border border-slate-700 rounded-md hover:border-sky-500/60 hover:text-sky-300 transition">
+                      <Download size={12}/> Exportar CSV
+                    </button>
+                    <label className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-slate-900 border border-slate-700 rounded-md hover:border-emerald-500/60 hover:text-emerald-300 transition cursor-pointer">
+                      <FileText size={12}/> Importar CSV
+                      <input type="file" accept=".csv,text/csv" onChange={handleImportHistoryCSV} className="hidden" />
+                    </label>
                 </div>
 
                 {historyMode === 'log' ? (
