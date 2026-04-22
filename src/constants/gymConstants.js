@@ -1,26 +1,26 @@
 export const PLATE_CONFIG = {
   kg: {
-    25: { color: "bg-red-600 border-red-800", height: "h-32", label: "25", type: "standard", text: "text-white" },
-    20: { color: "bg-blue-600 border-blue-800", height: "h-32", label: "20", type: "standard", text: "text-white" },
-    15: { color: "bg-yellow-400 border-yellow-600", height: "h-28", label: "15", type: "standard", text: "text-black" },
-    10: { color: "bg-green-600 border-green-800", height: "h-24", label: "10", type: "standard", text: "text-white" },
-    5: { color: "bg-slate-100 border-slate-300", height: "h-20", label: "5", type: "standard", text: "text-black" },
-    2.5: { color: "bg-red-600 border-red-800", height: "h-16", label: "2.5", type: "fractional", text: "text-white" },
-    2: { color: "bg-blue-500 border-blue-700", height: "h-16", label: "2", type: "fractional", text: "text-white" },
-    1.5: { color: "bg-yellow-400 border-yellow-600", height: "h-14", label: "1.5", type: "fractional", text: "text-black" },
-    1.25: { color: "bg-slate-400 border-slate-600", height: "h-14", label: "1.25", type: "fractional", text: "text-white" },
-    1: { color: "bg-green-500 border-green-700", height: "h-12", label: "1", type: "fractional", text: "text-white" },
-    0.5: { color: "bg-slate-100 border-slate-300", height: "h-10", label: "0.5", type: "fractional", text: "text-black" },
-    0.25: { color: "bg-slate-300 border-slate-400", height: "h-9", label: "0.25", type: "fractional", text: "text-black" },
+    25:   { fill: "#dc2626", stroke: "#7f1d1d", text: "#ffffff", height: "h-32", label: "25",   type: "standard"   },
+    20:   { fill: "#2563eb", stroke: "#1e3a8a", text: "#ffffff", height: "h-32", label: "20",   type: "standard"   },
+    15:   { fill: "#eab308", stroke: "#854d0e", text: "#0f172a", height: "h-28", label: "15",   type: "standard"   },
+    10:   { fill: "#16a34a", stroke: "#14532d", text: "#ffffff", height: "h-24", label: "10",   type: "standard"   },
+    5:    { fill: "#f1f5f9", stroke: "#cbd5e1", text: "#0f172a", height: "h-20", label: "5",    type: "standard"   },
+    2.5:  { fill: "#dc2626", stroke: "#7f1d1d", text: "#ffffff", height: "h-16", label: "2.5",  type: "fractional" },
+    2:    { fill: "#3b82f6", stroke: "#1d4ed8", text: "#ffffff", height: "h-16", label: "2",    type: "fractional" },
+    1.5:  { fill: "#eab308", stroke: "#854d0e", text: "#0f172a", height: "h-14", label: "1.5",  type: "fractional" },
+    1.25: { fill: "#94a3b8", stroke: "#475569", text: "#ffffff", height: "h-14", label: "1.25", type: "fractional" },
+    1:    { fill: "#22c55e", stroke: "#15803d", text: "#ffffff", height: "h-12", label: "1",    type: "fractional" },
+    0.5:  { fill: "#f1f5f9", stroke: "#cbd5e1", text: "#0f172a", height: "h-10", label: "0.5",  type: "fractional" },
+    0.25: { fill: "#cbd5e1", stroke: "#94a3b8", text: "#0f172a", height: "h-9",  label: "0.25", type: "fractional" },
   },
   lb: {
-    45: { color: "bg-blue-600 border-blue-800", height: "h-32", label: "45", type: "standard", text: "text-white" },
-    35: { color: "bg-yellow-400 border-yellow-600", height: "h-28", label: "35", type: "standard", text: "text-black" },
-    25: { color: "bg-green-600 border-green-800", height: "h-24", label: "25", type: "standard", text: "text-white" },
-    10: { color: "bg-slate-100 border-slate-300", height: "h-20", label: "10", type: "standard", text: "text-black" },
-    5: { color: "bg-black border-slate-600", height: "h-16", label: "5", type: "fractional", text: "text-white" },
-    2.5: { color: "bg-slate-400 border-slate-600", height: "h-14", label: "2.5", type: "fractional", text: "text-white" },
-    1.25: { color: "bg-slate-300 border-slate-500", height: "h-10", label: "1.25", type: "fractional", text: "text-black" },
+    45:   { fill: "#2563eb", stroke: "#1e3a8a", text: "#ffffff", height: "h-32", label: "45",   type: "standard"   },
+    35:   { fill: "#eab308", stroke: "#854d0e", text: "#0f172a", height: "h-28", label: "35",   type: "standard"   },
+    25:   { fill: "#16a34a", stroke: "#14532d", text: "#ffffff", height: "h-24", label: "25",   type: "standard"   },
+    10:   { fill: "#f1f5f9", stroke: "#cbd5e1", text: "#0f172a", height: "h-20", label: "10",   type: "standard"   },
+    5:    { fill: "#0f172a", stroke: "#334155", text: "#ffffff", height: "h-16", label: "5",    type: "fractional" },
+    2.5:  { fill: "#94a3b8", stroke: "#475569", text: "#ffffff", height: "h-14", label: "2.5",  type: "fractional" },
+    1.25: { fill: "#cbd5e1", stroke: "#64748b", text: "#0f172a", height: "h-10", label: "1.25", type: "fractional" },
   },
 };
 
@@ -168,6 +168,15 @@ export const DEFAULT_ROUTINES = [
       { id: 103, name: "Fondos en Paralelas", equipment: "bodyweight", sets: [{ weight: 0, reps: 12, rpe: 9, type: "normal" }] },
     ],
   },
+];
+
+export const ACCENT_PRESETS = [
+  { id: "amber",   label: "Ámbar",     swatch: "#f59e0b" },
+  { id: "blue",    label: "Azul",      swatch: "#3b82f6" },
+  { id: "emerald", label: "Esmeralda", swatch: "#10b981" },
+  { id: "violet",  label: "Violeta",   swatch: "#8b5cf6" },
+  { id: "rose",    label: "Rosa",      swatch: "#f43f5e" },
+  { id: "sky",     label: "Cielo",     swatch: "#0ea5e9" },
 ];
 
 export const EXERCISE_TO_MUSCLE = Object.entries(EXERCISE_CATEGORIES).reduce(

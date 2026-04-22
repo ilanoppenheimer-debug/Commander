@@ -10,7 +10,7 @@ export default function InfoModal({ data, onClose }) {
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 border-2 border-amber-500 rounded-xl flex flex-col max-h-[85vh] w-full max-w-sm shadow-[0_0_50px_rgba(245,158,11,0.3)] relative"
+        className="bg-slate-900 border-2 border-accent-500 rounded-xl flex flex-col max-h-[85vh] w-full max-w-sm shadow-[0_0_50px_rgb(var(--accent-500)/0.3)] relative"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -21,7 +21,7 @@ export default function InfoModal({ data, onClose }) {
         </button>
 
         <div className="p-6 pb-2 flex-shrink-0">
-          <div className="flex items-center gap-3 text-amber-500">
+          <div className="flex items-center gap-3 text-accent-500">
             <ClipboardList size={28} />
             <h3 className="text-lg font-bold uppercase tracking-wider">
               {data.title || "Info"}
@@ -44,7 +44,7 @@ export default function InfoModal({ data, onClose }) {
         <div className="p-6 pt-2 flex-shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-black font-bold uppercase rounded shadow-lg shadow-amber-900/20"
+            className="w-full py-3 bg-accent-600 hover:bg-accent-500 text-black font-bold uppercase rounded shadow-lg shadow-accent-900/20"
           >
             Entendido
           </button>

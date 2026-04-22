@@ -41,9 +41,9 @@ export const FinishMissionModal = ({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-amber-500/50 p-6 shadow-[0_0_50px_rgba(245,158,11,0.2)] my-6">
+      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-accent-500/50 p-6 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] my-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-          <Target className="text-amber-500" /> Misión Completada
+          <Target className="text-accent-500" /> Misión Completada
         </h2>
         <p className="text-xs text-slate-400 mb-4">
           Revisa el resumen y elige cómo archivar el registro.
@@ -77,7 +77,7 @@ export const FinishMissionModal = ({
           <div className="pt-4 flex flex-col gap-2">
             <button
               onClick={() => onConfirm(name, saveTemplate)}
-              className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-black font-bold uppercase rounded shadow-lg shadow-amber-900/20 transition"
+              className="w-full py-3 bg-accent-600 hover:bg-accent-500 text-black font-bold uppercase rounded shadow-lg shadow-accent-900/20 transition"
             >
               Guardar en Historial
             </button>
@@ -416,8 +416,8 @@ export default function ActiveSession({
       )}
       {isAnalyzing && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Loader2 size={48} className="text-amber-500 animate-spin mb-4" />
-          <p className="text-amber-500 font-mono font-bold animate-pulse">
+          <Loader2 size={48} className="text-accent-500 animate-spin mb-4" />
+          <p className="text-accent-500 font-mono font-bold animate-pulse">
             PROCESANDO INTELIGENCIA...
           </p>
         </div>
@@ -458,7 +458,8 @@ export default function ActiveSession({
         />
       )}
 
-      <div className="flex flex-col gap-4 mb-6">
+      <div className="md:grid md:grid-cols-[320px_1fr] md:gap-6 md:items-start">
+      <div className="flex flex-col gap-4 mb-6 md:sticky md:top-4">
         <div className="flex items-center gap-2">
           <button
             onClick={() =>
@@ -485,7 +486,7 @@ export default function ActiveSession({
         <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
           <button
             onClick={() => setShowBriefingInput((v) => !v)}
-            className="flex items-center gap-1 text-[10px] text-amber-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
+            className="flex items-center gap-1 text-[10px] text-accent-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
           >
             {isLoadingBriefing ? (
               <Loader2 size={12} className="animate-spin" />
@@ -509,8 +510,8 @@ export default function ActiveSession({
         </div>
 
         {showBriefingInput && !briefing && (
-          <div className="bg-slate-950 border border-amber-500/30 rounded-lg p-3 space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+          <div className="bg-slate-950 border border-accent-500/30 rounded-lg p-3 space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-accent-400">
               ¿Cómo te sentís hoy? (opcional)
             </label>
             <input
@@ -523,7 +524,7 @@ export default function ActiveSession({
             <button
               onClick={fetchBriefing}
               disabled={isLoadingBriefing}
-              className="w-full py-2 bg-amber-600 text-black rounded font-bold text-xs uppercase hover:bg-amber-500 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-2 bg-accent-600 text-black rounded font-bold text-xs uppercase hover:bg-accent-500 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isLoadingBriefing ? (
                 <>
@@ -544,9 +545,9 @@ export default function ActiveSession({
         )}
 
         {briefing && (
-          <div className="bg-slate-950 border border-amber-500/40 rounded-lg p-3 space-y-2">
+          <div className="bg-slate-950 border border-accent-500/40 rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-accent-400 flex items-center gap-1">
                 <Shield size={10} /> Briefing de Misión
               </span>
               <button
@@ -587,7 +588,7 @@ export default function ActiveSession({
                         </div>
                       )}
                     </div>
-                    <div className="text-amber-400 font-mono shrink-0">
+                    <div className="text-accent-400 font-mono shrink-0">
                       {p.suggestedWeight || 0}
                       {barUnit} × {p.reps || 0} @RPE{p.rpe || "-"}
                     </div>
@@ -595,7 +596,7 @@ export default function ActiveSession({
                 ))}
                 <button
                   onClick={applyBriefingSuggestions}
-                  className="w-full mt-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-black rounded hover:bg-amber-500 transition"
+                  className="w-full mt-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-accent-600 text-black rounded hover:bg-accent-500 transition"
                 >
                   Aplicar al primer set
                 </button>
@@ -605,6 +606,7 @@ export default function ActiveSession({
         )}
       </div>
 
+      <div>
       <div className="space-y-1">
         {(Array.isArray(localExercises) ? localExercises : []).map(
           (ex, index) => {
@@ -632,7 +634,7 @@ export default function ActiveSession({
               <div key={ex.id || index} className="relative pl-4">
                 {(isSupersetTop || isSupersetBottom) && (
                   <div
-                    className={`absolute left-0 w-1 bg-amber-500 rounded-l ${
+                    className={`absolute left-0 w-1 bg-accent-500 rounded-l ${
                       isSupersetTop && isSupersetBottom
                         ? "top-0 bottom-0"
                         : isSupersetTop
@@ -642,15 +644,15 @@ export default function ActiveSession({
                   ></div>
                 )}
                 {(isSupersetTop || isSupersetBottom) && (
-                  <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-slate-900 border-2 border-amber-500 rounded-full flex items-center justify-center z-10">
-                    <LinkIcon size={8} className="text-amber-500" />
+                  <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-slate-900 border-2 border-accent-500 rounded-full flex items-center justify-center z-10">
+                    <LinkIcon size={8} className="text-accent-500" />
                   </div>
                 )}
 
                 <div
                   className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${
                     isSupersetTop || isSupersetBottom
-                      ? "border-amber-500/30"
+                      ? "border-accent-500/30"
                       : "border-slate-700"
                   } mb-4`}
                 >
@@ -670,7 +672,7 @@ export default function ActiveSession({
                             setEditingExId(ex.id);
                             setShowExSelector(true);
                           }}
-                          className="text-left font-bold text-white text-lg leading-tight truncate hover:text-amber-500 transition-colors"
+                          className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
                           title="Cambiar Ejercicio"
                         >
                           {ex.name || "Ejercicio Desconocido"}
@@ -683,7 +685,7 @@ export default function ActiveSession({
                               onChange={(e) =>
                                 updateEquipment(ex.id, e.target.value)
                               }
-                              className="appearance-none bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border border-slate-600 focus:outline-none focus:border-amber-500 cursor-pointer"
+                              className="appearance-none bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border border-slate-600 focus:outline-none focus:border-accent-500 cursor-pointer"
                             >
                               {EQUIPMENT_TYPES.map((eq) => (
                                 <option key={eq.id} value={eq.id}>
@@ -748,8 +750,8 @@ export default function ActiveSession({
                           onClick={() => toggleSuperset(index)}
                           className={`p-1.5 rounded transition ${
                             isSupersetTop
-                              ? "text-amber-500 bg-amber-900/20"
-                              : "text-slate-600 hover:text-amber-500 hover:bg-slate-700"
+                              ? "text-accent-500 bg-accent-900/20"
+                              : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"
                           }`}
                         >
                           <LinkIcon size={14} />
@@ -809,7 +811,7 @@ export default function ActiveSession({
                             onChange={(e) =>
                               updateSet(ex.id, i, "weight", e.target.value)
                             }
-                            className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-amber-500 font-bold"
+                            className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold"
                             placeholder="0"
                           />
                           <input
@@ -865,7 +867,7 @@ export default function ActiveSession({
                     })()}
                     <button
                       onClick={() => addSet(ex.id)}
-                      className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-amber-500 hover:border-amber-500 transition"
+                      className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-accent-500 hover:border-accent-500 transition"
                     >
                       + Serie
                     </button>
@@ -889,10 +891,12 @@ export default function ActiveSession({
         </button>
         <button
           onClick={() => setShowFinishModal(true)}
-          className="w-full py-3 bg-amber-600 text-black rounded-lg font-bold text-sm uppercase shadow-lg shadow-amber-900/20 hover:bg-amber-500 transition"
+          className="w-full py-3 bg-accent-600 text-black rounded-lg font-bold text-sm uppercase shadow-lg shadow-accent-900/20 hover:bg-accent-500 transition"
         >
           Finalizar Misión
         </button>
+      </div>
+      </div>
       </div>
 
       <div className="h-16"></div>

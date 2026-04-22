@@ -15,11 +15,17 @@ export const PlateVisualizer = ({ plates }) => {
       </div>
       {plates.map((p, idx) => {
         if(!p) return null;
-        const config = PLATE_CONFIG[p.unit]?.[p.weight] || { color: 'bg-slate-700', height: 'h-24', label: '?' };
+        const config = PLATE_CONFIG[p.unit]?.[p.weight];
+        const fill = config?.fill || "#334155";
+        const stroke = config?.stroke || "#1e293b";
+        const textColor = config?.text || "#ffffff";
         return (
           <div key={idx} className="flex flex-col items-center justify-center z-20 -ml-1 shrink-0 transition-all duration-300 animate-slide-in-right group">
-            <div className={`${config?.height || 'h-24'} w-6 ${config?.color || 'bg-slate-700'} rounded-sm border-x border-y shadow-xl flex items-center justify-center relative`}>
-              <span className={`text-[9px] font-bold -rotate-90 absolute whitespace-nowrap ${config?.text || 'text-white'}`}>{p.weight} <span className="text-[6px] opacity-70">{p.unit}</span></span>
+            <div
+              style={{ backgroundColor: fill, borderColor: stroke }}
+              className={`${config?.height || 'h-24'} w-6 rounded-sm border shadow-xl flex items-center justify-center relative`}
+            >
+              <span style={{ color: textColor }} className="text-[9px] font-bold -rotate-90 absolute whitespace-nowrap">{p.weight} <span className="text-[6px] opacity-70">{p.unit}</span></span>
               <div className="absolute inset-y-0 left-0 w-1 bg-white/10"></div>
             </div>
           </div>
@@ -92,7 +98,8 @@ export default function TargetCalculator({ barWeight, barUnit, inventory }) {
   
     return (
       <div className="space-y-6 animate-fade-in pb-20">
-        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-xl">
+        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-xl md:grid md:grid-cols-2 md:gap-6">
+         <div>
           <div className="flex gap-4 items-end mb-4">
             <div className="flex-1"><InputGroup label={`Peso Objetivo (${unit})`} type="number" value={targetWeight} onChange={setTargetWeight} /></div>
             <div className="flex bg-slate-900 rounded-lg p-1 h-[54px] items-center">
@@ -102,23 +109,29 @@ export default function TargetCalculator({ barWeight, barUnit, inventory }) {
             </div>
           </div>
           <div className="mb-4"><ToggleSwitch checked={allowMixing} onChange={setAllowMixing} label={allowMixing ? "Combinando (Kg + Lb)" : "Solo un tipo"} /></div>
+         </div>
+         <div>
           <PlateVisualizer plates={plates} unit={unit} />
           <div className="space-y-2">
              <div className="text-xs uppercase text-slate-500 font-bold mb-2">Cargar por lado:</div>
              {groupedPlates.length > 0 ? (
                <div className="grid grid-cols-2 gap-2">
-                 {groupedPlates.map((item, idx) => (
-                   <div key={idx} className="bg-slate-700/50 p-2 rounded-lg border border-slate-600 flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                         <span className={`w-3 h-3 rounded-full ${PLATE_CONFIG[item.unit]?.[item.weight]?.color?.split(' ')[0] || 'bg-white'}`}></span>
-                         <span className="font-bold text-white text-lg">{item.weight} <span className="text-xs text-slate-400">{item.unit}</span></span>
-                      </div>
-                      <span className="font-mono text-blue-400 font-bold">x{item.count}</span>
-                   </div>
-                 ))}
+                 {groupedPlates.map((item, idx) => {
+                   const cfg = PLATE_CONFIG[item.unit]?.[item.weight];
+                   return (
+                     <div key={idx} className="bg-slate-700/50 p-2 rounded-lg border border-slate-600 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                           <span style={{ backgroundColor: cfg?.fill || "#ffffff" }} className="w-3 h-3 rounded-full"></span>
+                           <span className="font-bold text-white text-lg">{item.weight} <span className="text-xs text-slate-400">{item.unit}</span></span>
+                        </div>
+                        <span className="font-mono text-blue-400 font-bold">x{item.count}</span>
+                     </div>
+                   );
+                 })}
                </div>
              ) : (<p className="text-slate-500 text-sm text-center py-2">Ingresa un peso válido.</p>)}
           </div>
+         </div>
         </div>
          <div className="text-center text-xs text-slate-500">Peso Real Calculado: {formatNum(totalExact)} {unit}</div>
       </div>

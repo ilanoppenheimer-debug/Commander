@@ -35,7 +35,8 @@ export default function WorkCalculator() {
     };
   
     return (
-      <div className="space-y-6 animate-fade-in pb-20">
+      <div className="space-y-6 animate-fade-in pb-20 md:grid md:grid-cols-2 md:gap-6 md:space-y-0 md:items-start">
+        <div className="space-y-6">
         <div className="bg-slate-800 p-2 rounded-xl border border-slate-700 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-2 pl-2"><Dumbbell className="text-blue-500" size={18} /><span className="text-xs font-bold text-slate-400 uppercase">Ejercicio:</span></div>
           <div className="relative w-1/2">
@@ -54,6 +55,8 @@ export default function WorkCalculator() {
           </div>
           {oneRM > 0 && (<div className="mt-4 bg-purple-900/20 p-4 rounded-xl border border-purple-500/30 text-center animate-pop-in"><div className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-1">Tu 1RM Teórico</div><div className="text-4xl font-black text-white">{formatNum(oneRM)} {unit}</div></div>)}
         </div>
+        </div>
+        <div className="space-y-6">
         {oneRM > 0 && (
           <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl relative overflow-hidden">
             <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex gap-2 items-center"><BarChart2 size={16} /> Planificar Serie</h3>
@@ -65,6 +68,7 @@ export default function WorkCalculator() {
             <button onClick={handleAIConsult} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-all active:scale-95 group"><Sparkles className="text-yellow-300 group-hover:animate-pulse" size={18} /> Consultar Coach AI</button>
           </div>
         )}
+        </div>
         {showAI && <InfoModal data={{title: "Coach AI", content: loadingAI ? "Analizando..." : aiAdvice}} onClose={() => setShowAI(false)} />}
       </div>
     );

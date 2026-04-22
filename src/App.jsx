@@ -6,7 +6,8 @@ import {
   DEFAULT_MODES,
   PHASE_COLORS,
   SET_TYPES,
-  DEFAULT_ROUTINES
+  DEFAULT_ROUTINES,
+  ACCENT_PRESETS
 } from "./constants/gymConstants";
 import { calculatePlates } from "./utils/plateMath";
 import { historyToCSV, csvToHistory, downloadCSV } from "./utils/csvExport";
@@ -48,7 +49,7 @@ const SettingsModal = ({ inventory, setInventory, barWeight, setBarWeight, barUn
         
         <div className="space-y-4">
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-            <h3 className="text-sm font-bold text-amber-500 mb-3 uppercase tracking-wider">Barra Olímpica</h3>
+            <h3 className="text-sm font-bold text-accent-500 mb-3 uppercase tracking-wider">Barra Olímpica</h3>
             <div className="flex gap-4">
               <div className="flex-1"><InputGroup label="Peso" type="number" value={barWeight} onChange={setBarWeight} /></div>
               <div className="w-24">
@@ -74,6 +75,8 @@ const FullSettingsModal = ({
   setBarUnit,
   modes,
   setModes,
+  accent,
+  setAccent,
   onClose,
 }) => {
   const [editingModeId, setEditingModeId] = useState(null);
@@ -175,7 +178,7 @@ const FullSettingsModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-      <div className="bg-slate-900 w-full max-w-md h-[90vh] sm:h-[80vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col">
+      <div className="bg-slate-900 w-full max-w-md md:max-w-2xl h-[90vh] sm:h-[80vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col">
         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900 rounded-t-2xl z-20">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5" /> Configuración
@@ -191,13 +194,41 @@ const FullSettingsModal = ({
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           <section>
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Sparkles size={14} /> Apariencia
+            </h3>
+            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-3">
+                Color de acento
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {ACCENT_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setAccent(p.id)}
+                    title={p.label}
+                    className={`w-10 h-10 rounded-full border-2 transition-all active:scale-95 ${
+                      accent === p.id
+                        ? "border-white ring-2 ring-white/40 scale-110"
+                        : "border-slate-700 hover:border-slate-500"
+                    }`}
+                    style={{ backgroundColor: p.swatch }}
+                  >
+                    <span className="sr-only">{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Target size={14} /> Fases / Mesociclos
             </h3>
             <div className="space-y-3 bg-slate-800 p-4 rounded-xl border border-slate-700">
               {safeModesToRender.map((m) => (
                 <div key={m.id}>
                   {editingModeId === m.id ? (
-                    <div className="bg-slate-950 p-3 rounded-lg border border-amber-500/50 space-y-3 animate-fade-in-down">
+                    <div className="bg-slate-950 p-3 rounded-lg border border-accent-500/50 space-y-3 animate-fade-in-down">
                       <InputGroup label="Nombre de la Fase" value={m.label} onChange={(v) => updateMode(m.id, "label", v)} />
                       <div className="grid grid-cols-2 gap-2">
                         <InputGroup label="Series" value={m.sets} onChange={(v) => updateMode(m.id, "sets", v)} />
@@ -215,7 +246,7 @@ const FullSettingsModal = ({
                       <div className="flex justify-end pt-2">
                         <button
                           onClick={() => setEditingModeId(null)}
-                          className="px-4 py-2 bg-amber-600 text-black font-bold text-xs rounded hover:bg-amber-500"
+                          className="px-4 py-2 bg-accent-600 text-black font-bold text-xs rounded hover:bg-accent-500"
                         >
                           Listo
                         </button>
@@ -254,7 +285,7 @@ const FullSettingsModal = ({
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={addMode}
-                    className="flex-1 py-2 border border-dashed border-slate-600 text-slate-400 hover:text-amber-500 hover:border-amber-500 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1"
+                    className="flex-1 py-2 border border-dashed border-slate-600 text-slate-400 hover:text-accent-500 hover:border-accent-500 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1"
                   >
                     <Plus size={14} /> Manual
                   </button>
@@ -347,10 +378,14 @@ const FullSettingsModal = ({
                   <div className="space-y-2">
                     {weights.map((w) => {
                       const count = inventory?.[u] ? inventory[u][w] || 0 : 0;
+                      const cfg = PLATE_CONFIG[u]?.[w];
                       return (
                         <div key={w} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-800">
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm ${PLATE_CONFIG[u]?.[w]?.color?.replace("h-", "").replace("w-", "") || "bg-slate-700"} ${PLATE_CONFIG[u]?.[w]?.text || "text-white"}`}>
+                            <div
+                              style={{ backgroundColor: cfg?.fill || "#334155", borderColor: cfg?.stroke || "#475569", color: cfg?.text || "#ffffff" }}
+                              className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm"
+                            >
                               {w}
                             </div>
                             <span className="text-slate-400 text-sm font-medium">{w} {u}</span>
@@ -408,6 +443,13 @@ function AppMain() {
   const [isGenerating, setIsGenerating] = useState(false); 
   const [isImporting, setIsImporting] = useState(false); 
   const [notification, setNotification] = useState(null);
+  const [accent, setAccent] = useState('amber');
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.accent = accent;
+    }
+  }, [accent]);
 
   const showNotify = (msg, type = 'info') => {
       setNotification({ msg, type });
@@ -429,7 +471,8 @@ function AppMain() {
         if (parsed.activeSession) setActiveSession(parsed.activeSession); 
         if (parsed.activeTab) setActiveTab(parsed.activeTab); 
         if (parsed.historyMode) setHistoryMode(parsed.historyMode);
-        
+        if (parsed.accent) setAccent(parsed.accent);
+
         if (parsed.inventory) {
             setInventory(prev => ({
                 kg: { ...DEFAULT_INVENTORY_STATE.kg, ...(parsed.inventory.kg || {}) },
@@ -441,10 +484,10 @@ function AppMain() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('IronSuiteDataV14', JSON.stringify({ 
-        routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode, timestamp: new Date().toISOString() 
+    localStorage.setItem('IronSuiteDataV14', JSON.stringify({
+        routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode, accent, timestamp: new Date().toISOString()
     }));
-  }, [routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode]);
+  }, [routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode, accent]);
 
   // --- ACTIONS IRON CMDR ---
   const createRoutine = () => {
@@ -627,7 +670,7 @@ function AppMain() {
   const isTraining = activeSession !== null;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-amber-500 selection:text-slate-900 overflow-hidden flex flex-col relative">
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-accent-500 selection:text-slate-900 overflow-hidden flex flex-col relative">
       
       {notification && (
           <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in-down flex items-center gap-2 ${notification.type === 'error' ? 'bg-red-600 text-white' : notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-800 border border-sky-500 text-sky-400'}`}>
@@ -639,14 +682,14 @@ function AppMain() {
       <AdvancedTimer />
 
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-md md:max-w-5xl lg:max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2" onClick={() => { if(!isTraining) setActiveTab('routines'); }}>
-                <div className="p-1.5 bg-gradient-to-br from-amber-600 to-red-600 rounded shadow-lg shadow-amber-900/20 cursor-pointer">
+                <div className="p-1.5 bg-gradient-to-br from-accent-600 to-red-600 rounded shadow-lg shadow-accent-900/20 cursor-pointer">
                     <Dumbbell className="text-white w-5 h-5" />
                 </div>
                 <div className="cursor-pointer">
                     <h1 className="text-lg font-bold tracking-wider text-white uppercase leading-none">Iron Cmdr</h1>
-                    <span className="text-[10px] text-amber-500 font-mono tracking-widest">SUITE V14.1</span>
+                    <span className="text-[10px] text-accent-500 font-mono tracking-widest">SUITE V14.1</span>
                 </div>
             </div>
             
@@ -663,7 +706,7 @@ function AppMain() {
         
         {activeTab === 'routines' && (
             <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 relative z-20">
-                <div className="max-w-md mx-auto flex items-center justify-between gap-2">
+                <div className="max-w-md md:max-w-5xl lg:max-w-6xl mx-auto flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Fase Global:</span>
                     <select 
                       value={activeModeId} 
@@ -677,7 +720,7 @@ function AppMain() {
         )}
       </header>
 
-      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full p-4 pb-24 relative">
+      <main className="flex-1 overflow-y-auto max-w-md md:max-w-5xl lg:max-w-6xl mx-auto w-full p-4 pb-24 relative">
         
         {isTraining && activeTab === 'routines' && activeSession && (
             <ActiveSession
@@ -698,8 +741,8 @@ function AppMain() {
 
         {!isTraining && activeTab === 'routines' && (
             <div className="space-y-6 animate-fade-in">
-                <div className="p-4 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-amber-500 transition shadow-lg" onClick={startFreestyleSession}>
-                    <Activity size={32} className="text-amber-500" />
+                <div className="p-4 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-500 transition shadow-lg" onClick={startFreestyleSession}>
+                    <Activity size={32} className="text-accent-500" />
                     <span className="text-sm font-bold uppercase text-white">Entrenamiento Libre</span>
                     <span className="text-[10px] text-slate-500">Iniciar sesión vacía (sin plantilla)</span>
                 </div>
@@ -707,11 +750,11 @@ function AppMain() {
                 <div>
                     <div className="flex justify-between items-end mb-3 border-b border-slate-800 pb-2">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Mis Plantillas</h3>
-                        <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-amber-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-amber-500 transition flex items-center gap-1 shadow-md">
+                        <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
                             <Plus size={12} /> Nueva
                         </button>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {safeRoutines.map(routine => (
                             <div key={routine.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-slate-500 transition relative group">
                                 <div className="flex justify-between items-start mb-2">
@@ -722,19 +765,19 @@ function AppMain() {
                                                     autoFocus
                                                     value={editingTemplateName} 
                                                     onChange={(e) => setEditingTemplateName(e.target.value)}
-                                                    className="bg-slate-950 border border-amber-500 text-white text-sm font-bold rounded px-2 py-1 w-full"
+                                                    className="bg-slate-950 border border-accent-500 text-white text-sm font-bold rounded px-2 py-1 w-full"
                                                 />
-                                                <button onClick={(e) => saveTemplateName(e, routine.id)} className="p-1.5 bg-amber-600 text-black rounded"><Check size={14}/></button>
+                                                <button onClick={(e) => saveTemplateName(e, routine.id)} className="p-1.5 bg-accent-600 text-black rounded"><Check size={14}/></button>
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-2 group/edit">
-                                                <h4 className="font-bold text-white text-lg cursor-pointer hover:text-amber-500 transition-colors" onClick={(e) => startEditingTemplateName(e, routine)}>{routine.name || 'Plantilla Sin Nombre'}</h4>
+                                                <h4 className="font-bold text-white text-lg cursor-pointer hover:text-accent-500 transition-colors" onClick={(e) => startEditingTemplateName(e, routine)}>{routine.name || 'Plantilla Sin Nombre'}</h4>
                                                 <button onClick={(e) => startEditingTemplateName(e, routine)} className="text-slate-500 opacity-0 group-hover/edit:opacity-100 hover:text-white transition-opacity"><Edit3 size={12}/></button>
                                             </div>
                                         )}
                                         <p className="text-xs text-slate-500 font-mono">{Array.isArray(routine.exercises) ? routine.exercises.length : 0} Ejercicios</p>
                                     </div>
-                                    <button onClick={() => startRoutineFromTemplate(routine)} className="w-10 h-10 shrink-0 rounded-full bg-amber-600 flex items-center justify-center text-black hover:bg-amber-500 shadow-lg shadow-amber-900/20" title="Iniciar esta rutina"><Play fill="currentColor" size={16} className="ml-0.5" /></button>
+                                    <button onClick={() => startRoutineFromTemplate(routine)} className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 shadow-lg shadow-accent-900/20" title="Iniciar esta rutina"><Play fill="currentColor" size={16} className="ml-0.5" /></button>
                                 </div>
                                 <div className="flex gap-2 mt-4 pt-3 border-t border-slate-700/50">
                                     <button onClick={(e) => duplicateRoutine(e, routine)} className="px-3 py-1.5 rounded bg-slate-900 text-xs text-slate-400 hover:text-white flex items-center gap-1"><Copy size={12} /> Clonar</button>
@@ -775,13 +818,13 @@ function AppMain() {
                     safeHistory.length === 0 ? (
                         <div className="text-center py-10 text-slate-600 italic">No hay misiones completadas aún. ¡Ve a entrenar!</div>
                     ) : (
-                        <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {safeHistory.map(h => (
                                 <div key={h.historyId || Math.random()} className="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-lg">
                                     <div className="flex justify-between items-start mb-3">
                                         <div>
                                             <h3 className="font-bold text-white text-lg leading-tight">{h.name || 'Entrenamiento Libre'}</h3>
-                                            <span className="text-[10px] text-amber-500 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 mt-1 inline-block">{h.completedAt ? new Date(h.completedAt).toLocaleString() : '-'}</span>
+                                            <span className="text-[10px] text-accent-500 font-mono bg-accent-500/10 px-2 py-0.5 rounded border border-accent-500/20 mt-1 inline-block">{h.completedAt ? new Date(h.completedAt).toLocaleString() : '-'}</span>
                                         </div>
                                         <button onClick={() => setHistory(prev => (Array.isArray(prev) ? prev.filter(item => item.historyId !== h.historyId) : []))} className="p-2 bg-slate-900 rounded text-slate-600 hover:text-red-500 transition"><Trash2 size={14}/></button>
                                     </div>
@@ -801,7 +844,7 @@ function AppMain() {
                     safeHistory.length === 0 ? (
                         <div className="text-center py-10 text-slate-600 italic">Entrena para recolectar datos de inteligencia.</div>
                     ) : (
-                        <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                             {(()=>{
                                 const counts = {};
                                 safeHistory.forEach(session => {
@@ -847,7 +890,7 @@ function AppMain() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 pb-safe z-40">
-        <div className="max-w-md mx-auto flex justify-around p-1">
+        <div className="max-w-md md:max-w-xl mx-auto flex justify-around p-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -857,8 +900,8 @@ function AppMain() {
             };
 
             return (
-              <button key={tab.id} onClick={handleClick} className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl transition-all duration-300 relative ${isActive ? 'text-amber-500' : 'text-slate-500 hover:text-slate-300'}`}>
-                {isActive && (<span className="absolute -top-1 w-12 h-1 bg-amber-500 rounded-b-full shadow-[0_0_10px_rgba(245,158,11,0.5)]"></span>)}
+              <button key={tab.id} onClick={handleClick} className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl transition-all duration-300 relative ${isActive ? 'text-accent-500' : 'text-slate-500 hover:text-slate-300'}`}>
+                {isActive && (<span className="absolute -top-1 w-12 h-1 bg-accent-500 rounded-b-full shadow-[0_0_10px_rgb(var(--accent-500)/0.5)]"></span>)}
                 <Icon className={`w-6 h-6 ${isActive ? 'scale-110 drop-shadow-lg' : 'scale-100'} transition-transform`} />
                 <span className="text-[9px] font-bold uppercase tracking-wide">{tab.label}</span>
                 {tab.id === 'routines' && isTraining && !isActive && (
@@ -871,12 +914,13 @@ function AppMain() {
       </nav>
 
       {showSettings && (
-          <FullSettingsModal 
-              inventory={inventory} setInventory={setInventory} 
-              barWeight={barWeight} setBarWeight={setBarWeight} 
-              barUnit={barUnit} setBarUnit={setBarUnit} 
+          <FullSettingsModal
+              inventory={inventory} setInventory={setInventory}
+              barWeight={barWeight} setBarWeight={setBarWeight}
+              barUnit={barUnit} setBarUnit={setBarUnit}
               modes={modes} setModes={setModes}
-              onClose={() => setShowSettings(false)} 
+              accent={accent} setAccent={setAccent}
+              onClose={() => setShowSettings(false)}
           />
       )}
       

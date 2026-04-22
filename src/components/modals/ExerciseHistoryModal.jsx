@@ -36,7 +36,7 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 w-full max-w-md h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
+        className="bg-slate-900 w-full max-w-md md:max-w-2xl max-h-[85vh] min-h-[420px] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
@@ -95,7 +95,7 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
                       <span className="text-slate-500 font-mono w-6">
                         {i + 1}.
                       </span>
-                      <span className="font-bold text-amber-500">
+                      <span className="font-bold text-accent-500">
                         {s?.weight > 0 ? `${s.weight}${barUnit}` : "-"}
                       </span>
                       <span className="text-white w-12 text-center">

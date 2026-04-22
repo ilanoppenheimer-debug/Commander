@@ -53,12 +53,12 @@ const ExerciseSelectorModal = ({
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 w-full max-w-md h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
+        className="bg-slate-900 w-full max-w-md md:max-w-2xl max-h-[85vh] min-h-[420px] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Dumbbell className="text-amber-500" size={20} /> Repertorio
+            <Dumbbell className="text-accent-500" size={20} /> Repertorio
           </h2>
           <button
             onClick={onClose}
@@ -79,12 +79,12 @@ const ExerciseSelectorModal = ({
               placeholder="Buscar ejercicio..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-amber-500 transition-colors placeholder-slate-600"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-accent-500 transition-colors placeholder-slate-600"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 overscroll-contain">
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 overscroll-contain">
           {allExercises.length > 0 ? (
             <div className="space-y-1">
               {allExercises.map((ex) => {
@@ -134,16 +134,18 @@ const ExerciseSelectorModal = ({
               </p>
             </div>
           )}
+        </div>
 
-          {search.trim() && !exactMatch && (
+        {search.trim() && !exactMatch && (
+          <div className="shrink-0 border-t border-slate-800 p-3 bg-slate-900/90">
             <button
               onClick={handleAddCustom}
-              className="w-full mt-2 py-3 bg-amber-600/10 border border-dashed border-amber-500/50 text-amber-500 rounded-lg font-bold flex justify-center items-center gap-2 hover:bg-amber-600/20 transition-colors"
+              className="w-full py-3 bg-accent-600/10 border border-dashed border-accent-500/50 text-accent-500 rounded-lg font-bold flex justify-center items-center gap-2 hover:bg-accent-600/20 transition-colors"
             >
               <Plus size={18} /> Añadir "{search}" a mi Repertorio
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
