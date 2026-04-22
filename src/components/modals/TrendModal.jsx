@@ -163,7 +163,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 w-full max-w-md md:max-w-2xl rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl p-6"
+        className="bg-slate-900 w-full max-w-md md:max-w-2xl max-h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-4">

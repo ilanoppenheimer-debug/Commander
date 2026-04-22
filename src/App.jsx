@@ -39,33 +39,6 @@ import {
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check
 } from 'lucide-react';
 
-// --- MODAL DE CONFIGURACIÓN TEMPORAL ---
-const SettingsModal = ({ inventory, setInventory, barWeight, setBarWeight, barUnit, setBarUnit, onClose }) => {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl p-6 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X size={24} /></button>
-        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-slate-400"/> Configuración del Cuartel</h2>
-        
-        <div className="space-y-4">
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-            <h3 className="text-sm font-bold text-accent-500 mb-3 uppercase tracking-wider">Barra Olímpica</h3>
-            <div className="flex gap-4">
-              <div className="flex-1"><InputGroup label="Peso" type="number" value={barWeight} onChange={setBarWeight} /></div>
-              <div className="w-24">
-                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Unidad</label>
-                <select value={barUnit} onChange={(e) => setBarUnit(e.target.value)} className="w-full bg-slate-800 text-white font-bold p-2.5 rounded border border-slate-700 outline-none">
-                  <option value="kg">KG</option><option value="lb">LB</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const FullSettingsModal = ({
   inventory,
   setInventory,
@@ -177,8 +150,14 @@ const FullSettingsModal = ({
   const safeModesToRender = Array.isArray(modes) ? modes : DEFAULT_MODES;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-      <div className="bg-slate-900 w-full max-w-md md:max-w-4xl lg:max-w-5xl h-[90vh] md:h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col">
+    <div
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-900 w-full max-w-md md:max-w-4xl lg:max-w-5xl h-[90vh] md:h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900 rounded-t-2xl z-20">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5" /> Configuración
@@ -478,6 +457,7 @@ function AppMain() {
         if (parsed.activeTab) setActiveTab(parsed.activeTab); 
         if (parsed.historyMode) setHistoryMode(parsed.historyMode);
         if (parsed.accent) setAccent(parsed.accent);
+        if (parsed.barUnit) setBarUnit(parsed.barUnit);
 
         if (parsed.inventory) {
             setInventory(prev => ({
@@ -491,9 +471,9 @@ function AppMain() {
 
   useEffect(() => {
     localStorage.setItem('IronSuiteDataV14', JSON.stringify({
-        routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode, accent, timestamp: new Date().toISOString()
+        routines, modes, activeModeId, inventory, barWeight, barUnit, customExercises, history, activeSession, activeTab, historyMode, accent, timestamp: new Date().toISOString()
     }));
-  }, [routines, modes, activeModeId, inventory, barWeight, customExercises, history, activeSession, activeTab, historyMode, accent]);
+  }, [routines, modes, activeModeId, inventory, barWeight, barUnit, customExercises, history, activeSession, activeTab, historyMode, accent]);
 
   // --- ACTIONS IRON CMDR ---
   const createRoutine = () => {
@@ -931,8 +911,8 @@ function AppMain() {
       )}
       
       {routineToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 w-full max-w-xs rounded-xl border border-red-500/50 shadow-2xl p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setRoutineToDelete(null)}>
+          <div className="bg-slate-900 w-full max-w-xs rounded-xl border border-red-500/50 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col items-center text-center gap-4">
               <div className="p-3 bg-red-900/20 rounded-full text-red-500"><AlertTriangle size={32} /></div>
               <h3 className="text-lg font-bold text-white">¿Eliminar Plantilla?</h3>
@@ -946,11 +926,11 @@ function AppMain() {
       )}
 
       {showAIModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-              <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in" onClick={() => !isGenerating && setShowAIModal(false)}>
+              <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative" onClick={(e) => e.stopPropagation()}>
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500"></div>
                   <div className="p-6">
-                      <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3>{!isGenerating && <button onClick={() => setShowAIModal(false)}><X className="text-slate-500" /></button>}</div>
+                      <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3><button onClick={() => setShowAIModal(false)} className="p-1 text-slate-500 hover:text-white transition"><X size={20} /></button></div>
                       {isGenerating ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-purple-500 animate-spin" /><p className="text-sm text-purple-300 font-mono animate-pulse">ESTABLECIENDO ENLACE...</p></div>) : (<><p className="text-sm text-slate-400 mb-4">Objetivo táctico para nueva plantilla:</p><textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Ej: Rutina de fuerza para hombros..." className="w-full h-24 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 focus:outline-none mb-4 resize-none" /><button onClick={generateAIRoutine} disabled={!aiPrompt.trim()} className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition"><Zap size={18} fill="currentColor" /> Generar Protocolo</button></>)}
                   </div>
               </div>
@@ -958,9 +938,9 @@ function AppMain() {
       )}
 
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-white flex items-center gap-2"><FileText className="text-green-500" /> Importar</h3>{!isImporting && <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-white"><X /></button>}</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => !isImporting && setShowImportModal(false)}>
+          <div className="bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-white flex items-center gap-2"><FileText className="text-green-500" /> Importar</h3><button onClick={() => setShowImportModal(false)} className="p-1 text-slate-400 hover:text-white transition"><X size={20} /></button></div>
             <div className="p-6 space-y-4">
               {isImporting ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-green-500 animate-spin" /><p className="text-sm text-green-300 font-mono animate-pulse">ANALIZANDO DATOS TÁCTICOS...</p></div>) : (<><p className="text-xs text-slate-400">Pega aquí cualquier tabla o lista (Excel/Web). La IA creará una plantilla.</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={`Ejemplo:\nPress Banca | 3 series | 10 reps | RPE 8\nSentadilla 4x8 100kg`} className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-green-500 focus:outline-none"></textarea><button onClick={handleSmartImport} className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2"><BrainCircuit size={16} /> Procesar con IA</button></>)}
             </div>

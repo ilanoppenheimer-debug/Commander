@@ -98,7 +98,7 @@ export default function PostSessionReport({ analysis, barUnit = "kg" }) {
           >
             {deltaIcon}
             <span>
-              {deltaDisplay >= 0 ? "+" : ""}
+              {deltaDisplay !== null && deltaDisplay >= 0 ? "+" : ""}
               {deltaDisplay === null ? "-" : deltaDisplay.toFixed(0)}% vs promedio 4 sem. ({formatNum(rollingAverage4w)})
             </span>
           </div>

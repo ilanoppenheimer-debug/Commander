@@ -39,50 +39,62 @@ export const FinishMissionModal = ({
   const [saveTemplate, setSaveTemplate] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-accent-500/50 p-6 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] my-6">
-        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-          <Target className="text-accent-500" /> Misión Completada
-        </h2>
-        <p className="text-xs text-slate-400 mb-4">
-          Revisa el resumen y elige cómo archivar el registro.
-        </p>
-
-        {analysis && (
-          <div className="mb-4">
-            <PostSessionReport analysis={analysis} barUnit={barUnit} />
+    <div
+      className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto"
+      onClick={onCancel}
+    >
+      <div className="flex min-h-full items-end justify-center sm:items-center p-0 sm:p-4">
+        <div
+          className="bg-slate-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Target className="text-accent-500" size={20} /> Misión Completada
+            </h2>
+            <button onClick={onCancel} className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+              <X size={22} />
+            </button>
           </div>
-        )}
 
-        <div className="space-y-4">
-          <InputGroup
-            label="Nombre del Registro"
-            value={name}
-            onChange={setName}
-            placeholder="Ej: Empuje Pesado"
-          />
-
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <ToggleSwitch
-              checked={saveTemplate}
-              onChange={setSaveTemplate}
-              label="Guardar como Plantilla"
-            />
-            <p className="text-[9px] text-slate-500 mt-2 ml-1">
-              Aparecerá en "Mis Plantillas" para repetirla otro día.
+          <div className="p-4 overflow-y-auto space-y-4">
+            <p className="text-xs text-slate-400">
+              Revisa el resumen y elige cómo archivar el registro.
             </p>
+
+            {analysis && (
+              <PostSessionReport analysis={analysis} barUnit={barUnit} />
+            )}
+
+            <InputGroup
+              label="Nombre del Registro"
+              value={name}
+              onChange={setName}
+              placeholder="Ej: Empuje Pesado"
+            />
+
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <ToggleSwitch
+                checked={saveTemplate}
+                onChange={setSaveTemplate}
+                label="Guardar como Plantilla"
+              />
+              <p className="text-[9px] text-slate-500 mt-2 ml-1">
+                Aparecerá en "Mis Plantillas" para repetirla otro día.
+              </p>
+            </div>
           </div>
 
-          <div className="pt-4 flex flex-col gap-2">
+          <div className="p-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
             <button
               onClick={() => onConfirm(name, saveTemplate)}
-              className="w-full py-3 bg-accent-600 hover:bg-accent-500 text-black font-bold uppercase rounded shadow-lg shadow-accent-900/20 transition"
+              className="w-full py-3 bg-accent-600 hover:bg-accent-500 text-black font-bold uppercase rounded-xl shadow-lg shadow-accent-900/20 transition active:scale-95"
             >
               Guardar en Historial
             </button>
             <button
               onClick={onDiscard}
-              className="w-full py-3 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold uppercase rounded border border-red-900/50 transition"
+              className="w-full py-3 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold uppercase rounded-xl border border-red-900/50 transition active:scale-95"
             >
               Descartar Sesión
             </button>
@@ -112,9 +124,7 @@ export default function ActiveSession({
   barUnit,
   showNotify,
 }) {
-  if (!sessionData) return null;
-
-  const safeInitialExercises = Array.isArray(sessionData.exercises)
+  const safeInitialExercises = Array.isArray(sessionData?.exercises)
     ? sessionData.exercises
     : [];
   const [localExercises, setLocalExercises] = useState(safeInitialExercises);
@@ -144,7 +154,7 @@ export default function ActiveSession({
       return;
     }
 
-    updateSessionData({ ...sessionData, exercises: localExercises });
+    updateSessionData((prev) => ({ ...prev, exercises: localExercises }));
   }, [localExercises]);
 
   const getPreviousPerformance = (exName) => {
@@ -301,6 +311,7 @@ export default function ActiveSession({
     }
 
     setShowExSelector(false);
+    setEditingExId(null);
   };
 
   const updateEquipment = (exId, eqId) => {
@@ -386,6 +397,8 @@ export default function ActiveSession({
   };
 
   const isGlobalDeload = mode?.label?.toLowerCase().includes("descarga");
+
+  if (!sessionData) return null;
 
   return (
     <div className="animate-fade-in pb-24 pt-4">
@@ -601,7 +614,7 @@ export default function ActiveSession({
             const prevPerformance = getPreviousPerformance(ex.name);
 
             return (
-              <div key={ex.id || index} className="relative pl-4">
+              <div key={ex.id || index} className={`relative pl-4 ${(isSupersetTop || isSupersetBottom) ? 'lg:col-span-2' : ''}`}>
                 {(isSupersetTop || isSupersetBottom) && (
                   <div
                     className={`absolute left-0 w-1 bg-accent-500 rounded-l ${
@@ -770,7 +783,7 @@ export default function ActiveSession({
                           <div className="col-span-2 flex justify-center">
                             <button
                               onClick={() => cycleSetType(ex.id, i)}
-                              className={`text-[9px] font-bold px-1 rounded border border-white/10 w-full h-full ${setType.color}`}
+                              className={`text-[9px] font-bold px-1 py-2 rounded border border-white/10 w-full min-h-[44px] flex items-center justify-center ${setType.color}`}
                             >
                               {setType.label || "-"}
                             </button>
@@ -804,9 +817,9 @@ export default function ActiveSession({
                           />
                           <button
                             onClick={() => removeSet(ex.id, i)}
-                            className="col-span-1 text-slate-700 hover:text-red-500 flex justify-center"
+                            className="col-span-1 text-slate-700 hover:text-red-500 flex items-center justify-center min-h-[44px]"
                           >
-                            <X size={12} />
+                            <X size={16} />
                           </button>
                         </div>
                       );
