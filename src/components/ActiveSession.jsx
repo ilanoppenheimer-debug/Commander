@@ -249,7 +249,10 @@ export default function ActiveSession({
   };
 
   const generateWarmup = async () => {
-    if (localExercises.length === 0) return;
+    if (localExercises.length === 0) {
+      showNotify?.("Agrega ejercicios para generar el calentamiento", "info");
+      return;
+    }
 
     setIsAnalyzing(true);
     const exerciseList = localExercises.map((e) => e?.name || "").join(", ");

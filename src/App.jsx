@@ -57,6 +57,7 @@ const FullSettingsModal = ({
   const [aiPhasePrompt, setAiPhasePrompt] = useState("");
   const [isGeneratingPhase, setIsGeneratingPhase] = useState(false);
   const [aiPhaseError, setAiPhaseError] = useState(null);
+  const [settingsTab, setSettingsTab] = useState('fases');
 
   const updateCount = (unit, weight, delta) => {
     setInventory((prev) => {
@@ -170,234 +171,256 @@ const FullSettingsModal = ({
           </button>
         </div>
 
+        <div className="flex border-b border-slate-800 px-4 shrink-0">
+          {[
+            { id: 'apariencia', label: 'Apariencia' },
+            { id: 'fases', label: 'Fases' },
+            { id: 'equipo', label: 'Equipo' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSettingsTab(tab.id)}
+              className={`px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
+                settingsTab === tab.id
+                  ? 'border-accent-500 text-accent-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="md:grid md:grid-cols-2 md:gap-6 space-y-6 md:space-y-0">
-          <div className="space-y-6">
-          <section>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Sparkles size={14} /> Apariencia
-            </h3>
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-3">
-                Color de acento
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {ACCENT_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setAccent(p.id)}
-                    title={p.label}
-                    className={`w-10 h-10 rounded-full border-2 transition-all active:scale-95 ${
-                      accent === p.id
-                        ? "border-white ring-2 ring-white/40 scale-110"
-                        : "border-slate-700 hover:border-slate-500"
-                    }`}
-                    style={{ backgroundColor: p.swatch }}
-                  >
-                    <span className="sr-only">{p.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Target size={14} /> Fases / Mesociclos
-            </h3>
-            <div className="space-y-3 bg-slate-800 p-4 rounded-xl border border-slate-700">
-              {safeModesToRender.map((m) => (
-                <div key={m.id}>
-                  {editingModeId === m.id ? (
-                    <div className="bg-slate-950 p-3 rounded-lg border border-accent-500/50 space-y-3 animate-fade-in-down">
-                      <InputGroup label="Nombre de la Fase" value={m.label} onChange={(v) => updateMode(m.id, "label", v)} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <InputGroup label="Series" value={m.sets} onChange={(v) => updateMode(m.id, "sets", v)} />
-                        <InputGroup label="Reps" value={m.repRange} onChange={(v) => updateMode(m.id, "repRange", v)} />
-                        <InputGroup label="RPE" value={m.rpe} onChange={(v) => updateMode(m.id, "rpe", v)} />
-                        <InputGroup
-                          label="Multiplicador (Carga)"
-                          value={m.weightMod}
-                          type="number"
-                          step="0.05"
-                          onChange={(v) => updateMode(m.id, "weightMod", parseFloat(v) || 1)}
-                        />
-                      </div>
-                      <InputGroup label="Descripción" value={m.desc} onChange={(v) => updateMode(m.id, "desc", v)} />
-                      <div className="flex justify-end pt-2">
-                        <button
-                          onClick={() => setEditingModeId(null)}
-                          className="px-4 py-2 bg-accent-600 text-black font-bold text-xs rounded hover:bg-accent-500"
-                        >
-                          Listo
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded-lg border border-slate-800 group">
-                      <div>
-                        <div className={`text-sm font-bold ${m.color}`}>{m.label}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {m.sets}x{m.repRange} @ RPE {m.rpe} | {m.weightMod}x Carga
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setEditingModeId(m.id)}
-                          className="p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        {m.id !== "standard" && (
-                          <button
-                            onClick={() => removeMode(m.id)}
-                            className="p-2 rounded text-slate-400 hover:text-red-500 hover:bg-slate-700 transition"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+          {settingsTab === 'apariencia' && (
+            <section>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Sparkles size={14} /> Apariencia
+              </h3>
+              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-3">
+                  Color de acento
                 </div>
-              ))}
-
-              {!showAIPhaseInput ? (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={addMode}
-                    className="flex-1 py-2 border border-dashed border-slate-600 text-slate-400 hover:text-accent-500 hover:border-accent-500 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1"
-                  >
-                    <Plus size={14} /> Manual
-                  </button>
-                  <button
-                    onClick={() => setShowAIPhaseInput(true)}
-                    className="flex-1 py-2 border border-dashed border-purple-500/50 text-purple-400 hover:text-purple-300 hover:border-purple-400 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1 bg-purple-900/10"
-                  >
-                    <Zap size={14} /> Importar/IA
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-slate-950 p-3 rounded-lg border border-purple-500/50 space-y-3 mt-2 animate-fade-in-down">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                      <Zap size={12} /> Constructor Táctico IA
-                    </span>
+                <div className="flex flex-wrap gap-3">
+                  {ACCENT_PRESETS.map((p) => (
                     <button
-                      onClick={() => setShowAIPhaseInput(false)}
-                      className="text-slate-500 hover:text-white"
+                      key={p.id}
+                      onClick={() => setAccent(p.id)}
+                      title={p.label}
+                      className={`w-10 h-10 rounded-full border-2 transition-all active:scale-95 ${
+                        accent === p.id
+                          ? "border-white ring-2 ring-white/40 scale-110"
+                          : "border-slate-700 hover:border-slate-500"
+                      }`}
+                      style={{ backgroundColor: p.swatch }}
                     >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <textarea
-                    value={aiPhasePrompt}
-                    onChange={(e) => setAiPhasePrompt(e.target.value)}
-                    placeholder="Ej: Copia tu bloque de Excel, o escribe: 'Fase de hipertrofia, 4 series de 12 reps, RPE 8'"
-                    className="w-full h-20 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:border-purple-500 focus:outline-none resize-none"
-                  />
-                  {aiPhaseError && <div className="text-[10px] text-red-500">{aiPhaseError}</div>}
-                  <button
-                    onClick={generatePhaseWithAI}
-                    disabled={isGeneratingPhase || !aiPhasePrompt.trim()}
-                    className="w-full py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-xs rounded transition flex items-center justify-center gap-2"
-                  >
-                    {isGeneratingPhase ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" /> Procesando...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={14} /> Generar Fase
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          </section>
-          </div>
-
-          <div className="space-y-6">
-          <section>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Info size={14} /> La Barra
-            </h3>
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex gap-4">
-              <div className="flex-1">
-                <label className="text-[10px] uppercase text-slate-400 font-bold">Peso</label>
-                <input
-                  type="number"
-                  value={barWeight}
-                  onChange={(e) => setBarWeight(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white font-bold mt-1"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-[10px] uppercase text-slate-400 font-bold mb-1">Unidad</label>
-                <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-600">
-                  {["kg", "lb"].map((u) => (
-                    <button
-                      key={u}
-                      onClick={() => setBarUnit(u)}
-                      className={`px-3 py-2 rounded text-xs font-bold ${barUnit === u ? "bg-slate-700 text-white" : "text-slate-500"}`}
-                    >
-                      {u.toUpperCase()}
+                      <span className="sr-only">{p.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          <section>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-              Inventario de Discos
-            </h3>
-            <div className="space-y-6">
-              {[{ u: "kg", weights: sortedKg, label: "Kilos" }, { u: "lb", weights: sortedLb, label: "Libras" }].map(({ u, weights, label }) => (
-                <div key={u} className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                  <h4 className="text-sm font-bold text-white mb-3 uppercase flex justify-between">{label}</h4>
-                  <div className="space-y-2">
-                    {weights.map((w) => {
-                      const count = inventory?.[u] ? inventory[u][w] || 0 : 0;
-                      const cfg = PLATE_CONFIG[u]?.[w];
-                      return (
-                        <div key={w} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-800">
-                          <div className="flex items-center gap-3">
-                            <div
-                              style={{ backgroundColor: cfg?.fill || "#334155", borderColor: cfg?.stroke || "#475569", color: cfg?.text || "#ffffff" }}
-                              className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm"
-                            >
-                              {w}
-                            </div>
-                            <span className="text-slate-400 text-sm font-medium">{w} {u}</span>
-                          </div>
-                          <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700">
-                            <button
-                              onClick={() => updateCount(u, w, -2)}
-                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-lg"
-                            >
-                              -2
-                            </button>
-                            <div className="w-8 text-center font-bold text-white text-sm">{count}</div>
-                            <button
-                              onClick={() => updateCount(u, w, 2)}
-                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-lg"
-                            >
-                              +2
-                            </button>
+          {settingsTab === 'fases' && (
+            <section>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Target size={14} /> Fases / Mesociclos
+              </h3>
+              <div className="space-y-3 bg-slate-800 p-4 rounded-xl border border-slate-700">
+                {safeModesToRender.map((m) => (
+                  <div key={m.id}>
+                    {editingModeId === m.id ? (
+                      <div className="bg-slate-950 p-3 rounded-lg border border-accent-500/50 space-y-3 animate-fade-in-down">
+                        <InputGroup label="Nombre de la Fase" value={m.label} onChange={(v) => updateMode(m.id, "label", v)} />
+                        <div className="grid grid-cols-2 gap-2">
+                          <InputGroup label="Series" value={m.sets} onChange={(v) => updateMode(m.id, "sets", v)} />
+                          <InputGroup label="Reps" value={m.repRange} onChange={(v) => updateMode(m.id, "repRange", v)} />
+                          <InputGroup label="RPE" value={m.rpe} onChange={(v) => updateMode(m.id, "rpe", v)} />
+                          <InputGroup
+                            label="Multiplicador (Carga)"
+                            value={m.weightMod}
+                            type="number"
+                            step="0.05"
+                            onChange={(v) => updateMode(m.id, "weightMod", parseFloat(v) || 1)}
+                          />
+                        </div>
+                        <InputGroup label="Descripción" value={m.desc} onChange={(v) => updateMode(m.id, "desc", v)} />
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={() => setEditingModeId(null)}
+                            className="px-4 py-2 bg-accent-600 text-black font-bold text-xs rounded hover:bg-accent-500"
+                          >
+                            Listo
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded-lg border border-slate-800 group">
+                        <div>
+                          <div className={`text-sm font-bold ${m.color}`}>{m.label}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            {m.sets}x{m.repRange} @ RPE {m.rpe} | {m.weightMod}x Carga
                           </div>
                         </div>
-                      );
-                    })}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingModeId(m.id)}
+                            className="p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          {m.id !== "standard" && (
+                            <button
+                              onClick={() => removeMode(m.id)}
+                              className="p-2 rounded text-slate-400 hover:text-red-500 hover:bg-slate-700 transition"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {!showAIPhaseInput ? (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={addMode}
+                      className="flex-1 py-2 border border-dashed border-slate-600 text-slate-400 hover:text-accent-500 hover:border-accent-500 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1"
+                    >
+                      <Plus size={14} /> Manual
+                    </button>
+                    <button
+                      onClick={() => setShowAIPhaseInput(true)}
+                      className="flex-1 py-2 border border-dashed border-purple-500/50 text-purple-400 hover:text-purple-300 hover:border-purple-400 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1 bg-purple-900/10"
+                    >
+                      <Zap size={14} /> Importar/IA
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-950 p-3 rounded-lg border border-purple-500/50 space-y-3 mt-2 animate-fade-in-down">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
+                        <Zap size={12} /> Constructor Táctico IA
+                      </span>
+                      <button
+                        onClick={() => setShowAIPhaseInput(false)}
+                        className="text-slate-500 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <textarea
+                      value={aiPhasePrompt}
+                      onChange={(e) => setAiPhasePrompt(e.target.value)}
+                      placeholder="Ej: Copia tu bloque de Excel, o escribe: 'Fase de hipertrofia, 4 series de 12 reps, RPE 8'"
+                      className="w-full h-20 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:border-purple-500 focus:outline-none resize-none"
+                    />
+                    {aiPhaseError && <div className="text-[10px] text-red-500">{aiPhaseError}</div>}
+                    <button
+                      onClick={generatePhaseWithAI}
+                      disabled={isGeneratingPhase || !aiPhasePrompt.trim()}
+                      className="w-full py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-xs rounded transition flex items-center justify-center gap-2"
+                    >
+                      {isGeneratingPhase ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" /> Procesando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} /> Generar Fase
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {settingsTab === 'equipo' && (
+            <div className="space-y-6">
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Info size={14} /> La Barra
+                </h3>
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-[10px] uppercase text-slate-400 font-bold">Peso</label>
+                    <input
+                      type="number"
+                      value={barWeight}
+                      onChange={(e) => setBarWeight(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white font-bold mt-1"
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-[10px] uppercase text-slate-400 font-bold mb-1">Unidad</label>
+                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-600">
+                      {["kg", "lb"].map((u) => (
+                        <button
+                          key={u}
+                          onClick={() => setBarUnit(u)}
+                          className={`px-3 py-2 rounded text-xs font-bold ${barUnit === u ? "bg-slate-700 text-white" : "text-slate-500"}`}
+                        >
+                          {u.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              ))}
+              </section>
+
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                  Inventario de Discos
+                </h3>
+                <div className="space-y-6">
+                  {[{ u: "kg", weights: sortedKg, label: "Kilos" }, { u: "lb", weights: sortedLb, label: "Libras" }].map(({ u, weights, label }) => (
+                    <div key={u} className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                      <h4 className="text-sm font-bold text-white mb-3 uppercase flex justify-between">{label}</h4>
+                      <div className="space-y-2">
+                        {weights.map((w) => {
+                          const count = inventory?.[u] ? inventory[u][w] || 0 : 0;
+                          const cfg = PLATE_CONFIG[u]?.[w];
+                          return (
+                            <div key={w} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  style={{ backgroundColor: cfg?.fill || "#334155", borderColor: cfg?.stroke || "#475569", color: cfg?.text || "#ffffff" }}
+                                  className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm"
+                                >
+                                  {w}
+                                </div>
+                                <span className="text-slate-400 text-sm font-medium">{w} {u}</span>
+                              </div>
+                              <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700">
+                                <button
+                                  onClick={() => updateCount(u, w, -2)}
+                                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-lg"
+                                >
+                                  -2
+                                </button>
+                                <div className="w-8 text-center font-bold text-white text-sm">{count}</div>
+                                <button
+                                  onClick={() => updateCount(u, w, 2)}
+                                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-lg"
+                                >
+                                  +2
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
-          </section>
-          </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
