@@ -39,8 +39,9 @@ export const FinishMissionModal = ({
   const [saveTemplate, setSaveTemplate] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-accent-500/50 p-6 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] my-6">
+    <div className="fixed inset-0 z-[120] overflow-y-auto bg-black/90 backdrop-blur-sm animate-fade-in">
+      <div className="flex min-h-full items-center justify-center p-4">
+      <div className="bg-slate-900 w-full max-w-sm rounded-xl border border-accent-500/50 p-6 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)]">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
           <Target className="text-accent-500" /> Misión Completada
         </h2>
@@ -94,6 +95,7 @@ export const FinishMissionModal = ({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -239,7 +241,10 @@ export default function ActiveSession({
   };
 
   const generateWarmup = async () => {
-    if (localExercises.length === 0) return;
+    if (localExercises.length === 0) {
+      showNotify?.("Agrega ejercicios para generar el calentamiento", "info");
+      return;
+    }
 
     setIsAnalyzing(true);
     const exerciseList = localExercises.map((e) => e?.name || "").join(", ");
