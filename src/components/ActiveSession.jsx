@@ -4,7 +4,6 @@ import {
   Loader2,
   Info,
   Flame,
-  Utensils,
   Link as LinkIcon,
   ChevronDown,
   BarChart2,
@@ -124,7 +123,6 @@ export default function ActiveSession({
   );
 
   const [warmupPlan, setWarmupPlan] = useState(null);
-  const [nutritionPlan, setNutritionPlan] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const [briefing, setBriefing] = useState(null);
@@ -250,20 +248,6 @@ export default function ActiveSession({
     try {
       const plan = await callGeminiAPI(prompt);
       setWarmupPlan({ title: "Protocolo de Activación", content: plan });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const generateNutrition = async () => {
-    setIsAnalyzing(true);
-    const prompt = `Sugiere una comida post-entrenamiento táctica (breve) para recuperar tras sesión de ${mode?.label || "entrenamiento"}. Tono militar.`;
-
-    try {
-      const plan = await callGeminiAPI(prompt);
-      setNutritionPlan({ title: "Suministros (Post-Op)", content: plan });
     } catch (e) {
       console.error(e);
     } finally {
@@ -408,12 +392,6 @@ export default function ActiveSession({
       {warmupPlan && (
         <InfoModal data={warmupPlan} onClose={() => setWarmupPlan(null)} />
       )}
-      {nutritionPlan && (
-        <InfoModal
-          data={nutritionPlan}
-          onClose={() => setNutritionPlan(null)}
-        />
-      )}
       {isAnalyzing && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm">
           <Loader2 size={48} className="text-accent-500 animate-spin mb-4" />
@@ -458,8 +436,7 @@ export default function ActiveSession({
         />
       )}
 
-      <div className="md:grid md:grid-cols-[320px_1fr] md:gap-6 md:items-start">
-      <div className="flex flex-col gap-4 mb-6 md:sticky md:top-4">
+      <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center gap-2">
           <button
             onClick={() =>
@@ -486,26 +463,20 @@ export default function ActiveSession({
         <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
           <button
             onClick={() => setShowBriefingInput((v) => !v)}
-            className="flex items-center gap-1 text-[10px] text-accent-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
+            className="flex items-center gap-2 text-xs font-bold text-accent-400 bg-slate-800 border border-accent-500/40 px-3 py-2 rounded-lg hover:bg-slate-700 hover:border-accent-500 transition"
           >
             {isLoadingBriefing ? (
-              <Loader2 size={12} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
             ) : (
-              <Shield size={12} />
+              <Shield size={14} />
             )}{" "}
             BRIEFING IA
           </button>
           <button
             onClick={generateWarmup}
-            className="flex items-center gap-1 text-[10px] text-orange-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
+            className="flex items-center gap-2 text-xs font-bold text-orange-400 bg-slate-800 border border-orange-500/40 px-3 py-2 rounded-lg hover:bg-slate-700 hover:border-orange-500 transition"
           >
-            <Flame size={12} /> CALENTAMIENTO
-          </button>
-          <button
-            onClick={generateNutrition}
-            className="flex items-center gap-1 text-[10px] text-blue-400 bg-slate-800 px-2 py-1.5 rounded hover:bg-slate-700 transition"
-          >
-            <Utensils size={12} /> SUMINISTROS
+            <Flame size={14} /> CALENTAMIENTO
           </button>
         </div>
 
@@ -606,8 +577,7 @@ export default function ActiveSession({
         )}
       </div>
 
-      <div>
-      <div className="space-y-1">
+      <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
         {(Array.isArray(localExercises) ? localExercises : []).map(
           (ex, index) => {
             if (!ex) return null;
@@ -879,7 +849,7 @@ export default function ActiveSession({
         )}
       </div>
 
-      <div className="mt-6 flex flex-col gap-2">
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-2">
         <button
           onClick={() => {
             setEditingExId(null);
@@ -895,8 +865,6 @@ export default function ActiveSession({
         >
           Finalizar Misión
         </button>
-      </div>
-      </div>
       </div>
 
       <div className="h-16"></div>
