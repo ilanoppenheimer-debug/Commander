@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { MoreHorizontal, Trash2, Edit3, Eye } from 'lucide-react';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 function relativeDate(isoString) {
   if (!isoString) return '—';
