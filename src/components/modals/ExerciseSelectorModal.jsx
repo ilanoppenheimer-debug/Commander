@@ -7,6 +7,10 @@ const ExerciseSelectorModal = ({
   onClose,
   onSelect,
   customExercises,
+  // New Dexie-backed API
+  addCustomExercise,
+  removeCustomExercise,
+  // Legacy API (kept for backward compat)
   setCustomExercises,
 }) => {
   const [search, setSearch] = useState("");
@@ -15,7 +19,13 @@ const ExerciseSelectorModal = ({
     const safeCustom = Array.isArray(customExercises)
       ? customExercises.filter(Boolean)
       : [];
-    const list = [...new Set([...DEFAULT_EXERCISE_DB, ...safeCustom])].sort();
+    const normalizedSet = new Set([...DEFAULT_EXERCISE_DB, ...safeCustom].map(e => e.toLowerCase()));
+    const deduped = [...DEFAULT_EXERCISE_DB, ...safeCustom].filter((e, _, arr) => {
+      const lower = e.toLowerCase();
+      const firstIdx = arr.findIndex(x => x.toLowerCase() === lower);
+      return arr.indexOf(e) === firstIdx;
+    });
+    const list = [...new Set(deduped)].sort();
 
     return list.filter(
       (e) =>
@@ -26,21 +36,22 @@ const ExerciseSelectorModal = ({
 
   const handleAddCustom = () => {
     const newEx = search.trim();
-
-    if (newEx && !allExercises.includes(newEx)) {
-      setCustomExercises((prev) => [
-        ...(Array.isArray(prev) ? prev : []),
-        newEx,
-      ]);
-      onSelect(newEx);
+    if (!newEx || allExercises.some(e => e.toLowerCase() === newEx.toLowerCase())) return;
+    if (addCustomExercise) {
+      addCustomExercise(newEx);
+    } else if (setCustomExercises) {
+      setCustomExercises((prev) => [...(Array.isArray(prev) ? prev : []), newEx]);
     }
+    onSelect(newEx);
   };
 
   const removeCustom = (e, exName) => {
     e.stopPropagation();
-    setCustomExercises((prev) =>
-      Array.isArray(prev) ? prev.filter((ex) => ex !== exName) : []
-    );
+    if (removeCustomExercise) {
+      removeCustomExercise(exName);
+    } else if (setCustomExercises) {
+      setCustomExercises((prev) => Array.isArray(prev) ? prev.filter((ex) => ex !== exName) : []);
+    }
   };
 
   const exactMatch = allExercises.find(

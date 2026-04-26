@@ -80,7 +80,7 @@ const AdvancedTimer = () => {    const [mode, setMode] = useState('stopwatch');
            <div className="absolute bottom-16 -right-16 sm:right-0 bg-slate-900 border border-slate-700 rounded-2xl p-3 shadow-2xl shadow-black/80 mb-2 w-52 animate-fade-in-up">
               <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-700">
                  <span className="text-xs font-bold text-slate-400 uppercase">{mode === 'stopwatch' ? 'Cronómetro' : 'Temporizador'}</span>
-                 <button onClick={() => { setMode(mode === 'stopwatch' ? 'timer' : 'stopwatch'); setIsActive(false); setSeconds(mode === 'stopwatch' ? initialTimerSeconds : 0); }} className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white border border-slate-700">Cambiar</button>
+                 <button onClick={() => { const next = mode === 'stopwatch' ? 'timer' : 'stopwatch'; setMode(next); setIsActive(false); setSeconds(next === 'timer' ? initialTimerSeconds : 0); }} className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white border border-slate-700">Cambiar</button>
               </div>
               <div className="flex justify-center gap-4 mb-3">
                   <button onClick={() => setIsActive(!isActive)} className={`p-3 rounded-full ${isActive ? 'bg-accent-600/20 text-accent-500' : 'bg-slate-800 text-slate-300 hover:text-white'}`}>

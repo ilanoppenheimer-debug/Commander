@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   Target,
   Loader2,
@@ -26,6 +26,7 @@ import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { suggestNextSet, getLastFilledSet } from "../ai/progressionModel";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
+import { useSessionStore } from "../stores/sessionStore";
 
 export const FinishMissionModal = ({
   sessionName,
@@ -112,102 +113,86 @@ export const FinishMissionModal = ({
 };
 
 export default function ActiveSession({
-  sessionData,
-  updateSessionData,
   onFinishMission,
   onDiscardSession,
   mode,
   history,
   athleteProfile,
   customExercises,
-  setCustomExercises,
+  addCustomExercise,
+  removeCustomExercise,
   barUnit,
   showNotify,
 }) {
-  const safeInitialExercises = Array.isArray(sessionData?.exercises)
-    ? sessionData.exercises
-    : [];
-  const [localExercises, setLocalExercises] = useState(safeInitialExercises);
-  const [phaseEnabledExIds, setPhaseEnabledExIds] = useState(
-    safeInitialExercises.map((e) => e.id)
-  );
+  // ── Zustand store ──────────────────────────────────────────────────────────
+  const session          = useSessionStore(s => s.session);
+  const storeAddEx       = useSessionStore(s => s.addExercise);
+  const storeUpdateEx    = useSessionStore(s => s.updateExercise);
+  const storeRemoveEx    = useSessionStore(s => s.removeExercise);
+  const storeAddSet      = useSessionStore(s => s.addSet);
+  const storeUpdateSet   = useSessionStore(s => s.updateSet);
+  const storeRemoveSet   = useSessionStore(s => s.removeSet);
+  const storeCycleType   = useSessionStore(s => s.cycleSetType);
+  const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
+  const storeTogglePhase = useSessionStore(s => s.togglePhaseForEx);
+  const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
+  const storeSetBriefing = useSessionStore(s => s.setBriefing);
+  const storeSetSubjState= useSessionStore(s => s.setSubjectiveState);
 
-  const [warmupPlan, setWarmupPlan] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const exercises        = session?.exercises ?? [];
+  const phaseEnabledExIds= session?.phaseEnabledExIds ?? [];
+  const warmupPlan       = session?.warmupPlan ?? null;
+  const briefing         = session?.briefing ?? null;
+  const subjectiveState  = session?.subjectiveState ?? '';
 
-  const [briefing, setBriefing] = useState(null);
-  const [briefingError, setBriefingError] = useState(null);
+  // ── Local UI state (ephemeral, not persisted) ─────────────────────────────
+  const [isAnalyzing,       setIsAnalyzing]       = useState(false);
   const [isLoadingBriefing, setIsLoadingBriefing] = useState(false);
-  const [subjectiveState, setSubjectiveState] = useState("");
+  const [briefingError,     setBriefingError]     = useState(null);
   const [showBriefingInput, setShowBriefingInput] = useState(false);
-
-  const [showExSelector, setShowExSelector] = useState(false);
-  const [editingExId, setEditingExId] = useState(null);
+  const [showExSelector,    setShowExSelector]    = useState(false);
+  const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
-  const [showFinishModal, setShowFinishModal] = useState(false);
-
-  const isFirstRender = useRef(true);
-
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    updateSessionData((prev) => ({ ...prev, exercises: localExercises }));
-  }, [localExercises]);
+  const [showFinishModal,   setShowFinishModal]   = useState(false);
 
   const getPreviousPerformance = (exName) => {
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
-
     for (let i = 0; i < history.length; i++) {
       const pastSession = history[i];
       if (!pastSession || !Array.isArray(pastSession.exercises)) continue;
-
       const pastEx = pastSession.exercises.find(
-        (e) =>
-          e && String(e.name).toLowerCase() === String(exName).toLowerCase()
+        (e) => e && String(e.name).toLowerCase() === String(exName).toLowerCase()
       );
-
       if (pastEx && Array.isArray(pastEx.sets) && pastEx.sets.length > 0) {
-        const maxSet = pastEx.sets.reduce((max, current) => {
-          const currentWeight = parseFloat(current?.weight) || 0;
-          const maxWeight = parseFloat(max?.weight) || 0;
-          return currentWeight > maxWeight ? current : max;
+        const maxSet = pastEx.sets.reduce((max, cur) => {
+          const cw = parseFloat(cur?.weight) || 0;
+          const mw = parseFloat(max?.weight) || 0;
+          return cw > mw ? cur : max;
         }, pastEx.sets[0]);
-
         if (maxSet && parseFloat(maxSet.weight) > 0) {
           return `Top Previo: ${maxSet.weight}${barUnit} x ${maxSet.reps}`;
         }
       }
     }
-
     return null;
   };
 
   const getSuggestion = (baseWeight, isPhaseEnabled) => {
     if (!mode || mode.id === "standard" || !isPhaseEnabled) return null;
-    if (!baseWeight || baseWeight <= 0) {
-      return `Fase: ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
-    }
-
+    if (!baseWeight || baseWeight <= 0) return `Fase: ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
     const wMod = parseFloat(mode.weightMod) || 1.0;
     const targetWeight = (parseFloat(baseWeight) * wMod).toFixed(1);
-
     return `Sug: ${targetWeight}${barUnit} | ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
   };
 
   const fetchBriefing = async () => {
-    if (localExercises.length === 0) {
-      setBriefingError("Agrega ejercicios primero");
-      return;
-    }
+    if (exercises.length === 0) { setBriefingError("Agrega ejercicios primero"); return; }
     setIsLoadingBriefing(true);
     setBriefingError(null);
     try {
       const result = await requestSessionBriefing({
-        sessionName: sessionData.name,
-        exercises: localExercises,
+        sessionName: session?.name,
+        exercises,
         mode,
         history,
         athleteProfile,
@@ -216,7 +201,7 @@ export default function ActiveSession({
       if (!result) {
         setBriefingError("Respuesta de IA inválida. Intenta de nuevo.");
       } else {
-        setBriefing(result);
+        storeSetBriefing(result);
         setShowBriefingInput(false);
       }
     } catch (err) {
@@ -228,39 +213,28 @@ export default function ActiveSession({
 
   const applyBriefingSuggestions = () => {
     if (!briefing?.perExercise || briefing.perExercise.length === 0) return;
-
-    setLocalExercises((prev) =>
-      prev.map((ex) => {
-        const suggestion = briefing.perExercise.find(
-          (p) => p?.name?.toLowerCase() === ex.name?.toLowerCase()
-        );
-        if (!suggestion) return ex;
-        const w = parseFloat(suggestion.suggestedWeight) || 0;
-        const r = parseFloat(suggestion.reps) || 0;
-        if (w <= 0 && r <= 0) return ex;
-        const sets = Array.isArray(ex.sets) && ex.sets.length > 0
-          ? [...ex.sets]
-          : [{ weight: 0, reps: 0, rpe: 0, type: "normal" }];
-        sets[0] = { ...sets[0], weight: w || sets[0].weight, reps: r || sets[0].reps };
-        return { ...ex, sets };
-      })
-    );
+    exercises.forEach((ex) => {
+      const sug = briefing.perExercise.find(
+        (p) => p?.name?.toLowerCase() === ex.name?.toLowerCase()
+      );
+      if (!sug) return;
+      const w = parseFloat(sug.suggestedWeight) || 0;
+      const r = parseFloat(sug.reps) || 0;
+      if (w <= 0 && r <= 0) return;
+      const sets = Array.isArray(ex.sets) && ex.sets.length > 0 ? [...ex.sets] : [{ weight: 0, reps: 0, rpe: 0, type: "normal" }];
+      sets[0] = { ...sets[0], weight: w || sets[0].weight, reps: r || sets[0].reps };
+      storeUpdateEx(ex.id, { sets });
+    });
     showNotify?.("Sugerencias aplicadas al primer set", "success");
   };
 
   const generateWarmup = async () => {
-    if (localExercises.length === 0) {
-      showNotify?.("Agrega ejercicios para generar el calentamiento", "info");
-      return;
-    }
-
+    if (exercises.length === 0) { showNotify?.("Agrega ejercicios para generar el calentamiento", "info"); return; }
     setIsAnalyzing(true);
-    const exerciseList = localExercises.map((e) => e?.name || "").join(", ");
-    const prompt = `Genera un protocolo de calentamiento (máx 4 puntos) para: ${exerciseList}. Tono militar.`;
-
+    const exerciseList = exercises.map((e) => e?.name || "").join(", ");
     try {
-      const plan = await callGeminiAPI(prompt);
-      setWarmupPlan({ title: "Protocolo de Activación", content: plan });
+      const plan = await callGeminiAPI(`Genera un protocolo de calentamiento (máx 4 puntos) para: ${exerciseList}. Tono militar.`);
+      storeSetWarmup({ title: "Protocolo de Activación", content: plan });
     } catch (e) {
       console.error(e);
     } finally {
@@ -268,152 +242,41 @@ export default function ActiveSession({
     }
   };
 
-  const toggleSuperset = (index) => {
-    if (index >= localExercises.length - 1) return;
-
-    setLocalExercises((prev) => {
-      const newState = [...prev];
-      const current = { ...newState[index] };
-      const next = { ...newState[index + 1] };
-
-      if (current.supersetId && next.supersetId === current.supersetId) {
-        next.supersetId = null;
-        const prevEx = index > 0 ? newState[index - 1] : null;
-        if (!prevEx || prevEx.supersetId !== current.supersetId) {
-          current.supersetId = null;
-        }
-      } else {
-        const newId = current.supersetId || `ss-${Date.now()}`;
-        current.supersetId = newId;
-        next.supersetId = newId;
-      }
-
-      newState[index] = current;
-      newState[index + 1] = next;
-      return newState;
-    });
-  };
-
   const handleSelectExercise = (exName) => {
     if (editingExId !== null) {
-      setLocalExercises((prev) =>
-        prev.map((e) => (e.id === editingExId ? { ...e, name: exName } : e))
-      );
+      storeUpdateEx(editingExId, { name: exName });
     } else {
-      const newId = Date.now();
-      setLocalExercises([
-        ...localExercises,
-        {
-          id: newId,
-          name: exName,
-          equipment: "barbell",
-          sets: [{ weight: 0, reps: 0, rpe: 0, type: "normal" }],
-        },
-      ]);
-      setPhaseEnabledExIds((prev) => [...prev, newId]);
+      storeAddEx(exName);
     }
-
     setShowExSelector(false);
     setEditingExId(null);
   };
 
-  const updateEquipment = (exId, eqId) => {
-    setLocalExercises((prev) =>
-      prev.map((e) => (e.id === exId ? { ...e, equipment: eqId } : e))
-    );
-  };
-
-  const addSet = (exId) => {
-    setLocalExercises((prev) =>
-      prev.map((e) => {
-        if (e.id !== exId) return e;
-        const safeSets = Array.isArray(e.sets) ? e.sets : [];
-        const lastFilled = getLastFilledSet(safeSets);
-        const targetRPE = parseFloat(mode?.rpe) || 8;
-        const suggestion = suggestNextSet({ lastSet: lastFilled, targetRPE });
-        const nextSet = suggestion
-          ? {
-              weight: suggestion.weight,
-              reps: suggestion.reps,
-              rpe: 0,
-              type: "normal",
-            }
-          : { weight: 0, reps: 0, rpe: 0, type: "normal" };
-        return { ...e, sets: [...safeSets, nextSet] };
-      })
-    );
-  };
-
-  const removeSet = (exId, idx) => {
-    setLocalExercises((prev) =>
-      prev.map((e) => {
-        if (e.id === exId) {
-          const newSets = [...(Array.isArray(e.sets) ? e.sets : [])];
-          newSets.splice(idx, 1);
-          return { ...e, sets: newSets };
-        }
-        return e;
-      })
-    );
-  };
-
-  const updateSet = (exId, idx, field, val) => {
-    setLocalExercises((prev) =>
-      prev.map((e) => {
-        if (e.id === exId) {
-          const newSets = [...(Array.isArray(e.sets) ? e.sets : [])];
-          newSets[idx] = { ...newSets[idx], [field]: val };
-          return { ...e, sets: newSets };
-        }
-        return e;
-      })
-    );
-  };
-
-  const cycleSetType = (exId, idx) => {
-    const types = Object.keys(SET_TYPES);
-
-    setLocalExercises((prev) =>
-      prev.map((e) => {
-        if (e.id === exId) {
-          const newSets = [...(Array.isArray(e.sets) ? e.sets : [])];
-          const currentTypeKey =
-            Object.keys(SET_TYPES).find(
-              (key) => SET_TYPES[key].id === (newSets[idx]?.type || "normal")
-            ) || "NORMAL";
-          const currentIndex = types.indexOf(currentTypeKey);
-          const nextTypeKey = types[(currentIndex + 1) % types.length];
-          newSets[idx] = { ...newSets[idx], type: SET_TYPES[nextTypeKey].id };
-          return { ...e, sets: newSets };
-        }
-        return e;
-      })
-    );
-  };
-
-  const togglePhaseForEx = (exId) => {
-    setPhaseEnabledExIds((prev) =>
-      prev.includes(exId)
-        ? prev.filter((id) => id !== exId)
-        : [...prev, exId]
-    );
+  const handleAddSet = (exId) => {
+    const ex = exercises.find(e => e.id === exId);
+    const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
+    const lastFilled = getLastFilledSet(safeSets);
+    const targetRPE = parseFloat(mode?.rpe) || 8;
+    const suggestion = suggestNextSet({ lastSet: lastFilled, targetRPE });
+    const nextSet = suggestion
+      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: 0, type: "normal" }
+      : { weight: 0, reps: 0, rpe: 0, type: "normal" };
+    storeAddSet(exId, nextSet);
   };
 
   const isGlobalDeload = mode?.label?.toLowerCase().includes("descarga");
 
-  if (!sessionData) return null;
+  if (!session) return null;
 
   return (
     <div className="animate-fade-in pb-24 pt-4">
       {warmupPlan && (
-        <InfoModal data={warmupPlan} onClose={() => setWarmupPlan(null)} />
+        <InfoModal data={warmupPlan} onClose={() => storeSetWarmup(null)} />
       )}
       {isAnalyzing && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm">
           <Loader2 size={48} className="text-accent-500 animate-spin mb-4" />
-          <p className="text-accent-500 font-mono font-bold animate-pulse">
-            PROCESANDO INTELIGENCIA...
-          </p>
+          <p className="text-accent-500 font-mono font-bold animate-pulse">PROCESANDO INTELIGENCIA...</p>
         </div>
       )}
 
@@ -422,7 +285,8 @@ export default function ActiveSession({
           onClose={() => setShowExSelector(false)}
           onSelect={handleSelectExercise}
           customExercises={customExercises}
-          setCustomExercises={setCustomExercises}
+          addCustomExercise={addCustomExercise}
+          removeCustomExercise={removeCustomExercise}
         />
       )}
 
@@ -437,17 +301,11 @@ export default function ActiveSession({
 
       {showFinishModal && (
         <FinishMissionModal
-          sessionName={sessionData.name}
-          onConfirm={(name, saveAsTemplate) =>
-            onFinishMission(name, localExercises, saveAsTemplate)
-          }
+          sessionName={session.name}
+          onConfirm={(name, saveAsTemplate) => onFinishMission(name, exercises, saveAsTemplate)}
           onDiscard={onDiscardSession}
           onCancel={() => setShowFinishModal(false)}
-          analysis={buildSessionAnalysis({
-            sessionName: sessionData.name,
-            currentExercises: localExercises,
-            history,
-          })}
+          analysis={buildSessionAnalysis({ sessionName: session.name, currentExercises: exercises, history })}
           barUnit={barUnit}
         />
       )}
@@ -455,20 +313,14 @@ export default function ActiveSession({
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center gap-2">
           <button
-            onClick={() =>
-              showNotify(
-                "Auto-Guardado. Usa las pestañas inferiores para ir a Calculadoras sin perder tu progreso.",
-                "info"
-              )
-            }
+            onClick={() => showNotify("Auto-Guardado. Usa las pestañas inferiores para ir a Calculadoras sin perder tu progreso.", "info")}
             className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors"
-            title="Información"
           >
             <Info size={20} className="text-sky-400" />
           </button>
           <div className="flex-1 min-w-0">
             <h2 className="text-2xl font-bold text-white uppercase tracking-wider leading-none truncate">
-              {sessionData.name || "Misión"}
+              {session.name || "Misión"}
             </h2>
             <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
@@ -481,12 +333,7 @@ export default function ActiveSession({
             onClick={() => setShowBriefingInput((v) => !v)}
             className="flex items-center gap-2 text-xs font-bold text-accent-400 bg-slate-800 border border-accent-500/40 px-3 py-2 rounded-lg hover:bg-slate-700 hover:border-accent-500 transition"
           >
-            {isLoadingBriefing ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Shield size={14} />
-            )}{" "}
-            BRIEFING IA
+            {isLoadingBriefing ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} BRIEFING IA
           </button>
           <button
             onClick={generateWarmup}
@@ -504,7 +351,7 @@ export default function ActiveSession({
             <input
               type="text"
               value={subjectiveState}
-              onChange={(e) => setSubjectiveState(e.target.value)}
+              onChange={(e) => storeSetSubjState(e.target.value)}
               placeholder="ej: dormí poco, lumbar cargada…"
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
             />
@@ -513,15 +360,7 @@ export default function ActiveSession({
               disabled={isLoadingBriefing}
               className="w-full py-2 bg-accent-600 text-black rounded font-bold text-xs uppercase hover:bg-accent-500 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isLoadingBriefing ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" /> Analizando historial…
-                </>
-              ) : (
-                <>
-                  <Sparkles size={14} /> Generar briefing
-                </>
-              )}
+              {isLoadingBriefing ? <><Loader2 size={14} className="animate-spin" /> Analizando historial…</> : <><Sparkles size={14} /> Generar briefing</>}
             </button>
             {briefingError && (
               <div className="text-[10px] text-red-400 flex items-center gap-1">
@@ -537,47 +376,27 @@ export default function ActiveSession({
               <span className="text-[10px] font-bold uppercase tracking-wider text-accent-400 flex items-center gap-1">
                 <Shield size={10} /> Briefing de Misión
               </span>
-              <button
-                onClick={() => setBriefing(null)}
-                className="text-slate-500 hover:text-white"
-              >
+              <button onClick={() => storeSetBriefing(null)} className="text-slate-500 hover:text-white">
                 <X size={12} />
               </button>
             </div>
-
             {briefing.fatigueWarning && (
               <div className="bg-orange-900/30 border border-orange-500/40 rounded p-2 text-[11px] text-orange-200 flex items-start gap-2">
                 <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                 <span>{briefing.fatigueWarning}</span>
               </div>
             )}
-
-            {briefing.generalAdvice && (
-              <p className="text-xs text-slate-300 italic">
-                {briefing.generalAdvice}
-              </p>
-            )}
-
+            {briefing.generalAdvice && <p className="text-xs text-slate-300 italic">{briefing.generalAdvice}</p>}
             {Array.isArray(briefing.perExercise) && briefing.perExercise.length > 0 && (
               <div className="space-y-1">
                 {briefing.perExercise.map((p, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-[11px] border-b border-slate-800 pb-1 last:border-0"
-                  >
+                  <div key={i} className="flex items-center justify-between text-[11px] border-b border-slate-800 pb-1 last:border-0">
                     <div className="flex-1 min-w-0 pr-2">
-                      <div className="text-slate-200 font-medium truncate">
-                        {p.name}
-                      </div>
-                      {p.note && (
-                        <div className="text-[9px] text-slate-500 italic truncate">
-                          {p.note}
-                        </div>
-                      )}
+                      <div className="text-slate-200 font-medium truncate">{p.name}</div>
+                      {p.note && <div className="text-[9px] text-slate-500 italic truncate">{p.note}</div>}
                     </div>
                     <div className="text-accent-400 font-mono shrink-0">
-                      {p.suggestedWeight || 0}
-                      {barUnit} × {p.reps || 0} @RPE{p.rpe || "-"}
+                      {p.suggestedWeight || 0}{barUnit} × {p.reps || 0} @RPE{p.rpe || "-"}
                     </div>
                   </div>
                 ))}
@@ -594,283 +413,161 @@ export default function ActiveSession({
       </div>
 
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
-        {(Array.isArray(localExercises) ? localExercises : []).map(
-          (ex, index) => {
-            if (!ex) return null;
+        {exercises.map((ex, index) => {
+          if (!ex) return null;
+          const isSupersetTop    = ex.supersetId != null && exercises[index + 1]?.supersetId === ex.supersetId;
+          const isSupersetBottom = ex.supersetId != null && exercises[index - 1]?.supersetId === ex.supersetId;
+          const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
+          const isPhaseEnabledForEx = isGlobalDeload || phaseEnabledExIds.includes(ex.id);
+          const suggestion   = getSuggestion(safeSets[0]?.weight || 0, isPhaseEnabledForEx);
+          const details      = getExerciseDetails(ex.name);
+          const prevPerformance = getPreviousPerformance(ex.name);
 
-            const isSupersetTop =
-              ex.supersetId != null &&
-              localExercises[index + 1]?.supersetId === ex.supersetId;
-            const isSupersetBottom =
-              ex.supersetId != null &&
-              localExercises[index - 1]?.supersetId === ex.supersetId;
+          return (
+            <div key={ex.id || index} className={`relative pl-4 ${(isSupersetTop || isSupersetBottom) ? 'lg:col-span-2' : ''}`}>
+              {(isSupersetTop || isSupersetBottom) && (
+                <div className={`absolute left-0 w-1 bg-accent-500 rounded-l ${isSupersetTop && isSupersetBottom ? "top-0 bottom-0" : isSupersetTop ? "top-1/2 bottom-[-10px]" : "top-[-10px] bottom-1/2"}`}></div>
+              )}
+              {(isSupersetTop || isSupersetBottom) && (
+                <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-slate-900 border-2 border-accent-500 rounded-full flex items-center justify-center z-10">
+                  <LinkIcon size={8} className="text-accent-500" />
+                </div>
+              )}
 
-            const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
-            const isPhaseEnabledForEx =
-              isGlobalDeload || phaseEnabledExIds.includes(ex.id);
-            const suggestion = getSuggestion(
-              safeSets[0]?.weight || 0,
-              isPhaseEnabledForEx
-            );
-
-            const details = getExerciseDetails(ex.name);
-            const prevPerformance = getPreviousPerformance(ex.name);
-
-            return (
-              <div key={ex.id || index} className={`relative pl-4 ${(isSupersetTop || isSupersetBottom) ? 'lg:col-span-2' : ''}`}>
-                {(isSupersetTop || isSupersetBottom) && (
-                  <div
-                    className={`absolute left-0 w-1 bg-accent-500 rounded-l ${
-                      isSupersetTop && isSupersetBottom
-                        ? "top-0 bottom-0"
-                        : isSupersetTop
-                          ? "top-1/2 bottom-[-10px]"
-                          : "top-[-10px] bottom-1/2"
-                    }`}
-                  ></div>
-                )}
-                {(isSupersetTop || isSupersetBottom) && (
-                  <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-slate-900 border-2 border-accent-500 rounded-full flex items-center justify-center z-10">
-                    <LinkIcon size={8} className="text-accent-500" />
-                  </div>
-                )}
-
-                <div
-                  className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${
-                    isSupersetTop || isSupersetBottom
-                      ? "border-accent-500/30"
-                      : "border-slate-700"
-                  } mb-4`}
-                >
-                  <div className="p-3 bg-slate-900/50 flex items-start justify-between border-b border-slate-700">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div
-                        className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center border shrink-0 mt-1 shadow-inner ${details.bg} ${details.border} ${details.color}`}
+              <div className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${isSupersetTop || isSupersetBottom ? "border-accent-500/30" : "border-slate-700"} mb-4`}>
+                <div className="p-3 bg-slate-900/50 flex items-start justify-between border-b border-slate-700">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center border shrink-0 mt-1 shadow-inner ${details.bg} ${details.border} ${details.color}`}>
+                      {details.icon}
+                      <span className="text-[8px] font-bold uppercase mt-1.5 leading-none tracking-wider">{details.label}</span>
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col">
+                      <button
+                        onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
+                        className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
+                        title="Cambiar Ejercicio"
                       >
-                        {details.icon}
-                        <span className="text-[8px] font-bold uppercase mt-1.5 leading-none tracking-wider">
-                          {details.label}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col">
-                        <button
-                          onClick={() => {
-                            setEditingExId(ex.id);
-                            setShowExSelector(true);
-                          }}
-                          className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
-                          title="Cambiar Ejercicio"
-                        >
-                          {ex.name || "Ejercicio Desconocido"}
-                        </button>
-
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          <div className="relative">
-                            <select
-                              value={ex.equipment || "barbell"}
-                              onChange={(e) =>
-                                updateEquipment(ex.id, e.target.value)
-                              }
-                              className="appearance-none bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border border-slate-600 focus:outline-none focus:border-accent-500 cursor-pointer"
-                            >
-                              {EQUIPMENT_TYPES.map((eq) => (
-                                <option key={eq.id} value={eq.id}>
-                                  {eq.label}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown
-                              size={10}
-                              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                            />
-                          </div>
-
-                          {mode &&
-                            mode.id !== "standard" &&
-                            !isGlobalDeload && (
-                              <button
-                                onClick={() => togglePhaseForEx(ex.id)}
-                                className={`flex items-center gap-1 text-[9px] px-1.5 py-1 rounded border transition-colors font-bold uppercase tracking-wider ${
-                                  isPhaseEnabledForEx
-                                    ? `${mode.color} border-current bg-slate-800`
-                                    : "text-slate-500 border-slate-700 bg-slate-900/50 hover:text-slate-400"
-                                }`}
-                                title={
-                                  isPhaseEnabledForEx
-                                    ? "Desactivar fase para este ejercicio"
-                                    : "Activar fase para este ejercicio"
-                                }
-                              >
-                                <Target size={10} />{" "}
-                                {isPhaseEnabledForEx
-                                  ? "Fase Activa"
-                                  : "Ignorar Fase"}
-                              </button>
-                            )}
-
-                          {suggestion && (
-                            <span
-                              className={`text-[10px] flex items-center gap-1 ${
-                                mode?.color || "text-slate-400"
-                              }`}
-                            >
-                              <Info size={10} /> {suggestion}
-                            </span>
-                          )}
-
-                          {prevPerformance && (
-                            <button
-                              onClick={() => setSelectedExHistory(ex.name)}
-                              className="flex items-center gap-1 text-[10px] text-sky-400 bg-sky-900/20 px-1.5 py-0.5 rounded border border-sky-500/30 hover:bg-sky-900/40 transition mt-1"
-                            >
-                              <BarChart2 size={10} /> {prevPerformance}
-                            </button>
-                          )}
+                        {ex.name || "Ejercicio Desconocido"}
+                      </button>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <div className="relative">
+                          <select
+                            value={ex.equipment || "barbell"}
+                            onChange={(e) => storeUpdateEx(ex.id, { equipment: e.target.value })}
+                            className="appearance-none bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border border-slate-600 focus:outline-none focus:border-accent-500 cursor-pointer"
+                          >
+                            {EQUIPMENT_TYPES.map((eq) => (
+                              <option key={eq.id} value={eq.id}>{eq.label}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         </div>
-                      </div>
-                    </div>
 
-                    <div className="flex flex-col items-end gap-1 ml-2">
-                      <div className="flex items-center gap-1 mt-1">
-                        <button
-                          onClick={() => toggleSuperset(index)}
-                          className={`p-1.5 rounded transition ${
-                            isSupersetTop
-                              ? "text-accent-500 bg-accent-900/20"
-                              : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"
-                          }`}
-                        >
-                          <LinkIcon size={14} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setLocalExercises((prev) =>
-                              prev.filter((item) => item.id !== ex.id)
-                            );
-                            setPhaseEnabledExIds((prev) =>
-                              prev.filter((id) => id !== ex.id)
-                            );
-                          }}
-                          className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {mode && mode.id !== "standard" && !isGlobalDeload && (
+                          <button
+                            onClick={() => storeTogglePhase(ex.id)}
+                            className={`flex items-center gap-1 text-[9px] px-1.5 py-1 rounded border transition-colors font-bold uppercase tracking-wider ${isPhaseEnabledForEx ? `${mode.color} border-current bg-slate-800` : "text-slate-500 border-slate-700 bg-slate-900/50 hover:text-slate-400"}`}
+                          >
+                            <Target size={10} /> {isPhaseEnabledForEx ? "Fase Activa" : "Ignorar Fase"}
+                          </button>
+                        )}
+
+                        {suggestion && (
+                          <span className={`text-[10px] flex items-center gap-1 ${mode?.color || "text-slate-400"}`}>
+                            <Info size={10} /> {suggestion}
+                          </span>
+                        )}
+
+                        {prevPerformance && (
+                          <button
+                            onClick={() => setSelectedExHistory(ex.name)}
+                            className="flex items-center gap-1 text-[10px] text-sky-400 bg-sky-900/20 px-1.5 py-0.5 rounded border border-sky-500/30 hover:bg-sky-900/40 transition mt-1"
+                          >
+                            <BarChart2 size={10} /> {prevPerformance}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-2">
-                    <div className="grid grid-cols-12 gap-1 text-[10px] text-slate-500 font-mono text-center mb-1 uppercase">
-                      <div className="col-span-1">#</div>
-                      <div className="col-span-2">Tag</div>
-                      <div className="col-span-3">Kg</div>
-                      <div className="col-span-3">Reps</div>
-                      <div className="col-span-2">RPE</div>
-                      <div className="col-span-1"></div>
+                  <div className="flex flex-col items-end gap-1 ml-2">
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        onClick={() => storeToggleSS(index)}
+                        className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
+                      >
+                        <LinkIcon size={14} />
+                      </button>
+                      <button
+                        onClick={() => storeRemoveEx(ex.id)}
+                        className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                    {safeSets.map((s, i) => {
-                      if (!s) return null;
-                      const setType =
-                        Object.values(SET_TYPES).find(
-                          (t) => t.id === (s.type || "normal")
-                        ) || SET_TYPES.NORMAL;
-
-                      return (
-                        <div
-                          key={i}
-                          className={`grid grid-cols-12 gap-2 mb-2 items-center rounded px-1 py-1 ${setType.bg}`}
-                        >
-                          <div className="col-span-1 text-center text-xs text-slate-500 font-bold">
-                            {i + 1}
-                          </div>
-                          <div className="col-span-2 flex justify-center">
-                            <button
-                              onClick={() => cycleSetType(ex.id, i)}
-                              className={`text-[9px] font-bold px-1 py-2 rounded border border-white/10 w-full min-h-[44px] flex items-center justify-center ${setType.color}`}
-                            >
-                              {setType.label || "-"}
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            value={s.weight === 0 ? "" : s.weight}
-                            onChange={(e) =>
-                              updateSet(ex.id, i, "weight", e.target.value)
-                            }
-                            className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold"
-                            placeholder="0"
-                          />
-                          <input
-                            type="number"
-                            value={s.reps === 0 ? "" : s.reps}
-                            onChange={(e) =>
-                              updateSet(ex.id, i, "reps", e.target.value)
-                            }
-                            className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white"
-                            placeholder="0"
-                          />
-                          <input
-                            type="number"
-                            value={s.rpe === 0 ? "" : s.rpe}
-                            onChange={(e) =>
-                              updateSet(ex.id, i, "rpe", e.target.value)
-                            }
-                            className="col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs"
-                            placeholder="-"
-                          />
-                          <button
-                            onClick={() => removeSet(ex.id, i)}
-                            className="col-span-1 text-slate-700 hover:text-red-500 flex items-center justify-center min-h-[44px]"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {(() => {
-                      const lastFilled = getLastFilledSet(safeSets);
-                      const targetRPE = parseFloat(mode?.rpe) || 8;
-                      const nextSuggestion = suggestNextSet({
-                        lastSet: lastFilled,
-                        targetRPE,
-                      });
-                      if (!nextSuggestion) return null;
-                      const hintColor = nextSuggestion.shouldStop
-                        ? "text-red-400 border-red-500/40"
-                        : "text-sky-400 border-sky-500/30";
-                      return (
-                        <div
-                          className={`text-[10px] px-2 py-1 mt-1 border rounded bg-slate-900/60 ${hintColor}`}
-                        >
-                          <span className="font-bold">Próxima:</span>{" "}
-                          {nextSuggestion.weight}
-                          {barUnit} × {nextSuggestion.reps}{" "}
-                          <span className="text-slate-500">
-                            · {nextSuggestion.reason}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                    <button
-                      onClick={() => addSet(ex.id)}
-                      className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-accent-500 hover:border-accent-500 transition"
-                    >
-                      + Serie
-                    </button>
                   </div>
                 </div>
+
+                <div className="p-2">
+                  <div className="grid grid-cols-12 gap-1 text-[10px] text-slate-500 font-mono text-center mb-1 uppercase">
+                    <div className="col-span-1">#</div>
+                    <div className="col-span-2">Tag</div>
+                    <div className="col-span-3">Kg</div>
+                    <div className="col-span-3">Reps</div>
+                    <div className="col-span-2">RPE</div>
+                    <div className="col-span-1"></div>
+                  </div>
+                  {safeSets.map((s, i) => {
+                    if (!s) return null;
+                    const setType = Object.values(SET_TYPES).find((t) => t.id === (s.type || "normal")) || SET_TYPES.NORMAL;
+                    return (
+                      <div key={i} className={`grid grid-cols-12 gap-2 mb-2 items-center rounded px-1 py-1 ${setType.bg}`}>
+                        <div className="col-span-1 text-center text-xs text-slate-500 font-bold">{i + 1}</div>
+                        <div className="col-span-2 flex justify-center">
+                          <button
+                            onClick={() => storeCycleType(ex.id, i)}
+                            className={`text-[9px] font-bold px-1 py-2 rounded border border-white/10 w-full min-h-[44px] flex items-center justify-center ${setType.color}`}
+                          >
+                            {setType.label || "-"}
+                          </button>
+                        </div>
+                        <input type="number" value={s.weight === 0 ? "" : s.weight} onChange={(e) => storeUpdateSet(ex.id, i, "weight", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold" placeholder="0" />
+                        <input type="number" value={s.reps === 0 ? "" : s.reps} onChange={(e) => storeUpdateSet(ex.id, i, "reps", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white" placeholder="0" />
+                        <input type="number" value={s.rpe === 0 ? "" : s.rpe} onChange={(e) => storeUpdateSet(ex.id, i, "rpe", e.target.value)} className="col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs" placeholder="-" />
+                        <button onClick={() => storeRemoveSet(ex.id, i)} className="col-span-1 text-slate-700 hover:text-red-500 flex items-center justify-center min-h-[44px]">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {(() => {
+                    const lastFilled = getLastFilledSet(safeSets);
+                    const nextSuggestion = suggestNextSet({ lastSet: lastFilled, targetRPE: parseFloat(mode?.rpe) || 8 });
+                    if (!nextSuggestion) return null;
+                    const hintColor = nextSuggestion.shouldStop ? "text-red-400 border-red-500/40" : "text-sky-400 border-sky-500/30";
+                    return (
+                      <div className={`text-[10px] px-2 py-1 mt-1 border rounded bg-slate-900/60 ${hintColor}`}>
+                        <span className="font-bold">Próxima:</span> {nextSuggestion.weight}{barUnit} × {nextSuggestion.reps}{" "}
+                        <span className="text-slate-500">· {nextSuggestion.reason}</span>
+                      </div>
+                    );
+                  })()}
+                  <button
+                    onClick={() => handleAddSet(ex.id)}
+                    className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-accent-500 hover:border-accent-500 transition"
+                  >
+                    + Serie
+                  </button>
+                </div>
               </div>
-            );
-          }
-        )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-2">
         <button
-          onClick={() => {
-            setEditingExId(null);
-            setShowExSelector(true);
-          }}
+          onClick={() => { setEditingExId(null); setShowExSelector(true); }}
           className="w-full py-3 bg-slate-800 text-slate-300 rounded-lg font-bold text-sm uppercase border border-slate-700 hover:bg-slate-700 transition"
         >
           + Ejercicio

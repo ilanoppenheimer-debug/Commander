@@ -180,13 +180,19 @@ export const csvToHistory = (csvText) => {
 
     const weight = parseFloat(row[iWeight]);
     const reps = parseFloat(row[iReps]);
-    if (!Number.isFinite(weight) && !Number.isFinite(reps)) continue;
+    const rpe = parseFloat(row[iRpe]);
+
+    // Skip rows where both weight and reps are unparseable (corrupted)
+    if (!Number.isFinite(weight) && !Number.isFinite(reps)) {
+      console.warn(`CSV import: skipping corrupted row ${r} (weight="${row[iWeight]}" reps="${row[iReps]}")`);
+      continue;
+    }
 
     exercise.sets.push({
       type: row[iType] || "normal",
-      weight: Number.isFinite(weight) ? weight : 0,
-      reps: Number.isFinite(reps) ? reps : 0,
-      rpe: parseFloat(row[iRpe]) || 0,
+      weight: Number.isFinite(weight) && weight >= 0 ? weight : 0,
+      reps: Number.isFinite(reps) && reps >= 0 ? Math.round(reps) : 0,
+      rpe: Number.isFinite(rpe) && rpe >= 0 && rpe <= 10 ? rpe : 0,
     });
   }
 

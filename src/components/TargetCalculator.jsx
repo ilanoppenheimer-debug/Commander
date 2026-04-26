@@ -7,13 +7,14 @@ import { toKg, toLb, formatNum } from "../utils/weightUtils";
 // 1. Componente visual de los discos
 export const PlateVisualizer = ({ plates }) => {
   if (!Array.isArray(plates)) return null;
+  const safePlates = plates.filter(Boolean);
   return (
     <div className="w-full h-40 bg-slate-900/50 rounded-xl flex items-center justify-start overflow-x-auto overflow-y-hidden border-b-4 border-slate-700 relative p-4 mb-4 shadow-inner">
       <div className="absolute left-0 w-full h-4 bg-slate-400 z-0 top-1/2 -translate-y-1/2 shadow-lg"></div>
       <div className="h-20 w-8 bg-slate-300 z-10 mr-1 shadow-xl border-r-2 border-slate-500 shrink-0 relative">
         <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
       </div>
-      {plates.map((p, idx) => {
+      {safePlates.map((p, idx) => {
         if(!p) return null;
         const config = PLATE_CONFIG[p.unit]?.[p.weight];
         const fill = config?.fill || "#334155";
@@ -31,7 +32,7 @@ export const PlateVisualizer = ({ plates }) => {
           </div>
         );
       })}
-      {plates.length === 0 && <div className="z-10 text-slate-600 text-xs font-mono ml-4 bg-slate-900 px-2 py-1 rounded">Barra Vacía</div>}
+      {safePlates.length === 0 && <div className="z-10 text-slate-600 text-xs font-mono ml-4 bg-slate-900 px-2 py-1 rounded">Barra Vacía</div>}
     </div>
   );
 };

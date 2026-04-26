@@ -97,20 +97,33 @@ const buildUserQuery = ({ sessionName, subjectiveState }) => {
 
 const parseBriefingResponse = (text) => {
   if (!text) return null;
-  let cleaned = text.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (!parsed || typeof parsed !== "object") return null;
-    return {
-      fatigueWarning: parsed.fatigueWarning || null,
-      generalAdvice: parsed.generalAdvice || "",
-      perExercise: Array.isArray(parsed.perExercise) ? parsed.perExercise : [],
-    };
-  } catch (err) {
-    console.error("Briefing parse failed", err);
-    return null;
+  let cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+
+  const tryParse = (str) => {
+    try {
+      const p = JSON.parse(str);
+      if (!p || typeof p !== "object") return null;
+      return {
+        fatigueWarning: p.fatigueWarning || null,
+        generalAdvice: p.generalAdvice || "",
+        perExercise: Array.isArray(p.perExercise) ? p.perExercise : [],
+      };
+    } catch { return null; }
+  };
+
+  // Attempt 1: direct parse
+  const direct = tryParse(cleaned);
+  if (direct) return direct;
+
+  // Attempt 2: extract first {...} block
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    const fromBlock = tryParse(match[0]);
+    if (fromBlock) return fromBlock;
   }
+
+  console.error("Briefing parse failed after all attempts", cleaned.slice(0, 200));
+  return null;
 };
 
 export const requestSessionBriefing = async ({
