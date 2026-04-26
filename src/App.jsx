@@ -32,6 +32,7 @@ import WorkCalculator from "./components/WorkCalculator";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
 import DataBackupTab from "./components/DataBackupTab";
+import Modal from "./components/ui/Modal";
 import SessionCard from "./components/history/SessionCard";
 import SessionDetailModal from "./components/history/SessionDetailModal";
 import SessionEditor from "./components/history/SessionEditor";
@@ -150,13 +151,9 @@ const FullSettingsModal = ({
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
+    <Modal isOpen onClose={onClose} size="full">
       <div
-        className="bg-slate-900 w-full max-w-md md:max-w-4xl lg:max-w-5xl h-[90vh] md:h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        className="bg-slate-900 w-full md:max-w-4xl lg:max-w-5xl h-[90vh] md:h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-800 shadow-2xl flex flex-col"
       >
         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900 rounded-t-2xl z-20 shrink-0">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -323,7 +320,7 @@ const FullSettingsModal = ({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -1044,8 +1041,8 @@ function AppMain() {
       )}
 
       {routineToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setRoutineToDelete(null)}>
-          <div className="bg-slate-900 w-full max-w-xs rounded-xl border border-red-500/50 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <Modal isOpen onClose={() => setRoutineToDelete(null)} size="sm">
+          <div className="bg-slate-900 w-full rounded-xl border border-red-500/50 shadow-2xl p-6">
             <div className="flex flex-col items-center text-center gap-4">
               <div className="p-3 bg-red-900/20 rounded-full text-red-500"><AlertTriangle size={32} /></div>
               <h3 className="text-lg font-bold text-white">¿Eliminar Plantilla?</h3>
@@ -1055,30 +1052,30 @@ function AppMain() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showAIModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in" onClick={() => !isGenerating && setShowAIModal(false)}>
-          <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative" onClick={(e) => e.stopPropagation()}>
+        <Modal isOpen onClose={() => !isGenerating && setShowAIModal(false)} closeOnEscape={!isGenerating} size="sm">
+          <div className="bg-slate-900 w-full rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500"></div>
             <div className="p-6">
               <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3><button onClick={() => setShowAIModal(false)} className="p-1 text-slate-500 hover:text-white transition"><X size={20} /></button></div>
               {isGenerating ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-purple-500 animate-spin" /><p className="text-sm text-purple-300 font-mono animate-pulse">ESTABLECIENDO ENLACE...</p></div>) : (<><p className="text-sm text-slate-400 mb-4">Objetivo táctico para nueva plantilla:</p><textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Ej: Rutina de fuerza para hombros..." className="w-full h-24 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 focus:outline-none mb-4 resize-none" /><button onClick={generateAIRoutine} disabled={!aiPrompt.trim()} className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition"><Zap size={18} fill="currentColor" /> Generar Protocolo</button></>)}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => !isImporting && setShowImportModal(false)}>
-          <div className="bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <Modal isOpen onClose={() => !isImporting && setShowImportModal(false)} closeOnEscape={!isImporting} size="lg">
+          <div className="bg-slate-900 w-full rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
             <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-white flex items-center gap-2"><FileText className="text-green-500" /> Importar</h3><button onClick={() => setShowImportModal(false)} className="p-1 text-slate-400 hover:text-white transition"><X size={20} /></button></div>
             <div className="p-6 space-y-4">
               {isImporting ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-green-500 animate-spin" /><p className="text-sm text-green-300 font-mono animate-pulse">ANALIZANDO DATOS TÁCTICOS...</p></div>) : (<><p className="text-xs text-slate-400">Pega aquí cualquier tabla o lista (Excel/Web). La IA creará una plantilla.</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={`Ejemplo:\nPress Banca | 3 series | 10 reps | RPE 8\nSentadilla 4x8 100kg`} className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-green-500 focus:outline-none"></textarea><button onClick={handleSmartImport} className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2"><BrainCircuit size={16} /> Procesar con IA</button></>)}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       <style>{`

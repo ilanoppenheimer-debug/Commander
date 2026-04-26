@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { X, BarChart2 } from "lucide-react";
+import Modal from "../ui/Modal";
 
 const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
   const [limit, setLimit] = useState(5);
@@ -31,14 +32,8 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
   }, [history, exName, limit]);
 
   return (
-    <div
-      className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900 w-full max-w-md md:max-w-2xl max-h-[85vh] min-h-[420px] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={onClose} size="2xl">
+      <div className="bg-slate-900 w-full max-h-[85vh] min-h-[420px] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl">
         <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-lg font-bold text-sky-400 flex items-center gap-2">
@@ -116,7 +111,7 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

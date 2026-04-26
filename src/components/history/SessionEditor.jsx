@@ -1,5 +1,6 @@
 import React, { useState, useReducer, useRef, useCallback } from 'react';
 import { AlertTriangle, X, Plus, Trash2, ChevronDown, ChevronUp, Check, Save } from 'lucide-react';
+import Modal from '../ui/Modal';
 import { saveSession } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
 import { isSignedIn, performDriveBackup } from '../../services/googleDriveService';
@@ -108,8 +109,9 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
   };
 
   return (
-    <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-      <div className="bg-slate-900 w-full max-w-lg max-h-[95vh] rounded-t-2xl sm:rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col">
+    <>
+    <Modal isOpen onClose={handleCancel} closeOnBackdrop={false}>
+      <div className="bg-slate-900 w-full max-h-[95vh] rounded-t-2xl sm:rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col">
         {/* Warning banner */}
         <div className="bg-amber-950/40 border-b border-amber-700/40 px-4 py-2 flex items-center gap-2 text-amber-300 text-xs shrink-0">
           <AlertTriangle size={14} className="shrink-0" />
@@ -217,6 +219,7 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
           )}
         </div>
       </div>
+    </Modal>
 
       {showExSelector && (
         <ExerciseSelectorModal
@@ -227,6 +230,7 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
           removeCustomExercise={removeCustomExercise}
         />
       )}
-    </div>
+    </>
   );
 }
+

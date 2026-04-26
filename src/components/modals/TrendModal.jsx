@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { X, TrendingUp } from "lucide-react";
+import Modal from "../ui/Modal";
 import { calculate1RM } from "../../utils/strengthMath";
 import { formatNum } from "../../utils/weightUtils";
 
@@ -158,14 +159,8 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900 w-full max-w-md md:max-w-2xl max-h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl overflow-y-auto p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={onClose} size="2xl">
+      <div className="bg-slate-900 w-full max-h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl overflow-y-auto p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className="text-xl font-bold text-purple-400 flex items-center gap-2">
@@ -196,7 +191,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 };
 

@@ -1,18 +1,13 @@
 import React from "react";
 import { X, ClipboardList } from "lucide-react";
+import Modal from "./Modal";
 
 export default function InfoModal({ data, onClose }) {
   if (!data) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900 border-2 border-accent-500 rounded-xl flex flex-col max-h-[85vh] w-full max-w-sm shadow-[0_0_50px_rgb(var(--accent-500)/0.3)] relative"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={onClose} size="sm">
+      <div className="bg-slate-900 border-2 border-accent-500 rounded-xl flex flex-col max-h-[85vh] w-full shadow-[0_0_50px_rgb(var(--accent-500)/0.3)] relative">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-slate-400 hover:text-white bg-slate-800 rounded-full p-1"
@@ -50,6 +45,6 @@ export default function InfoModal({ data, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

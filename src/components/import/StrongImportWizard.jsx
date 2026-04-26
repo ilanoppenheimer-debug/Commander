@@ -4,6 +4,7 @@ import {
   Loader2, FileText, Dumbbell, LayoutGrid, Zap, CheckSquare, Square,
   ChevronDown, ChevronUp, Info,
 } from 'lucide-react';
+import Modal from '../ui/Modal';
 import { parseStrongCSV } from '../../services/strongImporter/csvParser';
 import { getUnknownExercises } from '../../services/strongImporter/exerciseDictionary';
 import { normalizeStrongData } from '../../services/strongImporter/normalizer';
@@ -630,14 +631,8 @@ export default function StrongImportWizard({ onClose, onGoToHistory }) {
   });
 
   return (
-    <div
-      className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
-      onClick={step < 4 ? onClose : undefined}
-    >
-      <div
-        className="bg-slate-900 w-full max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={step < 4 ? onClose : undefined} closeOnBackdrop={step < 4} closeOnEscape={step < 4}>
+      <div className="bg-slate-900 w-full max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
@@ -772,6 +767,6 @@ export default function StrongImportWizard({ onClose, onGoToHistory }) {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

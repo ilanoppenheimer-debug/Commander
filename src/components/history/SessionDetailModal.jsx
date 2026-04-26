@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Edit3, Trash2, Copy, FileText, TrendingUp, AlertTriangle, Check } from 'lucide-react';
+import Modal from '../ui/Modal';
 import { deleteSession, saveRoutine } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
 import { isSignedIn, performDriveBackup } from '../../services/googleDriveService';
@@ -72,14 +73,8 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[115] bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900 w-full max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={onClose} size="xl">
+      <div className="bg-slate-900 w-full max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 shadow-2xl flex flex-col">
         {/* Sticky header */}
         <div className="p-4 border-b border-slate-800 shrink-0">
           <div className="flex items-start justify-between">
@@ -233,6 +228,6 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

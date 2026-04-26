@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Dumbbell, X, Search, Plus, Trash2, ChevronDown } from "lucide-react";
 import { DEFAULT_EXERCISE_DB } from "../../constants/gymConstants";
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
+import Modal from "../ui/Modal";
 
 const EQUIPMENT_OPTIONS = [
   { id: 'barbell',    label: 'Barra' },
@@ -59,13 +60,9 @@ const ExerciseSelectorModal = ({
   );
 
   return (
-    <div
-      className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
+    <Modal isOpen onClose={onClose} size="2xl">
       <div
-        className="bg-slate-900 w-full max-w-md md:max-w-2xl h-[85vh] sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className="bg-slate-900 w-full h-[85vh] sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
       >
         {/* Sticky header */}
         <div className="shrink-0 border-b border-slate-800">
@@ -177,7 +174,7 @@ const ExerciseSelectorModal = ({
           <span className="text-[10px] text-slate-600">{allExercises.length} ejercicios</span>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

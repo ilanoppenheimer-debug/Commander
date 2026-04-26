@@ -4,6 +4,7 @@ import {
   AlertTriangle, Check, Loader2, Eye, EyeOff, X, HardDrive, FileInput
 } from 'lucide-react';
 import StrongImportWizard from './import/StrongImportWizard';
+import Modal from './ui/Modal';
 import {
   signInToGoogle, signOutFromGoogle, isSignedIn, getSignedInEmail,
   listBackups, downloadBackupFromDrive, performDriveBackup
@@ -337,8 +338,8 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
 
       {/* Logs modal */}
       {showLogs && (
-        <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowLogs(false)}>
-          <div className="bg-slate-900 w-full max-w-2xl max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 flex flex-col" onClick={e => e.stopPropagation()}>
+        <Modal isOpen onClose={() => setShowLogs(false)} size="2xl">
+          <div className="bg-slate-900 w-full max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-slate-700 flex flex-col">
             <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
               <h3 className="text-sm font-bold text-white">Logs del Sistema</h3>
               <button onClick={() => setShowLogs(false)} className="p-1 text-slate-400 hover:text-white"><X size={18} /></button>
@@ -362,7 +363,7 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
               )}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -17,6 +17,7 @@ import {
 import InputGroup from "./ui/InputGroup";
 import ToggleSwitch from "./ui/ToggleSwitch";
 import InfoModal from "./ui/InfoModal";
+import Modal from "./ui/Modal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import PostSessionReport from "./PostSessionReport";
@@ -43,13 +44,9 @@ export const FinishMissionModal = ({
   const isEmpty = !analysis || (analysis.totalSets === 0 && !hasVolume);
 
   return (
-    <div
-      className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md animate-fade-in flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onCancel}
-    >
+    <Modal isOpen onClose={onCancel} size="md">
       <div
-        className="bg-slate-900 w-full max-w-md max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        className="bg-slate-900 w-full max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
       >
         {/* Sticky header */}
         <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
@@ -119,7 +116,7 @@ export const FinishMissionModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 
