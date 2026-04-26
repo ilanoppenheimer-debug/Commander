@@ -2,7 +2,30 @@ import { db } from './database';
 import { logger } from '../services/logger';
 
 const MIGRATION_FLAG = 'MIGRATED_TO_DEXIE_V1';
+const MIGRATION_FLAG_V2 = 'MIGRATED_ROUTINE_IDS_V2';
 const SOURCE_KEY = 'IronSuiteDataV14';
+
+// One-shot migration: replace hardcoded "routine-1" (and similar) IDs with unique UUIDs
+export const fixHardcodedRoutineIds = async () => {
+  if (localStorage.getItem(MIGRATION_FLAG_V2)) return;
+  try {
+    const routines = await db.routines.toArray();
+    const toFix = routines.filter(r => r.routineId === 'routine-1' || r.id === 'routine-1');
+    if (toFix.length > 0) {
+      await db.transaction('rw', db.routines, async () => {
+        for (const r of toFix) {
+          const newId = `routine-${crypto.randomUUID()}`;
+          await db.routines.where('routineId').equals(r.routineId || r.id).delete();
+          await db.routines.put({ ...r, id: newId, routineId: newId });
+        }
+      });
+      logger.info('Migrated hardcoded routine IDs', { fixed: toFix.length });
+    }
+    localStorage.setItem(MIGRATION_FLAG_V2, '1');
+  } catch (e) {
+    logger.error('fixHardcodedRoutineIds failed', { error: String(e) });
+  }
+};
 
 export const migrateFromLocalStorageIfNeeded = async () => {
   if (localStorage.getItem(MIGRATION_FLAG)) return { skipped: true };

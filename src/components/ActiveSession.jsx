@@ -39,73 +39,84 @@ export const FinishMissionModal = ({
   const [name, setName] = useState(sessionName || "Entrenamiento Libre");
   const [saveTemplate, setSaveTemplate] = useState(false);
 
+  const hasVolume = analysis?.totalVolume > 0;
+  const isEmpty = !analysis || (analysis.totalSets === 0 && !hasVolume);
+
   return (
     <div
-      className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm animate-fade-in overflow-y-auto"
+      className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm animate-fade-in flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onCancel}
     >
-      <div className="flex min-h-full items-end justify-center sm:items-center p-0 sm:p-4">
-        <div
-          className="bg-slate-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Target className="text-accent-500" size={20} /> Misión Completada
-            </h2>
-            <button onClick={onCancel} className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
-              <X size={22} />
-            </button>
-          </div>
+      <div
+        className="bg-slate-900 w-full max-w-md max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sticky header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Target className="text-accent-500" size={20} /> Misión Completada
+          </h2>
+          <button onClick={onCancel} className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+            <X size={22} />
+          </button>
+        </div>
 
-          <div className="p-4 overflow-y-auto space-y-4">
-            <p className="text-xs text-slate-400">
-              Revisa el resumen y elige cómo archivar el registro.
-            </p>
-
-            {analysis && (
-              <PostSessionReport analysis={analysis} barUnit={barUnit} />
-            )}
-
-            <InputGroup
-              label="Nombre del Registro"
-              value={name}
-              onChange={setName}
-              placeholder="Ej: Empuje Pesado"
-            />
-
-            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-              <ToggleSwitch
-                checked={saveTemplate}
-                onChange={setSaveTemplate}
-                label="Guardar como Plantilla"
-              />
-              <p className="text-[9px] text-slate-500 mt-2 ml-1">
-                Aparecerá en "Mis Plantillas" para repetirla otro día.
-              </p>
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+          {isEmpty && (
+            <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-700/40 rounded-xl p-3 text-amber-300 text-sm">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span>Esta sesión no tiene sets registrados. ¿Querés descartarla?</span>
             </div>
-          </div>
+          )}
 
-          <div className="p-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
-            <button
-              onClick={() => onConfirm(name, saveTemplate)}
-              className="w-full py-3 bg-accent-600 hover:bg-accent-500 text-black font-bold uppercase rounded-xl shadow-lg shadow-accent-900/20 transition active:scale-95"
-            >
-              Guardar en Historial
-            </button>
-            <button
-              onClick={onDiscard}
-              className="w-full py-3 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold uppercase rounded-xl border border-red-900/50 transition active:scale-95"
-            >
-              Descartar Sesión
-            </button>
-            <button
-              onClick={onCancel}
-              className="w-full py-3 text-slate-400 font-bold hover:text-white transition"
-            >
-              Volver a entrenar
-            </button>
+          {analysis && hasVolume && (
+            <PostSessionReport analysis={analysis} barUnit={barUnit} />
+          )}
+
+          <InputGroup
+            label="Nombre del Registro"
+            value={name}
+            onChange={setName}
+            placeholder="Ej: Empuje Pesado"
+          />
+
+          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <ToggleSwitch
+              checked={saveTemplate}
+              onChange={setSaveTemplate}
+              label="Guardar como Plantilla"
+            />
+            <p className="text-[9px] text-slate-500 mt-2 ml-1">
+              Aparecerá en "Mis Plantillas" para repetirla otro día.
+            </p>
           </div>
+        </div>
+
+        {/* Sticky footer — always visible */}
+        <div className="p-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
+          <button
+            onClick={() => onConfirm(name, saveTemplate)}
+            className={`w-full py-3 font-bold uppercase rounded-xl transition active:scale-95 ${
+              isEmpty
+                ? 'bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600'
+                : 'bg-accent-600 hover:bg-accent-500 text-black shadow-lg shadow-accent-900/20'
+            }`}
+          >
+            Guardar en Historial
+          </button>
+          <button
+            onClick={onDiscard}
+            className="w-full py-3 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold uppercase rounded-xl border border-red-900/50 transition active:scale-95"
+          >
+            Descartar Sesión
+          </button>
+          <button
+            onClick={onCancel}
+            className="w-full py-2.5 text-slate-400 font-bold hover:text-white transition text-sm"
+          >
+            Volver a entrenar
+          </button>
         </div>
       </div>
     </div>

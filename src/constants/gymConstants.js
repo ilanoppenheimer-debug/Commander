@@ -157,18 +157,6 @@ export const SET_TYPES = {
   AMRAP: { id: "amrap", label: "AMRAP", color: "text-purple-400", bg: "bg-purple-900/40" },
 };
 
-export const DEFAULT_ROUTINES = [
-  {
-    id: "routine-1",
-    name: "Plantilla Push Alpha",
-    lastPerformed: null,
-    exercises: [
-      { id: 101, name: "Press Banca", equipment: "barbell", sets: [{ weight: 0, reps: 10, rpe: 7, type: "normal" }] },
-      { id: 102, name: "Press Militar", equipment: "dumbbell", sets: [{ weight: 0, reps: 10, rpe: 8, type: "normal" }] },
-      { id: 103, name: "Fondos en Paralelas", equipment: "bodyweight", sets: [{ weight: 0, reps: 12, rpe: 9, type: "normal" }] },
-    ],
-  },
-];
 
 export const ACCENT_PRESETS = [
   { id: "amber",   label: "Ámbar",     swatch: "#f59e0b" },

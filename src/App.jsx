@@ -6,7 +6,7 @@ import {
   DEFAULT_MODES,
   PHASE_COLORS,
   SET_TYPES,
-  DEFAULT_ROUTINES,
+
   ACCENT_PRESETS
 } from "./constants/gymConstants";
 import { calculatePlates } from "./utils/plateMath";
@@ -32,8 +32,11 @@ import WorkCalculator from "./components/WorkCalculator";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
 import DataBackupTab from "./components/DataBackupTab";
+import SessionCard from "./components/history/SessionCard";
+import SessionDetailModal from "./components/history/SessionDetailModal";
+import SessionEditor from "./components/history/SessionEditor";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
-import { migrateFromLocalStorageIfNeeded } from "./db/migrations";
+import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds } from "./db/migrations";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile } from "./services/backupService";
@@ -59,6 +62,7 @@ const FullSettingsModal = ({
   setAccent,
   showNotify,
   onClose,
+  onGoToHistory,
 }) => {
   const [editingModeId, setEditingModeId] = useState(null);
   const [showAIPhaseInput, setShowAIPhaseInput] = useState(false);
@@ -315,7 +319,7 @@ const FullSettingsModal = ({
           )}
 
           {settingsTab === 'datos' && (
-            <DataBackupTab showNotify={showNotify} onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }} />
+            <DataBackupTab showNotify={showNotify} onGoToHistory={onGoToHistory} />
           )}
         </div>
       </div>
@@ -359,6 +363,13 @@ function AppMain() {
   const [notification,       setNotification]       = useState(null);
   const [trendExercise,      setTrendExercise]      = useState(null);
   const [isMigrating,        setIsMigrating]        = useState(true);
+  const [detailSession,      setDetailSession]      = useState(null);
+  const [editingSession,     setEditingSession]     = useState(null);
+  const [historySearch,      setHistorySearch]      = useState('');
+  const [historyExFilter,    setHistoryExFilter]    = useState('');
+  const [historyPeriod,      setHistoryPeriod]      = useState('all');
+  const [historySort,        setHistorySort]        = useState('newest');
+  const [platesSubTab,       setPlatesSubTab]       = useState('target');
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -375,6 +386,7 @@ function AppMain() {
     (async () => {
       setIsMigrating(true);
       await migrateFromLocalStorageIfNeeded();
+      await fixHardcodedRoutineIds();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory'];
@@ -448,8 +460,7 @@ function AppMain() {
   const tabs = [
     { id: 'routines', label: 'Rutinas',   icon: ClipboardList },
     { id: 'history',  label: 'Historial', icon: Clock },
-    { id: 'target',   label: 'Cargar',    icon: Calculator },
-    { id: 'reverse',  label: 'Sumar',     icon: Plus },
+    { id: 'plates',   label: 'Placas',    icon: Calculator },
     { id: 'work',     label: 'Fuerza',    icon: TrendingUp },
   ];
 
@@ -655,16 +666,31 @@ function AppMain() {
 
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
         <div className="max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2" onClick={() => { if (!isTraining) setActiveTab('routines'); }}>
-            <div className="p-1.5 bg-gradient-to-br from-accent-600 to-red-600 rounded shadow-lg shadow-accent-900/20 cursor-pointer">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => { if (!isTraining) setActiveTab('routines'); }}>
+            <div className="p-1.5 bg-gradient-to-br from-accent-600 to-red-600 rounded shadow-lg shadow-accent-900/20">
               <Dumbbell className="text-white w-5 h-5" />
             </div>
-            <div className="cursor-pointer">
-              <h1 className="text-lg font-bold tracking-wider text-white uppercase leading-none">Iron Cmdr</h1>
-              <span className="text-[10px] text-accent-500 font-mono tracking-widest">SUITE V14.1</span>
-            </div>
+            <h1 className="text-base font-semibold tracking-wider text-white uppercase leading-none">Iron Cmdr</h1>
           </div>
-          <div className="flex gap-2">
+
+          {/* Contextual center widget */}
+          <div className="flex-1 flex justify-center px-4">
+            {isTraining ? (
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Sesión activa
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-600 font-mono hidden sm:block">
+                {safeHistory.length > 0
+                  ? `${safeHistory.length} sesiones · Última: ${safeHistory[0]?.completedAt ? new Date(safeHistory[0].completedAt).toLocaleDateString('es-AR') : '—'}`
+                  : 'Sin sesiones aún'
+                }
+              </span>
+            )}
+          </div>
+
+          <div className="flex gap-2 shrink-0">
             {!isTraining && activeTab === 'routines' && (
               <>
                 <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
@@ -675,16 +701,17 @@ function AppMain() {
           </div>
         </div>
 
-        {activeTab === 'routines' && (
-          <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 relative z-20">
+        {/* Fase Global — only on routines tab and only when non-default mode or training */}
+        {(activeTab === 'routines' || isTraining) && (activeModeId !== 'standard' || isTraining) && (
+          <div className="bg-slate-950 px-4 py-1.5 border-b border-slate-800 relative z-20">
             <div className="max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Fase Global:</span>
+              <span className="text-[10px] font-bold text-slate-600 uppercase">Fase:</span>
               <select
                 value={activeModeId}
                 onChange={(e) => setActiveModeId(e.target.value)}
-                className={`bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-bold uppercase focus:outline-none ${currentMode?.color || 'text-slate-400'}`}
+                className={`bg-transparent border-0 text-xs font-bold uppercase focus:outline-none ${currentMode?.color || 'text-slate-500'}`}
               >
-                {safeModes.map(m => (<option key={m.id} value={m.id} className={m.color}>{m.label}</option>))}
+                {safeModes.map(m => (<option key={m.id} value={m.id} className={`bg-slate-900 ${m.color}`}>{m.label}</option>))}
               </select>
             </div>
           </div>
@@ -753,7 +780,16 @@ function AppMain() {
                     </div>
                   </div>
                 ))}
-                {safeRoutines.length === 0 && <div className="text-center py-10 text-slate-600 italic col-span-3">No tienes plantillas guardadas. Crea una o usa IA.</div>}
+                {safeRoutines.length === 0 && (
+                  <div className="col-span-3 text-center py-12 space-y-4">
+                    <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
+                      <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar texto</button>
+                      <button onClick={() => setShowAIModal(true)} className="flex-1 px-4 py-3 bg-purple-900/30 border border-purple-700/50 text-purple-300 text-xs font-bold rounded-xl hover:bg-purple-900/50 transition flex items-center justify-center gap-2"><BrainCircuit size={14}/> Generar con IA</button>
+                      <button onClick={createRoutine} className="flex-1 px-4 py-3 bg-accent-600 text-black text-xs font-bold rounded-xl hover:bg-accent-500 transition flex items-center justify-center gap-2"><Plus size={14}/> Crear manual</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex justify-center pt-8">
@@ -762,87 +798,216 @@ function AppMain() {
           </div>
         )}
 
-        {activeTab === 'history' && (
-          <div className="animate-fade-in space-y-4">
-            <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
-              <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2"><Clock className="text-sky-500"/> Historial</h2>
-              <span className="text-xs text-slate-500 font-mono">{safeHistory.length} Registros</span>
-            </div>
-            <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 mb-2">
-              <button onClick={() => setHistoryMode('log')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'log' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Sesiones</button>
-              <button onClick={() => setHistoryMode('stats')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'stats' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Tendencias</button>
-            </div>
-            <div className="flex gap-2 mb-4">
-              <button onClick={handleExportHistoryCSV} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 bg-slate-900 border border-slate-700 rounded-md hover:border-sky-500/60 hover:text-sky-300 transition"><Download size={12}/> Exportar CSV</button>
-              <label className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-slate-900 border border-slate-700 rounded-md hover:border-emerald-500/60 hover:text-emerald-300 transition cursor-pointer">
-                <FileText size={12}/> Importar CSV
-                <input type="file" accept=".csv,text/csv" onChange={handleImportHistoryCSV} className="hidden" />
-              </label>
-            </div>
+        {activeTab === 'history' && (() => {
+          // ── Filter + sort pipeline (memoized via IIFE — fine for ~300 items) ──
+          const periodMs = { week: 7, month: 30, '3m': 90, '6m': 180, year: 365 };
+          const now = Date.now();
+          const filtered = safeHistory.filter(h => {
+            if (historySearch && !((h.name || '').toLowerCase().includes(historySearch.toLowerCase()))) return false;
+            if (historyExFilter && !((h.exercises || []).some(ex => ex?.name === historyExFilter))) return false;
+            if (historyPeriod !== 'all') {
+              const days = periodMs[historyPeriod];
+              if (days && h.completedAt && (now - new Date(h.completedAt).getTime()) > days * 86400000) return false;
+            }
+            return true;
+          }).slice().sort((a, b) => {
+            if (historySort === 'oldest') return new Date(a.completedAt) - new Date(b.completedAt);
+            if (historySort === 'volume') {
+              const vol = h => (h.exercises || []).reduce((s, ex) => s + (ex?.sets || []).reduce((s2, set) => s2 + (set.weight || 0) * (set.reps || 0), 0), 0);
+              return vol(b) - vol(a);
+            }
+            return new Date(b.completedAt) - new Date(a.completedAt);
+          });
 
-            {historyMode === 'log' ? (
-              safeHistory.length === 0 ? (
-                <div className="md:max-w-md md:mx-auto text-center py-16 text-slate-600 italic">No hay misiones completadas aún. ¡Ve a entrenar!</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {safeHistory.map(h => (
-                    <div key={h.historyId || Math.random()} className="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-lg">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h3 className="font-bold text-white text-lg leading-tight">{h.name || 'Entrenamiento Libre'}</h3>
-                          <span className="text-[10px] text-accent-500 font-mono bg-accent-500/10 px-2 py-0.5 rounded border border-accent-500/20 mt-1 inline-block">{h.completedAt ? new Date(h.completedAt).toLocaleString() : '-'}</span>
-                        </div>
-                        <button onClick={() => deleteSession(h.historyId)} className="p-2 bg-slate-900 rounded text-slate-600 hover:text-red-500 transition"><Trash2 size={14}/></button>
-                      </div>
-                      <div className="text-xs text-slate-400 space-y-1 mb-2 bg-slate-900/50 p-2 rounded-lg">
-                        {(Array.isArray(h.exercises) ? h.exercises : []).map((ex, i) => (
-                          <div key={i} className="flex justify-between border-b border-slate-700/50 py-1 last:border-0">
-                            <span className="truncate pr-2 text-slate-300 font-medium">{ex?.name || 'Ejercicio'}</span>
-                            <span className="shrink-0">{Array.isArray(ex?.sets) ? ex.sets.length : 0} series</span>
-                          </div>
-                        ))}
-                      </div>
+          const allExNames = [...new Set(safeHistory.flatMap(h => (h.exercises || []).map(ex => ex?.name).filter(Boolean)))].sort();
+          const hasFilters = historySearch || historyExFilter || historyPeriod !== 'all' || historySort !== 'newest';
+
+          return (
+            <div className="animate-fade-in space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2"><Clock className="text-sky-500"/> Historial</h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-mono">{safeHistory.length} sesiones</span>
+                  <button onClick={handleExportHistoryCSV} className="p-1.5 text-sky-400 hover:bg-slate-800 rounded transition" title="Exportar CSV"><Download size={14}/></button>
+                  <label className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded transition cursor-pointer" title="Importar CSV">
+                    <FileText size={14}/>
+                    <input type="file" accept=".csv,text/csv" onChange={handleImportHistoryCSV} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Mode toggle */}
+              <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+                <button onClick={() => setHistoryMode('log')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'log' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Sesiones</button>
+                <button onClick={() => setHistoryMode('stats')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${historyMode === 'stats' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Tendencias</button>
+              </div>
+
+              {historyMode === 'log' ? (
+                <>
+                  {/* Filters */}
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="Buscar sesión..."
+                        value={historySearch}
+                        onChange={e => setHistorySearch(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-accent-500 placeholder-slate-600"
+                      />
                     </div>
-                  ))}
-                </div>
-              )
-            ) : (
-              safeHistory.length === 0 ? (
-                <div className="md:max-w-md md:mx-auto text-center py-16 text-slate-600 italic">Entrena para recolectar datos de inteligencia.</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {(() => {
-                    const counts = {};
-                    safeHistory.forEach(s => { s.exercises?.forEach(ex => { if (ex?.name) counts[ex.name] = (counts[ex.name] || 0) + 1; }); });
-                    return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, count]) => {
-                      const details = getExerciseDetails(name);
-                      return (
-                        <div key={name} onClick={() => setTrendExercise(name)} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
-                          <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}>{details.icon}</div>
-                            <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{name}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-[10px] text-purple-400 font-bold bg-purple-900/20 border border-purple-500/20 px-2 py-1 rounded-lg">{count} sesiones</span>
-                            <ChevronLeft size={16} className="text-slate-500 rotate-180 group-hover:text-purple-400" />
-                          </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <select
+                        value={historyExFilter}
+                        onChange={e => setHistoryExFilter(e.target.value)}
+                        className="flex-1 min-w-[120px] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-500"
+                      >
+                        <option value="">Todos los ejercicios</option>
+                        {allExNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <select
+                        value={historyPeriod}
+                        onChange={e => setHistoryPeriod(e.target.value)}
+                        className="flex-1 min-w-[110px] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-500"
+                      >
+                        <option value="all">Todo el tiempo</option>
+                        <option value="week">Última semana</option>
+                        <option value="month">Último mes</option>
+                        <option value="3m">Últimos 3 meses</option>
+                        <option value="6m">Últimos 6 meses</option>
+                        <option value="year">Último año</option>
+                      </select>
+                      <select
+                        value={historySort}
+                        onChange={e => setHistorySort(e.target.value)}
+                        className="flex-1 min-w-[110px] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-500"
+                      >
+                        <option value="newest">Más reciente</option>
+                        <option value="oldest">Más antigua</option>
+                        <option value="volume">Mayor volumen</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Mostrando {filtered.length} de {safeHistory.length} sesiones</span>
+                      {hasFilters && (
+                        <button
+                          onClick={() => { setHistorySearch(''); setHistoryExFilter(''); setHistoryPeriod('all'); setHistorySort('newest'); }}
+                          className="text-accent-400 hover:text-accent-300 transition"
+                        >
+                          Limpiar filtros
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {filtered.length === 0 ? (
+                    safeHistory.length === 0 ? (
+                      <div className="md:max-w-md md:mx-auto text-center py-16 space-y-4">
+                        <p className="text-slate-500 text-sm">Sin sesiones registradas.</p>
+                        <p className="text-slate-600 text-xs">Importá tu historial de Strong o iniciá una sesión nueva.</p>
+                        <div className="flex gap-3 justify-center">
+                          <button onClick={() => { setShowSettings(true); }} className="px-4 py-2 bg-slate-800 border border-slate-600 text-slate-300 text-sm font-bold rounded-xl hover:bg-slate-700 transition">Importar Strong</button>
+                          <button onClick={() => { setActiveTab('routines'); startFreestyleSession(); }} className="px-4 py-2 bg-accent-600 text-black text-sm font-bold rounded-xl hover:bg-accent-500 transition">Empezar a entrenar</button>
                         </div>
-                      );
-                    });
-                  })()}
-                </div>
-              )
-            )}
-          </div>
-        )}
+                      </div>
+                    ) : (
+                      <div className="md:max-w-md md:mx-auto text-center py-10 text-slate-500 text-sm">
+                        Sin resultados para los filtros aplicados.
+                      </div>
+                    )
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filtered.map(h => (
+                        <SessionCard
+                          key={h.historyId || h._id}
+                          session={h}
+                          barUnit={barUnit}
+                          onClick={setDetailSession}
+                          onEdit={setEditingSession}
+                          onDelete={(s) => setDetailSession(s)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                safeHistory.length === 0 ? (
+                  <div className="md:max-w-md md:mx-auto text-center py-16 text-slate-500 text-sm">
+                    Necesitás más sesiones para ver tendencias. Volvé después de algunas semanas.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {(() => {
+                      const counts = {};
+                      safeHistory.forEach(s => { s.exercises?.forEach(ex => { if (ex?.name) counts[ex.name] = (counts[ex.name] || 0) + 1; }); });
+                      return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, count]) => {
+                        const details = getExerciseDetails(name);
+                        return (
+                          <div key={name} onClick={() => setTrendExercise(name)} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
+                            <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}>{details.icon}</div>
+                              <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{name}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] text-purple-400 font-bold bg-purple-900/20 border border-purple-500/20 px-2 py-1 rounded-lg">{count} sesiones</span>
+                              <ChevronLeft size={16} className="text-slate-500 rotate-180 group-hover:text-purple-400" />
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )
+              )}
+            </div>
+          );
+        })()}
 
         {trendExercise && (
           <TrendModal exName={trendExercise} history={safeHistory} barUnit={barUnit} onClose={() => setTrendExercise(null)} />
         )}
 
-        {activeTab === 'target'  && <ErrorBoundary FallbackComponent={ErrorFallback}><TargetCalculator barWeight={barWeight} barUnit={barUnit} inventory={inventory} /></ErrorBoundary>}
-        {activeTab === 'reverse' && <ErrorBoundary FallbackComponent={ErrorFallback}><ReverseCalculator barWeight={barWeight} barUnit={barUnit} /></ErrorBoundary>}
-        {activeTab === 'work'    && <ErrorBoundary FallbackComponent={ErrorFallback}><WorkCalculator /></ErrorBoundary>}
+        {detailSession && !editingSession && (
+          <SessionDetailModal
+            session={detailSession}
+            barUnit={barUnit}
+            onClose={() => setDetailSession(null)}
+            onEdit={(s) => { setDetailSession(null); setEditingSession(s); }}
+            onDeleted={() => setDetailSession(null)}
+            onOpenTrend={(name) => { setDetailSession(null); setTrendExercise(name); }}
+          />
+        )}
+
+        {editingSession && (
+          <SessionEditor
+            session={editingSession}
+            barUnit={barUnit}
+            customExercises={safeCustomExs}
+            addCustomExercise={addCustomExercise}
+            removeCustomExercise={removeCustomExercise}
+            onSaved={(updated) => { setEditingSession(null); showNotify('Cambios guardados', 'success'); }}
+            onCancel={() => setEditingSession(null)}
+          />
+        )}
+
+        {activeTab === 'plates' && (
+          <div className="animate-fade-in">
+            <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700 mb-4">
+              {[{ id: 'target', label: 'Cargar' }, { id: 'reverse', label: 'Sumar' }].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setPlatesSubTab(t.id)}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors ${platesSubTab === t.id ? 'bg-accent-600 text-black shadow' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {platesSubTab === 'target'  && <ErrorBoundary FallbackComponent={ErrorFallback}><TargetCalculator barWeight={barWeight} barUnit={barUnit} inventory={inventory} /></ErrorBoundary>}
+            {platesSubTab === 'reverse' && <ErrorBoundary FallbackComponent={ErrorFallback}><ReverseCalculator barWeight={barWeight} barUnit={barUnit} /></ErrorBoundary>}
+          </div>
+        )}
+        {activeTab === 'work' && <ErrorBoundary FallbackComponent={ErrorFallback}><WorkCalculator /></ErrorBoundary>}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 pb-safe z-40">
@@ -873,6 +1038,7 @@ function AppMain() {
           accent={accent} setAccent={setAccent}
           showNotify={showNotify}
           onClose={() => setShowSettings(false)}
+          onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }}
         />
       )}
 
