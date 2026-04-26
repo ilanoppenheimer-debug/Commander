@@ -315,7 +315,7 @@ const FullSettingsModal = ({
           )}
 
           {settingsTab === 'datos' && (
-            <DataBackupTab showNotify={showNotify} />
+            <DataBackupTab showNotify={showNotify} onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }} />
           )}
         </div>
       </div>

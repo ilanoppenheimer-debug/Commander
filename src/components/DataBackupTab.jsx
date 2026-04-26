@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Cloud, CloudOff, Download, Upload, Trash2, RefreshCw, Database,
-  AlertTriangle, Check, Loader2, Eye, EyeOff, X, HardDrive
+  AlertTriangle, Check, Loader2, Eye, EyeOff, X, HardDrive, FileInput
 } from 'lucide-react';
+import StrongImportWizard from './import/StrongImportWizard';
 import {
   signInToGoogle, signOutFromGoogle, isSignedIn, getSignedInEmail,
   listBackups, downloadBackupFromDrive, performDriveBackup
@@ -15,9 +16,10 @@ import { getDatabaseCounts, clearAllData } from '../db/repository';
 import { getSetting } from '../db/repository';
 import { getRecentLogs, exportLogsAsText } from '../services/logger';
 
-export default function DataBackupTab({ showNotify }) {
+export default function DataBackupTab({ showNotify, onGoToHistory }) {
   const [driveEmail, setDriveEmail]       = useState(null);
   const [driveLoading, setDriveLoading]   = useState(false);
+  const [showStrongWizard, setShowStrongWizard] = useState(false);
   const [driveBackups, setDriveBackups]   = useState([]);
   const [showAllBackups, setShowAllBackups] = useState(false);
   const [lastBackupDate, setLastBackupDate] = useState(null);
@@ -282,6 +284,29 @@ export default function DataBackupTab({ showNotify }) {
             </button>
           </div>
         </section>
+      )}
+
+      {/* Import from Strong */}
+      <section>
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <FileInput size={14} /> Importar
+        </h3>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-2">
+          <button
+            onClick={() => setShowStrongWizard(true)}
+            className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 transition border border-slate-600"
+          >
+            <Upload size={14} /> Importar desde Strong app
+          </button>
+          <p className="text-[10px] text-slate-500 text-center">Trae tu historial de Strong app (.csv)</p>
+        </div>
+      </section>
+
+      {showStrongWizard && (
+        <StrongImportWizard
+          onClose={() => setShowStrongWizard(false)}
+          onGoToHistory={() => { setShowStrongWizard(false); onGoToHistory?.(); }}
+        />
       )}
 
       {/* Danger zone */}
