@@ -1,27 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Timer, Pause, Play, RotateCcw } from 'lucide-react';
+import { Timer, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { playTacticalAlarm } from '../services/audioService';
 
-const MARGIN = 16;
 const CORNER_KEY = 'timerCorner';
+const MARGIN = 16;
+const TIMER_SIZE = 56;
+const BOTTOM_NAV_HEIGHT = 80;
 
 function getCornerPos(corner) {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const sz = 56;
   switch (corner) {
-    case 'tl': return { x: MARGIN, y: MARGIN };
-    case 'tr': return { x: w - sz - MARGIN, y: MARGIN };
-    case 'bl': return { x: MARGIN, y: h - sz - MARGIN };
-    case 'br': default: return { x: w - sz - MARGIN, y: h - sz - MARGIN };
+    case 'tl': return { x: MARGIN, y: MARGIN + 60 }; // clear header
+    case 'tr': return { x: w - TIMER_SIZE - MARGIN, y: MARGIN + 60 };
+    case 'bl': return { x: MARGIN, y: h - TIMER_SIZE - BOTTOM_NAV_HEIGHT - MARGIN };
+    case 'br': default:
+      return { x: w - TIMER_SIZE - MARGIN, y: h - TIMER_SIZE - BOTTOM_NAV_HEIGHT - MARGIN };
   }
 }
 
-function snapCorner(x, y) {
+function snapToCorner(x, y) {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const isRight = x > w / 2;
-  const isBottom = y > h / 2;
+  const isRight = x + TIMER_SIZE / 2 > w / 2;
+  const isBottom = y + TIMER_SIZE / 2 > h / 2;
   if (!isRight && !isBottom) return 'tl';
   if (isRight && !isBottom) return 'tr';
   if (!isRight && isBottom) return 'bl';
@@ -40,7 +42,6 @@ const AdvancedTimer = () => {
   const startPosRef = useRef({ x: null, y: null });
   const posRef = useRef({ x: 0, y: 0 });
 
-  // Apply position with optional transition
   const applyPos = (x, y, animated = false) => {
     if (!timerRef.current) return;
     timerRef.current.style.transition = animated ? 'transform 0.2s ease-out' : 'none';
@@ -48,35 +49,34 @@ const AdvancedTimer = () => {
     posRef.current = { x, y };
   };
 
-  // Load saved corner on mount
+  // Load saved corner and reposition on resize
   useEffect(() => {
-    const savedCorner = localStorage.getItem(CORNER_KEY) || 'br';
-    const pos = getCornerPos(savedCorner);
-    applyPos(pos.x, pos.y, false);
+    const place = () => {
+      const savedCorner = localStorage.getItem(CORNER_KEY) || 'br';
+      const pos = getCornerPos(savedCorner);
+      applyPos(pos.x, pos.y, false);
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
   }, []);
 
   // Timer tick
   useEffect(() => {
-    let interval = null;
-    if (isActive) {
-      interval = setInterval(() => {
-        setSeconds(s => {
-          if (mode === 'timer') {
-            if (s <= 1) { clearInterval(interval); setIsActive(false); playTacticalAlarm(); return 0; }
-            return s - 1;
-          }
-          return s + 1;
-        });
-      }, 1000);
-    }
+    if (!isActive) return;
+    const interval = setInterval(() => {
+      setSeconds(s => {
+        if (mode === 'timer') {
+          if (s <= 1) { clearInterval(interval); setIsActive(false); playTacticalAlarm(); return 0; }
+          return s - 1;
+        }
+        return s + 1;
+      });
+    }, 1000);
     return () => clearInterval(interval);
   }, [isActive, mode]);
 
-  const formatTime = (totalSeconds) => {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const setTimerPreset = (secs) => {
     setMode('timer');
@@ -88,31 +88,29 @@ const AdvancedTimer = () => {
 
   const handlePointerDown = (e) => {
     draggingRef.current = false;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    startPosRef.current = { x: clientX - posRef.current.x, y: clientY - posRef.current.y };
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    startPosRef.current = { x: cx - posRef.current.x, y: cy - posRef.current.y };
     if (timerRef.current) timerRef.current.style.transition = 'none';
   };
 
   const handlePointerMove = (e) => {
     if (startPosRef.current.x === null) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    let newX = clientX - startPosRef.current.x;
-    let newY = clientY - startPosRef.current.y;
-
-    if (Math.abs(newX - posRef.current.x) > 5 || Math.abs(newY - posRef.current.y) > 5) {
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    let nx = cx - startPosRef.current.x;
+    let ny = cy - startPosRef.current.y;
+    if (Math.abs(nx - posRef.current.x) > 5 || Math.abs(ny - posRef.current.y) > 5) {
       draggingRef.current = true;
     }
-
-    newX = Math.max(0, Math.min(newX, window.innerWidth - 56));
-    newY = Math.max(0, Math.min(newY, window.innerHeight - 56));
-    applyPos(newX, newY, false);
+    nx = Math.max(MARGIN, Math.min(nx, window.innerWidth - TIMER_SIZE - MARGIN));
+    ny = Math.max(MARGIN, Math.min(ny, window.innerHeight - TIMER_SIZE - MARGIN));
+    applyPos(nx, ny, false);
   };
 
   const handlePointerUp = () => {
     if (draggingRef.current) {
-      const corner = snapCorner(posRef.current.x, posRef.current.y);
+      const corner = snapToCorner(posRef.current.x, posRef.current.y);
       const pos = getCornerPos(corner);
       applyPos(pos.x, pos.y, true);
       localStorage.setItem(CORNER_KEY, corner);
@@ -120,7 +118,7 @@ const AdvancedTimer = () => {
     startPosRef.current = { x: null, y: null };
   };
 
-  const toggleExpand = () => {
+  const handleClick = () => {
     if (!draggingRef.current) setIsExpanded(v => !v);
     draggingRef.current = false;
   };
@@ -128,59 +126,85 @@ const AdvancedTimer = () => {
   const alertRed = isActive && mode === 'timer' && seconds <= 10;
 
   return (
-    <div
-      ref={timerRef}
-      className="fixed top-0 left-0 z-[100] flex flex-col items-center"
-      style={{ touchAction: 'none' }}
-    >
+    <>
+      {/* Expanded sheet modal */}
       {isExpanded && (
-        <div className="absolute bottom-16 -right-16 sm:right-0 bg-slate-900 border border-slate-700 rounded-2xl p-3 shadow-2xl shadow-black/80 w-52 animate-fade-in-up">
-          <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-700">
-            <span className="text-xs font-bold text-slate-400 uppercase">
-              {mode === 'stopwatch' ? 'Cronómetro' : 'Temporizador'}
-            </span>
-            <button
-              onClick={() => {
-                const next = mode === 'stopwatch' ? 'timer' : 'stopwatch';
-                setMode(next);
-                setIsActive(false);
-                setSeconds(next === 'timer' ? initialTimerSeconds : 0);
-              }}
-              className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300 hover:text-white border border-slate-700"
-            >
-              Cambiar
-            </button>
-          </div>
-          <div className="flex justify-center gap-4 mb-3">
-            <button
-              onClick={() => setIsActive(v => !v)}
-              className={`p-3 rounded-full ${isActive ? 'bg-accent-600/20 text-accent-500' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
-            >
-              {isActive ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-            </button>
-            <button
-              onClick={() => { setIsActive(false); setSeconds(mode === 'timer' ? initialTimerSeconds : 0); }}
-              className="p-3 rounded-full bg-slate-800 text-slate-300 hover:text-white"
-            >
-              <RotateCcw size={20} />
-            </button>
-          </div>
-          {mode === 'timer' && (
-            <div className="grid grid-cols-3 gap-2">
-              {[30, 60, 90, 120, 180, 240].map(secs => (
+        <div
+          className="fixed inset-0 z-[99] bg-black/60 backdrop-blur-sm flex items-end justify-center p-4 animate-fade-in"
+          onClick={() => setIsExpanded(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl mb-20 animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-700">
+              <span className="text-sm font-bold text-white uppercase tracking-wider">
+                {mode === 'stopwatch' ? 'Cronómetro' : 'Temporizador'}
+              </span>
+              <div className="flex gap-2">
                 <button
-                  key={secs}
-                  onClick={() => setTimerPreset(secs)}
-                  className="px-1 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] font-bold text-slate-300 border border-slate-700 hover:border-accent-500 transition"
+                  onClick={() => {
+                    const next = mode === 'stopwatch' ? 'timer' : 'stopwatch';
+                    setMode(next);
+                    setIsActive(false);
+                    setSeconds(next === 'timer' ? initialTimerSeconds : 0);
+                  }}
+                  className="text-xs bg-slate-800 px-3 py-1.5 rounded text-slate-300 hover:text-white border border-slate-700 transition"
                 >
-                  {Math.floor(secs / 60) > 0 ? `${Math.floor(secs / 60)}m${secs % 60 > 0 ? secs % 60 : ''}` : `${secs}s`}
+                  Cambiar
                 </button>
-              ))}
+                <button onClick={() => setIsExpanded(false)} className="p-1.5 text-slate-400 hover:text-white transition">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
-          )}
+
+            <div className={`text-center text-6xl font-bold font-mono mb-4 ${alertRed ? 'text-red-500' : 'text-white'}`}>
+              {formatTime(seconds)}
+            </div>
+
+            <div className="flex justify-center gap-3 mb-4">
+              <button
+                onClick={() => setIsActive(v => !v)}
+                className={`p-4 rounded-full transition ${isActive ? 'bg-accent-600/20 text-accent-500 border-2 border-accent-500/40' : 'bg-accent-600 text-black hover:bg-accent-500'}`}
+                aria-label={isActive ? 'Pausar' : 'Iniciar'}
+              >
+                {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+              </button>
+              <button
+                onClick={() => { setIsActive(false); setSeconds(mode === 'timer' ? initialTimerSeconds : 0); }}
+                className="p-4 rounded-full bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+                aria-label="Reiniciar"
+              >
+                <RotateCcw size={24} />
+              </button>
+            </div>
+
+            {mode === 'timer' && (
+              <>
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 text-center">Presets</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[30, 60, 90, 120, 180, 240].map(secs => (
+                    <button
+                      key={secs}
+                      onClick={() => setTimerPreset(secs)}
+                      className="px-2 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold text-slate-300 border border-slate-700 hover:border-accent-500 transition active:scale-95"
+                    >
+                      {Math.floor(secs / 60) > 0 ? `${Math.floor(secs / 60)}m${secs % 60 > 0 ? secs % 60 : ''}` : `${secs}s`}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
+
+      {/* Floating button */}
       <div
+        ref={timerRef}
+        className="fixed top-0 left-0 z-[98]"
+        style={{ touchAction: 'none' }}
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}
         onMouseUp={handlePointerUp}
@@ -188,28 +212,31 @@ const AdvancedTimer = () => {
         onTouchStart={handlePointerDown}
         onTouchMove={handlePointerMove}
         onTouchEnd={handlePointerUp}
-        onClick={toggleExpand}
-        className={`w-14 h-14 rounded-full bg-slate-800 border-2 ${
-          alertRed
-            ? 'border-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]'
-            : isActive
-            ? 'border-accent-500 shadow-[0_0_15px_rgb(var(--accent-500)/0.3)]'
-            : 'border-slate-600'
-        } flex flex-col items-center justify-center shadow-xl cursor-grab active:cursor-grabbing backdrop-blur-md select-none`}
+        onClick={handleClick}
       >
-        <Timer
-          size={18}
-          className={alertRed ? 'text-red-500' : isActive ? 'text-accent-500' : 'text-slate-400'}
-          style={{ pointerEvents: 'none' }}
-        />
-        <span
-          className={`text-[10px] font-bold font-mono leading-tight mt-0.5 ${alertRed ? 'text-red-500' : 'text-white'}`}
-          style={{ pointerEvents: 'none' }}
+        <div
+          className={`w-14 h-14 rounded-full bg-slate-900 border-2 flex flex-col items-center justify-center shadow-xl cursor-grab active:cursor-grabbing select-none transition-shadow ${
+            alertRed
+              ? 'border-red-500 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.6)]'
+              : isActive
+              ? 'border-accent-500 shadow-[0_0_15px_rgb(var(--accent-500)/0.3)]'
+              : 'border-slate-600'
+          }`}
         >
-          {formatTime(seconds)}
-        </span>
+          <Timer
+            size={16}
+            className={alertRed ? 'text-red-500' : isActive ? 'text-accent-500' : 'text-slate-400'}
+            style={{ pointerEvents: 'none' }}
+          />
+          <span
+            className={`text-[10px] font-bold font-mono leading-tight mt-0.5 ${alertRed ? 'text-red-500' : 'text-white'}`}
+            style={{ pointerEvents: 'none' }}
+          >
+            {formatTime(seconds)}
+          </span>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

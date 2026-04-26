@@ -36,6 +36,7 @@ export default function Modal({
   size = 'md',
   closeOnBackdrop = true,
   closeOnEscape = true,
+  align = 'bottom', // 'bottom' = sheet from bottom on mobile, 'center' = always centered
 }) {
   const contentRef = useRef(null);
 
@@ -70,7 +71,7 @@ export default function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+      className={`fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex justify-center animate-fade-in ${align === 'center' ? 'items-center p-4' : 'items-end sm:items-center p-0 sm:p-4'}`}
       onClick={closeOnBackdrop ? onClose : undefined}
     >
       <div

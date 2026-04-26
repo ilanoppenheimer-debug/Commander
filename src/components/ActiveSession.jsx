@@ -44,9 +44,9 @@ export const FinishMissionModal = ({
   const isEmpty = !analysis || (analysis.totalSets === 0 && !hasVolume);
 
   return (
-    <Modal isOpen onClose={onCancel} size="md">
+    <Modal isOpen onClose={onCancel} size="md" align="center">
       <div
-        className="bg-slate-900 w-full max-h-[92vh] rounded-t-2xl sm:rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
+        className="bg-slate-900 w-full max-h-[90vh] rounded-2xl border border-accent-500/50 shadow-[0_0_50px_rgb(var(--accent-500)/0.2)] flex flex-col"
       >
         {/* Sticky header */}
         <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
@@ -185,12 +185,36 @@ export default function ActiveSession({
     return null;
   };
 
-  const getSuggestion = (baseWeight, isPhaseEnabled) => {
+  const getSuggestion = (exerciseName, isPhaseEnabled) => {
     if (!mode || mode.id === "standard" || !isPhaseEnabled) return null;
-    if (!baseWeight || baseWeight <= 0) return `Fase: ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
+    if (!exerciseName) return null;
+
+    let baseWeight = 0;
+    if (Array.isArray(history)) {
+      for (const session of history) {
+        const pastEx = (session?.exercises || []).find(
+          (e) => String(e?.name || "").toLowerCase() === String(exerciseName).toLowerCase()
+        );
+        if (pastEx && Array.isArray(pastEx.sets) && pastEx.sets.length > 0) {
+          const topSet = pastEx.sets.reduce((max, s) => {
+            const w = parseFloat(s?.weight) || 0;
+            return w > (parseFloat(max?.weight) || 0) ? s : max;
+          }, pastEx.sets[0]);
+          if (parseFloat(topSet?.weight) > 0) {
+            baseWeight = parseFloat(topSet.weight);
+            break;
+          }
+        }
+      }
+    }
+
+    if (baseWeight === 0) {
+      return `Fase: ${mode.sets}×${mode.repRange} @ RPE ${mode.rpe} (sin historial)`;
+    }
+
     const wMod = parseFloat(mode.weightMod) || 1.0;
-    const targetWeight = (parseFloat(baseWeight) * wMod).toFixed(1);
-    return `Sug: ${targetWeight}${barUnit} | ${mode.sets}x${mode.repRange} @ RPE ${mode.rpe}`;
+    const targetWeight = Math.round(baseWeight * wMod * 2) / 2;
+    return `Sug: ${targetWeight}${barUnit} | ${mode.sets}×${mode.repRange} @ RPE ${mode.rpe}`;
   };
 
   const fetchBriefing = async () => {
@@ -427,7 +451,7 @@ export default function ActiveSession({
           const isSupersetBottom = ex.supersetId != null && exercises[index - 1]?.supersetId === ex.supersetId;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
           const isPhaseEnabledForEx = isGlobalDeload || phaseEnabledExIds.includes(ex.id);
-          const suggestion   = getSuggestion(safeSets[0]?.weight || 0, isPhaseEnabledForEx);
+          const suggestion   = getSuggestion(ex.name, isPhaseEnabledForEx);
           const details      = getExerciseDetails(ex.name);
           const prevPerformance = getPreviousPerformance(ex.name);
 
@@ -542,8 +566,12 @@ export default function ActiveSession({
                         <input type="number" value={s.weight === 0 ? "" : s.weight} onChange={(e) => storeUpdateSet(ex.id, i, "weight", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold" placeholder="0" />
                         <input type="number" value={s.reps === 0 ? "" : s.reps} onChange={(e) => storeUpdateSet(ex.id, i, "reps", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white" placeholder="0" />
                         <input type="number" value={s.rpe === 0 ? "" : s.rpe} onChange={(e) => storeUpdateSet(ex.id, i, "rpe", e.target.value)} className="col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs" placeholder="-" />
-                        <button onClick={() => storeRemoveSet(ex.id, i)} className="col-span-1 text-slate-700 hover:text-red-500 flex items-center justify-center min-h-[44px]">
-                          <X size={16} />
+                        <button
+                          onClick={() => storeRemoveSet(ex.id, i)}
+                          className="col-span-1 text-slate-600 hover:text-red-500 active:text-red-600 flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg active:bg-red-900/20 transition-colors"
+                          aria-label={`Eliminar serie ${i + 1}`}
+                        >
+                          <X size={20} strokeWidth={2.5} />
                         </button>
                       </div>
                     );
