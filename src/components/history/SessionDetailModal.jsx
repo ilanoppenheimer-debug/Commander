@@ -19,7 +19,7 @@ const SET_TYPE_COLORS = {
   normal:  'text-slate-400',
 };
 
-export default function SessionDetailModal({ session, barUnit = 'kg', onClose, onEdit, onDeleted, onOpenTrend }) {
+export default function SessionDetailModal({ session, barUnit = 'kg', onClose, onEdit, onDeleted, onOpenTrend, onGoToRoutines }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -68,6 +68,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
     };
     await saveRoutine(newRoutine);
     onClose();
+    onGoToRoutines?.(newRoutine.name);
   };
 
   return (

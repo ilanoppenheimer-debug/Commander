@@ -41,6 +41,8 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
   const totalSets = exercises.reduce((sum, ex) => sum + (Array.isArray(ex?.sets) ? ex.sets.length : 0), 0);
 
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = useRef(null);
+  useClickOutside(menuRef, () => setMenuOpen(false));
 
   return (
     <div
@@ -62,7 +64,7 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
             </span>
           </div>
         </div>
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div ref={menuRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setMenuOpen(v => !v)}
             className="p-1.5 text-slate-600 hover:text-white rounded-lg hover:bg-slate-700 transition opacity-0 group-hover:opacity-100"

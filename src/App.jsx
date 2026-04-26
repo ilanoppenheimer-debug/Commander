@@ -975,6 +975,7 @@ function AppMain() {
             onEdit={(s) => { setDetailSession(null); setEditingSession(s); }}
             onDeleted={() => setDetailSession(null)}
             onOpenTrend={(name) => { setDetailSession(null); setTrendExercise(name); }}
+            onGoToRoutines={(name) => { setDetailSession(null); setActiveTab('routines'); showNotify(`Plantilla creada: ${name}`, 'success'); }}
           />
         )}
 
