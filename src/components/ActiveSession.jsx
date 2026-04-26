@@ -44,7 +44,7 @@ export const FinishMissionModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm animate-fade-in flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md animate-fade-in flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onCancel}
     >
       <div

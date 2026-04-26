@@ -60,7 +60,7 @@ const ExerciseSelectorModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
+      className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-md flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fade-in"
       onClick={onClose}
     >
       <div
