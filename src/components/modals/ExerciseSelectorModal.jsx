@@ -1,17 +1,73 @@
-import React, { useMemo, useState } from "react";
-import { Dumbbell, X, Search, Plus, Trash2, ChevronDown } from "lucide-react";
-import { DEFAULT_EXERCISE_DB } from "../../constants/gymConstants";
+import React, { useMemo, useState, useRef, useCallback } from "react";
+import { Dumbbell, X, Search, Plus, Trash2, Star } from "lucide-react";
+import { DEFAULT_EXERCISE_DB, EXERCISE_TO_MUSCLE } from "../../constants/gymConstants";
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
+import CreateExerciseModal from "./CreateExerciseModal";
+import { toggleFavorite, isFavorite, saveExerciseMeta } from "../../constants/exerciseMetadata";
 
-const EQUIPMENT_OPTIONS = [
-  { id: 'barbell',    label: 'Barra' },
-  { id: 'dumbbell',  label: 'Mancuernas' },
-  { id: 'cable',     label: 'Polea' },
-  { id: 'machine',   label: 'Máquina' },
-  { id: 'bodyweight',label: 'Peso Corporal' },
-  { id: 'other',     label: 'Otro' },
+const TABS = [
+  { id: 'recent',    label: 'Recientes' },
+  { id: 'favorites', label: 'Favoritos' },
+  { id: 'chest',     label: 'Pecho' },
+  { id: 'back',      label: 'Espalda' },
+  { id: 'legs',      label: 'Piernas' },
+  { id: 'shoulders', label: 'Hombros' },
+  { id: 'arms',      label: 'Brazos' },
+  { id: 'core',      label: 'Core' },
+  { id: 'all',       label: 'Todos' },
 ];
+
+const MUSCLE_TAB_MAP = {
+  chest: 'chest', back: 'back', legs: ['legs', 'glutes', 'hamstrings'],
+  shoulders: 'shoulders', arms: 'arms', core: 'core',
+};
+
+function useLongPress(callback, ms = 500) {
+  const timerRef = useRef();
+  const cancel = () => clearTimeout(timerRef.current);
+  return {
+    onMouseDown: () => { timerRef.current = setTimeout(callback, ms); },
+    onMouseUp: cancel,
+    onMouseLeave: cancel,
+    onTouchStart: (e) => { e.preventDefault(); timerRef.current = setTimeout(callback, ms); },
+    onTouchEnd: cancel,
+  };
+}
+
+function ExerciseRow({ ex, details, fav, isCustom, onSelect, onFavToggle, onRemove, onLongPress }) {
+  const longPress = useLongPress(onLongPress);
+  return (
+    <div
+      onClick={() => onSelect(ex)}
+      className="flex items-center justify-between p-3 hover:bg-slate-800 rounded-xl cursor-pointer transition-colors group"
+      {...longPress}
+    >
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className={`p-2 rounded-lg border shrink-0 ${details.bg} ${details.border} ${details.color}`}>
+          {details.icon}
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className="text-slate-200 font-medium text-sm truncate">{ex}</span>
+          <span className={`text-[9px] uppercase font-bold tracking-widest opacity-80 ${details.color}`}>{details.label}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0 ml-2">
+        <button
+          onClick={e => onFavToggle(e, ex)}
+          className={`p-1.5 transition ${fav ? 'text-amber-400' : 'text-slate-700 hover:text-slate-500 opacity-0 group-hover:opacity-100'}`}
+        >
+          <Star size={14} fill={fav ? 'currentColor' : 'none'} />
+        </button>
+        {isCustom && (
+          <button onClick={e => { e.stopPropagation(); onRemove(e, ex); }} className="p-1.5 text-slate-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const ExerciseSelectorModal = ({
   onClose,
@@ -20,161 +76,191 @@ const ExerciseSelectorModal = ({
   addCustomExercise,
   removeCustomExercise,
   setCustomExercises,
+  history = [],
 }) => {
   const [search, setSearch] = useState("");
-  const [newEquipment, setNewEquipment] = useState("barbell");
+  const [activeTab, setActiveTab] = useState('recent');
+  const [favVersion, setFavVersion] = useState(0); // force re-render on favorite toggle
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingExName, setEditingExName] = useState(null);
 
-  const allExercises = useMemo(() => {
+  const allExerciseNames = useMemo(() => {
     const safeCustom = Array.isArray(customExercises) ? customExercises.filter(Boolean) : [];
     const deduped = [...DEFAULT_EXERCISE_DB, ...safeCustom].filter((e, _, arr) => {
       const lower = e.toLowerCase();
       return arr.findIndex(x => x.toLowerCase() === lower) === arr.indexOf(e);
     });
-    return [...new Set(deduped)].sort().filter(
-      (e) => e && String(e).toLowerCase().includes((search || "").toLowerCase())
-    );
-  }, [search, customExercises]);
+    return [...new Set(deduped)].sort();
+  }, [customExercises]);
 
-  const handleAddCustom = () => {
-    const newEx = search.trim();
-    if (!newEx || allExercises.some(e => e.toLowerCase() === newEx.toLowerCase())) return;
-    if (addCustomExercise) {
-      addCustomExercise(newEx);
-    } else if (setCustomExercises) {
-      setCustomExercises((prev) => [...(Array.isArray(prev) ? prev : []), newEx]);
+  // Recent: exercises used in last 4 weeks
+  const recentExercises = useMemo(() => {
+    if (!Array.isArray(history) || history.length === 0) return [];
+    const cutoff = Date.now() - 28 * 86400000;
+    const seen = new Map();
+    const sorted = [...history].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    for (const session of sorted) {
+      if (new Date(session.completedAt).getTime() < cutoff) continue;
+      for (const ex of (session.exercises || [])) {
+        if (ex?.name && !seen.has(ex.name)) seen.set(ex.name, session.completedAt);
+      }
     }
-    onSelect(newEx);
-  };
+    return [...seen.keys()].filter(n => allExerciseNames.includes(n));
+  }, [history, allExerciseNames]);
+
+  const filteredExercises = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    // When searching, bypass tab and search all
+    if (q) return allExerciseNames.filter(e => e.toLowerCase().includes(q));
+
+    switch (activeTab) {
+      case 'recent': return recentExercises.length ? recentExercises : allExerciseNames.slice(0, 20);
+      case 'favorites': return allExerciseNames.filter(e => isFavorite(e));
+      case 'all': return allExerciseNames;
+      default: {
+        const expected = MUSCLE_TAB_MAP[activeTab];
+        if (!expected) return allExerciseNames;
+        const expectedArr = Array.isArray(expected) ? expected : [expected];
+        return allExerciseNames.filter(e => {
+          const m = EXERCISE_TO_MUSCLE[e];
+          return m && expectedArr.includes(m);
+        });
+      }
+    }
+  }, [search, activeTab, allExerciseNames, recentExercises, favVersion]);
 
   const removeCustom = (e, exName) => {
     e.stopPropagation();
-    if (removeCustomExercise) {
-      removeCustomExercise(exName);
-    } else if (setCustomExercises) {
-      setCustomExercises((prev) => Array.isArray(prev) ? prev.filter((ex) => ex !== exName) : []);
-    }
+    if (removeCustomExercise) removeCustomExercise(exName);
+    else if (setCustomExercises) setCustomExercises(prev => Array.isArray(prev) ? prev.filter(ex => ex !== exName) : []);
   };
 
-  const exactMatch = allExercises.find(
-    (e) => e && String(e).toLowerCase() === search.trim().toLowerCase()
-  );
+  const handleFavToggle = useCallback((e, exName) => {
+    e.stopPropagation();
+    toggleFavorite(exName);
+    setFavVersion(v => v + 1);
+  }, []);
+
+  const handleCreateSave = (name, meta) => {
+    setShowCreateModal(false);
+    setEditingExName(null);
+    if (!meta) { onSelect(name); return; }
+    if (addCustomExercise) addCustomExercise(name);
+    else if (setCustomExercises) setCustomExercises(prev => [...(Array.isArray(prev) ? prev : []), name]);
+    onSelect(name);
+  };
+
+  const handleEditSave = (name, meta) => {
+    setEditingExName(null);
+    setShowCreateModal(false);
+    setFavVersion(v => v + 1);
+  };
 
   return (
-    <Modal isOpen onClose={onClose} size="2xl">
-      <div
-        className="bg-slate-900 w-full h-[85vh] sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl"
-      >
-        {/* Sticky header */}
-        <div className="shrink-0 border-b border-slate-800">
-          <div className="p-4 flex justify-between items-center">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Dumbbell className="text-accent-500" size={20} /> Seleccionar Ejercicio
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition"
-            >
-              <X size={22} />
-            </button>
-          </div>
-          <div className="px-4 pb-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input
-                autoFocus
-                type="text"
-                placeholder="Buscar ejercicio..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pl-9 pr-4 text-white text-sm focus:outline-none focus:border-accent-500 transition-colors placeholder-slate-600"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Scrollable list */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-2 overscroll-contain">
-          {allExercises.length > 0 ? (
-            <div className="space-y-0.5">
-              {allExercises.map((ex) => {
-                const isCustom = Array.isArray(customExercises) && customExercises.includes(ex);
-                const details = getExerciseDetails(ex);
-                return (
-                  <div
-                    key={ex}
-                    onClick={() => onSelect(ex)}
-                    className="flex items-center justify-between p-3 hover:bg-slate-800 rounded-xl cursor-pointer transition-colors group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}>
-                        {details.icon}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-slate-200 font-medium text-sm">{ex}</span>
-                        <span className={`text-[9px] uppercase font-bold tracking-widest opacity-80 ${details.color}`}>
-                          {details.label}
-                        </span>
-                      </div>
-                    </div>
-                    {isCustom && (
-                      <button
-                        onClick={(e) => removeCustom(e, ex)}
-                        className="p-2 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Eliminar personalizado"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : search.trim() ? (
-            <div className="text-center py-10 px-4">
-              <p className="text-slate-500 mb-2 text-sm">No se encontró <span className="text-white font-bold">"{search}"</span></p>
-              <p className="text-slate-600 text-xs mb-6">Podés agregarlo como ejercicio personalizado</p>
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-3 text-left max-w-xs mx-auto">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Agregar "{search.trim()}"</p>
-                <div className="relative">
-                  <select
-                    value={newEquipment}
-                    onChange={(e) => setNewEquipment(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white appearance-none focus:outline-none focus:border-accent-500"
-                  >
-                    {EQUIPMENT_OPTIONS.map(eq => <option key={eq.id} value={eq.id}>{eq.label}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                </div>
+    <>
+      <Modal isOpen onClose={onClose} size="2xl">
+        <div className="bg-slate-900 w-full h-[85vh] sm:max-h-[82vh] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl">
+          {/* Header */}
+          <div className="shrink-0 border-b border-slate-800">
+            <div className="p-4 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Dumbbell className="text-accent-500" size={20} /> Seleccionar Ejercicio
+              </h2>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={handleAddCustom}
-                  className="w-full py-2.5 bg-accent-600 hover:bg-accent-500 text-black font-bold text-sm rounded-lg flex items-center justify-center gap-2 transition"
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-accent-600/10 border border-accent-500/40 text-accent-400 text-xs font-bold rounded-lg hover:bg-accent-600/20 transition"
                 >
-                  <Plus size={16} /> Crear ejercicio
+                  <Plus size={12} /> Crear
+                </button>
+                <button onClick={onClose} className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                  <X size={20} />
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-10 text-slate-600 text-sm">Sin ejercicios</div>
-          )}
-        </div>
-
-        {/* Sticky footer: quick-add when there's search with no exact match but results exist */}
-        {search.trim() && !exactMatch && allExercises.length > 0 && (
-          <div className="shrink-0 border-t border-slate-800 p-3 bg-slate-900/90">
-            <button
-              onClick={handleAddCustom}
-              className="w-full py-2.5 bg-accent-600/10 border border-dashed border-accent-500/50 text-accent-500 rounded-xl font-bold text-sm flex justify-center items-center gap-2 hover:bg-accent-600/20 transition-colors"
-            >
-              <Plus size={16} /> Añadir "{search.trim()}" a mi Repertorio
-            </button>
+            {/* Search */}
+            <div className="px-4 pb-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Buscar ejercicio..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 pl-8 pr-4 text-white text-sm focus:outline-none focus:border-accent-500 placeholder-slate-600"
+                />
+              </div>
+            </div>
+            {/* Tabs (only when not searching) */}
+            {!search.trim() && (
+              <div className="flex gap-1 px-3 pb-2 overflow-x-auto">
+                {TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold uppercase whitespace-nowrap transition-colors shrink-0 ${activeTab === tab.id ? 'bg-accent-600 text-black' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
-        <div className="shrink-0 px-4 py-2 border-t border-slate-800/50 text-center">
-          <span className="text-[10px] text-slate-600">{allExercises.length} ejercicios</span>
+          {/* List */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 overscroll-contain">
+            {filteredExercises.length > 0 ? (
+              <div className="space-y-0.5">
+                {filteredExercises.map(ex => {
+                  const isCustom = Array.isArray(customExercises) && customExercises.includes(ex);
+                  const details = getExerciseDetails(ex);
+                  const fav = isFavorite(ex);
+                  return (
+                    <ExerciseRow
+                      key={ex}
+                      ex={ex}
+                      details={details}
+                      fav={fav}
+                      isCustom={isCustom}
+                      onSelect={onSelect}
+                      onFavToggle={handleFavToggle}
+                      onRemove={removeCustom}
+                      onLongPress={() => { setEditingExName(ex); setShowCreateModal(true); }}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-10 px-4 text-slate-500 text-sm">
+                {search.trim()
+                  ? <><span className="block mb-3">No se encontró "<span className="text-white font-bold">{search}</span>"</span>
+                      <button onClick={() => setShowCreateModal(true)} className="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-black text-xs font-bold rounded-xl transition">
+                        <Plus size={12} className="inline mr-1" /> Crear "{search.trim()}"
+                      </button></>
+                  : activeTab === 'favorites' ? 'No hay favoritos aún. Toca ★ en un ejercicio.'
+                  : activeTab === 'recent' ? 'Sin sesiones recientes.'
+                  : 'Sin ejercicios en este grupo.'
+                }
+              </div>
+            )}
+          </div>
+
+          <div className="shrink-0 px-4 py-2 border-t border-slate-800/50 text-center">
+            <span className="text-[10px] text-slate-600">{filteredExercises.length} ejercicios · tap largo para editar</span>
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      {showCreateModal && (
+        <CreateExerciseModal
+          existingName={editingExName}
+          allExerciseNames={allExerciseNames}
+          onSave={editingExName ? handleEditSave : handleCreateSave}
+          onClose={() => { setShowCreateModal(false); setEditingExName(null); }}
+        />
+      )}
+    </>
   );
 };
 

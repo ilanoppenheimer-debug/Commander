@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   Target,
   Loader2,
@@ -12,6 +12,8 @@ import {
   Shield,
   AlertTriangle,
   Sparkles,
+  Check,
+  Timer,
 } from "lucide-react";
 
 import InputGroup from "./ui/InputGroup";
@@ -139,8 +141,9 @@ export default function ActiveSession({
   const storeRemoveEx    = useSessionStore(s => s.removeExercise);
   const storeAddSet      = useSessionStore(s => s.addSet);
   const storeUpdateSet   = useSessionStore(s => s.updateSet);
-  const storeRemoveSet   = useSessionStore(s => s.removeSet);
-  const storeCycleType   = useSessionStore(s => s.cycleSetType);
+  const storeRemoveSet         = useSessionStore(s => s.removeSet);
+  const storeToggleCompleted   = useSessionStore(s => s.toggleSetCompleted);
+  const storeCycleType         = useSessionStore(s => s.cycleSetType);
   const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
   const storeTogglePhase = useSessionStore(s => s.togglePhaseForEx);
   const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
@@ -296,6 +299,30 @@ export default function ActiveSession({
     storeAddSet(exId, nextSet);
   };
 
+  const isLastInSupersetGroup = useCallback((exercise, allExercises) => {
+    if (!exercise?.supersetId) return true;
+    const group = (Array.isArray(allExercises) ? allExercises : []).filter(e => e?.supersetId === exercise.supersetId);
+    if (group.length <= 1) return true;
+    return group[group.length - 1]?.id === exercise.id;
+  }, []);
+
+  const handleCompleteSet = useCallback((ex, setIdx) => {
+    const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
+    const wasCompleted = safeSets[setIdx]?.completed;
+    storeToggleCompleted(ex.id, setIdx);
+
+    if (!wasCompleted) {
+      if (navigator.vibrate) navigator.vibrate(50);
+      // Trigger rest timer if this exercise is last in its superset group
+      if (isLastInSupersetGroup(ex, exercises)) {
+        const restSecs = ex.restSeconds ?? 90;
+        window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
+          detail: { seconds: restSecs, exerciseName: ex.name }
+        }));
+      }
+    }
+  }, [storeToggleCompleted, isLastInSupersetGroup, exercises]);
+
   const isGlobalDeload = mode?.label?.toLowerCase().includes("descarga");
 
   if (!session) return null;
@@ -319,6 +346,7 @@ export default function ActiveSession({
           customExercises={customExercises}
           addCustomExercise={addCustomExercise}
           removeCustomExercise={removeCustomExercise}
+          history={history}
         />
       )}
 
@@ -449,6 +477,13 @@ export default function ActiveSession({
           if (!ex) return null;
           const isSupersetTop    = ex.supersetId != null && exercises[index + 1]?.supersetId === ex.supersetId;
           const isSupersetBottom = ex.supersetId != null && exercises[index - 1]?.supersetId === ex.supersetId;
+          const isInSuperset     = isSupersetTop || isSupersetBottom;
+          // Compute group size and position for badge/label
+          const groupExercises   = ex.supersetId ? exercises.filter(e => e?.supersetId === ex.supersetId) : [];
+          const groupSize        = groupExercises.length;
+          const groupPos         = ex.supersetId ? groupExercises.findIndex(e => e?.id === ex.id) + 1 : 0;
+          const isGroupFirst     = isSupersetTop && !isSupersetBottom;
+          const groupBadge       = groupSize === 2 ? 'DUETO' : groupSize === 3 ? 'TRISET' : groupSize >= 4 ? `GIANT SET (${groupSize})` : null;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
           const isPhaseEnabledForEx = isGlobalDeload || phaseEnabledExIds.includes(ex.id);
           const suggestion   = getSuggestion(ex.name, isPhaseEnabledForEx);
@@ -456,17 +491,25 @@ export default function ActiveSession({
           const prevPerformance = getPreviousPerformance(ex.name);
 
           return (
-            <div key={ex.id || index} className={`relative pl-4 ${(isSupersetTop || isSupersetBottom) ? 'lg:col-span-2' : ''}`}>
-              {(isSupersetTop || isSupersetBottom) && (
-                <div className={`absolute left-0 w-1 bg-accent-500 rounded-l ${isSupersetTop && isSupersetBottom ? "top-0 bottom-0" : isSupersetTop ? "top-1/2 bottom-[-10px]" : "top-[-10px] bottom-1/2"}`}></div>
+            <div key={ex.id || index} className={`relative pl-4 ${isInSuperset ? 'lg:col-span-2' : ''}`}>
+              {isInSuperset && (
+                <div className={`absolute left-0 w-1 bg-accent-500 ${isSupersetTop && isSupersetBottom ? "top-0 bottom-0" : isSupersetTop ? "top-1/2 bottom-[-10px]" : "top-[-10px] bottom-1/2"}`}></div>
               )}
-              {(isSupersetTop || isSupersetBottom) && (
+              {isInSuperset && (
                 <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-slate-900 border-2 border-accent-500 rounded-full flex items-center justify-center z-10">
                   <LinkIcon size={8} className="text-accent-500" />
                 </div>
               )}
 
-              <div className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${isSupersetTop || isSupersetBottom ? "border-accent-500/30" : "border-slate-700"} mb-4`}>
+              {isGroupFirst && groupBadge && (
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="bg-accent-900/30 border border-accent-500/40 text-accent-400 text-[10px] uppercase tracking-widest font-bold rounded px-2 py-1">
+                    {groupBadge}
+                  </span>
+                </div>
+              )}
+
+              <div className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${isInSuperset ? "border-accent-500/30" : "border-slate-700"} mb-4`}>
                 <div className="p-3 bg-slate-900/50 flex items-start justify-between border-b border-slate-700">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <div className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center border shrink-0 mt-1 shadow-inner ${details.bg} ${details.border} ${details.color}`}>
@@ -474,13 +517,18 @@ export default function ActiveSession({
                       <span className="text-[8px] font-bold uppercase mt-1.5 leading-none tracking-wider">{details.label}</span>
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col">
-                      <button
-                        onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
-                        className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
-                        title="Cambiar Ejercicio"
-                      >
-                        {ex.name || "Ejercicio Desconocido"}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
+                          className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
+                          title="Cambiar Ejercicio"
+                        >
+                          {ex.name || "Ejercicio Desconocido"}
+                        </button>
+                        {isInSuperset && groupPos > 0 && (
+                          <span className="text-[9px] text-accent-400 font-mono shrink-0">{groupPos}/{groupSize}</span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <div className="relative">
                           <select
@@ -493,6 +541,23 @@ export default function ActiveSession({
                             ))}
                           </select>
                           <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Rest timer badge */}
+                        <div className="relative group/rest">
+                          <button
+                            onClick={() => {
+                              const presets = [30, 60, 90, 120, 180, 240, 300];
+                              const cur = ex.restSeconds ?? 90;
+                              const idx = presets.indexOf(cur);
+                              const next = presets[(idx + 1) % presets.length];
+                              storeUpdateEx(ex.id, { restSeconds: next });
+                            }}
+                            className="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-700 hover:border-accent-500/60 hover:text-accent-400 transition font-mono"
+                            title="Toca para cambiar descanso"
+                          >
+                            <Timer size={10} /> {ex.restSeconds ?? 90}s
+                          </button>
                         </div>
 
                         {mode && mode.id !== "standard" && !isGlobalDeload && (
@@ -552,10 +617,20 @@ export default function ActiveSession({
                   {safeSets.map((s, i) => {
                     if (!s) return null;
                     const setType = Object.values(SET_TYPES).find((t) => t.id === (s.type || "normal")) || SET_TYPES.NORMAL;
+                    const isDone = !!s.completed;
+                    const doneOpacity = isDone ? 'opacity-50' : '';
+                    const doneStrike = isDone ? 'line-through' : '';
                     return (
-                      <div key={i} className={`grid grid-cols-12 gap-2 mb-2 items-center rounded px-1 py-1 ${setType.bg}`}>
-                        <div className="col-span-1 text-center text-xs text-slate-500 font-bold">{i + 1}</div>
-                        <div className="col-span-2 flex justify-center">
+                      <div key={i} className={`grid grid-cols-12 gap-2 mb-2 items-center rounded px-1 py-1 transition-all ${isDone ? 'bg-emerald-900/10' : setType.bg}`}>
+                        {/* Check button replaces # */}
+                        <button
+                          onClick={() => handleCompleteSet(ex, i)}
+                          className={`col-span-1 flex items-center justify-center min-h-[44px] rounded-lg transition-all ${isDone ? 'text-emerald-400 bg-emerald-900/30 border border-emerald-500/40' : 'text-slate-500 bg-slate-900 border border-slate-700 hover:border-accent-500/60 text-xs font-bold'}`}
+                          aria-label={isDone ? `Deshacer serie ${i + 1}` : `Completar serie ${i + 1}`}
+                        >
+                          {isDone ? <Check size={14} strokeWidth={3} /> : <span className="text-[10px] font-bold">{i + 1}</span>}
+                        </button>
+                        <div className={`col-span-2 flex justify-center ${doneOpacity}`}>
                           <button
                             onClick={() => storeCycleType(ex.id, i)}
                             className={`text-[9px] font-bold px-1 py-2 rounded border border-white/10 w-full min-h-[44px] flex items-center justify-center ${setType.color}`}
@@ -563,9 +638,9 @@ export default function ActiveSession({
                             {setType.label || "-"}
                           </button>
                         </div>
-                        <input type="number" value={s.weight === 0 ? "" : s.weight} onChange={(e) => storeUpdateSet(ex.id, i, "weight", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold" placeholder="0" />
-                        <input type="number" value={s.reps === 0 ? "" : s.reps} onChange={(e) => storeUpdateSet(ex.id, i, "reps", e.target.value)} className="col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white" placeholder="0" />
-                        <input type="number" value={s.rpe === 0 ? "" : s.rpe} onChange={(e) => storeUpdateSet(ex.id, i, "rpe", e.target.value)} className="col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs" placeholder="-" />
+                        <input type="number" value={s.weight === 0 ? "" : s.weight} onChange={(e) => storeUpdateSet(ex.id, i, "weight", e.target.value)} className={`col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold ${doneOpacity} ${doneStrike}`} placeholder="0" />
+                        <input type="number" value={s.reps === 0 ? "" : s.reps} onChange={(e) => storeUpdateSet(ex.id, i, "reps", e.target.value)} className={`col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white ${doneOpacity} ${doneStrike}`} placeholder="0" />
+                        <input type="number" value={s.rpe === 0 ? "" : s.rpe} onChange={(e) => storeUpdateSet(ex.id, i, "rpe", e.target.value)} className={`col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs ${doneOpacity}`} placeholder="-" />
                         <button
                           onClick={() => storeRemoveSet(ex.id, i)}
                           className="col-span-1 text-slate-600 hover:text-red-500 active:text-red-600 flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg active:bg-red-900/20 transition-colors"

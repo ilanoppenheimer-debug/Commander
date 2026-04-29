@@ -54,6 +54,23 @@ Verificación manual post-implementación de la fundación de datos.
 - [ ] **10.** Multi-device: modificar en celular, traer última versión en laptop, ver cambios
 - [ ] **16.** Modo offline: backups se guardan pendientes y se suben al volver online
 
+## Bloque 8 — Paso 0b-1: UX de entrenamiento (Paso nuevo)
+
+- [ ] **11.** Botón "✓ Hecho" en serie: tocar completa la serie (fondo verde, check verde), los inputs se ven con opacidad reducida y tachados
+- [ ] **12.** Timer se dispara automáticamente al completar una serie. En superset de A-B-C, solo dispara después de completar un set de C (último del grupo), no de A ni B
+- [ ] **13.** Sonido del timer: 3 beeps ascendentes (660→880→1100 Hz sine), vibración. Pre-alerta suave a los 10s restantes
+- [ ] **14.** Modal pre-sesión: activar toggle en Settings > Apariencia > "Vista previa antes de iniciar". Al tocar ▶ en plantilla abre modal editable con pesos/reps. Editar un peso y tocar Comenzar: la sesión arranca con el peso modificado, la plantilla original no cambia
+- [ ] **15.** Modal pre-sesión permite agregar ejercicio adicional abriendo el selector de ejercicios
+- [ ] **16.** Superset de 3 ejercicios: crear A, B, C consecutivos, vincular A-B y luego B-C. Debe aparecer badge "TRISET" sobre el grupo, línea vertical izquierda abarca los 3, cada ejercicio muestra "1/3", "2/3", "3/3"
+- [ ] **17.** Tabs del selector de ejercicios: tab Pecho muestra solo ejercicios de pecho, tab Recientes muestra ejercicios de últimas 4 semanas, tab Favoritos vacío inicialmente
+- [ ] **18.** Crear ejercicio nuevo desde el selector: botón "+ Crear" abre modal con campos nombre, grupo muscular, equipo, unilateral (requeridos). Acordeón "avanzado" cerrado por default. Al crear, aparece en la lista
+- [ ] **19.** Detección de duplicados: al escribir "Press Banca" en el modal de crear, debe aparecer banner amarillo "Ya existe 'Press Banca'" con botón "Usar este"
+- [ ] **20.** Tap largo (500ms) en ejercicio del selector abre modal de edición de metadata con datos precargados
+- [ ] **21.** Iconos nuevos de músculos: los ejercicios de Pecho muestran icono de pecho (no Shield), Espalda muestra dorsal, Piernas muestra piernas, etc.
+- [ ] **22.** Compartir sesión: abrir menú ⋯ en card de historial > Compartir > "Copiar como texto" pega el formato correcto con nombre, fecha, ejercicios, sets y total
+- [ ] **23.** Si el dispositivo soporta Web Share API: opción "Compartir…" abre el sheet nativo del sistema operativo
+- [ ] **24.** Descargar JSON del día genera archivo con nombre `IronCmdr_[Sesión]_[fecha].json` con datos correctos de la sesión
+
 ---
 
 ## Si algo falla

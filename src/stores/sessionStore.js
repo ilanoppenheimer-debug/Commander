@@ -73,11 +73,12 @@ export const useSessionStore = create((set, get) => ({
     persistToDb(next);
   },
 
-  addExercise: (name) => {
+  addExercise: (name, equipment = 'barbell') => {
     const s = get().session;
     if (!s) return;
     const newId = Date.now();
-    const newEx = { id: newId, name, equipment: 'barbell', sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal' }] };
+    const restDefaults = { barbell: 180, smith: 180, dumbbell: 120, kettlebell: 120, machine: 90, cable: 90, bodyweight: 60 };
+    const newEx = { id: newId, name, equipment, restSeconds: restDefaults[equipment] ?? 90, sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
     const next = {
       ...s,
       exercises: [...s.exercises, newEx],
@@ -114,7 +115,7 @@ export const useSessionStore = create((set, get) => ({
       ...s,
       exercises: s.exercises.map(e => {
         if (e.id !== exId) return e;
-        return { ...e, sets: [...(Array.isArray(e.sets) ? e.sets : []), setData || { weight: 0, reps: 0, rpe: 0, type: 'normal' }] };
+        return { ...e, sets: [...(Array.isArray(e.sets) ? e.sets : []), setData || { weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
       }),
     };
     set({ session: next });
@@ -146,6 +147,22 @@ export const useSessionStore = create((set, get) => ({
         if (e.id !== exId) return e;
         const newSets = [...(Array.isArray(e.sets) ? e.sets : [])];
         newSets.splice(idx, 1);
+        return { ...e, sets: newSets };
+      }),
+    };
+    set({ session: next });
+    persistToDb(next);
+  },
+
+  toggleSetCompleted: (exId, idx) => {
+    const s = get().session;
+    if (!s) return;
+    const next = {
+      ...s,
+      exercises: s.exercises.map(e => {
+        if (e.id !== exId) return e;
+        const newSets = [...(Array.isArray(e.sets) ? e.sets : [])];
+        newSets[idx] = { ...newSets[idx], completed: !newSets[idx]?.completed };
         return { ...e, sets: newSets };
       }),
     };

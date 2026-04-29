@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Timer, Pause, Play, RotateCcw, X } from 'lucide-react';
-import { playTacticalAlarm } from '../services/audioService';
+import { playTacticalAlarm, playPreAlert } from '../services/audioService';
 
 const CORNER_KEY = 'timerCorner';
 const MARGIN = 16;
@@ -67,6 +67,7 @@ const AdvancedTimer = () => {
     const interval = setInterval(() => {
       setSeconds(s => {
         if (mode === 'timer') {
+          if (s === 11) playPreAlert();
           if (s <= 1) { clearInterval(interval); setIsActive(false); playTacticalAlarm(); return 0; }
           return s - 1;
         }
@@ -75,6 +76,24 @@ const AdvancedTimer = () => {
     }, 1000);
     return () => clearInterval(interval);
   }, [isActive, mode]);
+
+  // Listen for auto-trigger events from session
+  useEffect(() => {
+    let autoCloseTimer;
+    const handler = (e) => {
+      const { seconds: restSecs } = e.detail || {};
+      if (!restSecs) return;
+      setMode('timer');
+      setInitialTimerSeconds(restSecs);
+      setSeconds(restSecs);
+      setIsActive(true);
+      setIsExpanded(true);
+      clearTimeout(autoCloseTimer);
+      autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
+    };
+    window.addEventListener('iron-cmdr:start-rest-timer', handler);
+    return () => { window.removeEventListener('iron-cmdr:start-rest-timer', handler); clearTimeout(autoCloseTimer); };
+  }, []);
 
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 

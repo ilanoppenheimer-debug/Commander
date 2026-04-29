@@ -36,6 +36,7 @@ import Modal from "./components/ui/Modal";
 import SessionCard from "./components/history/SessionCard";
 import SessionDetailModal from "./components/history/SessionDetailModal";
 import SessionEditor from "./components/history/SessionEditor";
+import PreSessionModal from "./components/modals/PreSessionModal";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds } from "./db/migrations";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
@@ -200,6 +201,20 @@ const FullSettingsModal = ({
                       <span className="sr-only">{p.label}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-white">Vista previa antes de iniciar</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Abre editor al tocar ▶ en una plantilla</div>
+                  </div>
+                  <button
+                    onClick={() => setShowPreSessionPreview(v => !v)}
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${showPreSessionPreview ? 'bg-accent-600' : 'bg-slate-700'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${showPreSessionPreview ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
                 </div>
               </div>
             </section>
@@ -367,6 +382,8 @@ function AppMain() {
   const [historyPeriod,      setHistoryPeriod]      = useState('all');
   const [historySort,        setHistorySort]        = useState('newest');
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
+  const [showPreSessionPreview, setShowPreSessionPreview] = useState(false);
+  const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -386,7 +403,7 @@ function AppMain() {
       await fixHardcodedRoutineIds();
 
       // Load settings from Dexie
-      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory'];
+      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview'];
       const values = await Promise.all(keys.map(k => getSetting(k)));
       const s = Object.fromEntries(keys.map((k, i) => [k, values[i]]));
 
@@ -405,6 +422,8 @@ function AppMain() {
         });
       }
 
+      if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
+
       // Hydrate active session from Dexie
       await useSessionStore.getState().hydrateFromDb();
 
@@ -422,6 +441,7 @@ function AppMain() {
   useEffect(() => { if (isSettingsLoaded.current) setSetting('historyMode', historyMode); }, [historyMode]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('modes', modes); }, [modes]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('inventory', inventory); }, [inventory]);
+  useEffect(() => { if (isSettingsLoaded.current) setSetting('showPreSessionPreview', showPreSessionPreview); }, [showPreSessionPreview]);
 
   // ── Auto backup check on load ─────────────────────────────────────────────
   useEffect(() => {
@@ -470,7 +490,11 @@ function AppMain() {
 
   const startRoutineFromTemplate = (routine) => {
     if (!routine) return;
-    storeStart(routine);
+    if (showPreSessionPreview) {
+      setPreSessionRoutine(routine);
+    } else {
+      storeStart(routine);
+    }
   };
 
   const startFreestyleSession = () => {
@@ -690,8 +714,14 @@ function AppMain() {
           <div className="flex gap-2 shrink-0">
             {!isTraining && activeTab === 'routines' && (
               <>
-                <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
-                <button onClick={() => setShowImportModal(true)} className="p-2 text-green-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-green-500/50 transition" title="Importar Texto"><FileText size={20} /></button>
+                <div className="relative">
+                  <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
+                  <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
+                </div>
+                <div className="relative">
+                  <button onClick={() => setShowImportModal(true)} className="p-2 text-green-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-green-500/50 transition" title="Importar Texto"><FileText size={20} /></button>
+                  <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
+                </div>
               </>
             )}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors" title="Configuración"><Settings className="w-5 h-5" /></button>
@@ -988,6 +1018,17 @@ function AppMain() {
           />
         )}
 
+        {preSessionRoutine && (
+          <PreSessionModal
+            routine={preSessionRoutine}
+            customExercises={safeCustomExs}
+            addCustomExercise={addCustomExercise}
+            removeCustomExercise={removeCustomExercise}
+            onStart={(modifiedRoutine) => { setPreSessionRoutine(null); storeStart(modifiedRoutine); }}
+            onCancel={() => setPreSessionRoutine(null)}
+          />
+        )}
+
         {activeTab === 'plates' && (
           <div className="animate-fade-in">
             <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700 mb-4">
@@ -1060,7 +1101,8 @@ function AppMain() {
           <div className="bg-slate-900 w-full rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500"></div>
             <div className="p-6">
-              <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3><button onClick={() => setShowAIModal(false)} className="p-1 text-slate-500 hover:text-white transition"><X size={20} /></button></div>
+              <div className="flex justify-between items-center mb-3"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3><button onClick={() => setShowAIModal(false)} className="p-1 text-slate-500 hover:text-white transition"><X size={20} /></button></div>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 text-xs text-amber-200">⚠️ Esta función está en mejora. Los resultados pueden ser inconsistentes.</div>
               {isGenerating ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-purple-500 animate-spin" /><p className="text-sm text-purple-300 font-mono animate-pulse">ESTABLECIENDO ENLACE...</p></div>) : (<><p className="text-sm text-slate-400 mb-4">Objetivo táctico para nueva plantilla:</p><textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Ej: Rutina de fuerza para hombros..." className="w-full h-24 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 focus:outline-none mb-4 resize-none" /><button onClick={generateAIRoutine} disabled={!aiPrompt.trim()} className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition"><Zap size={18} fill="currentColor" /> Generar Protocolo</button></>)}
             </div>
           </div>
@@ -1072,7 +1114,7 @@ function AppMain() {
           <div className="bg-slate-900 w-full rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
             <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-white flex items-center gap-2"><FileText className="text-green-500" /> Importar</h3><button onClick={() => setShowImportModal(false)} className="p-1 text-slate-400 hover:text-white transition"><X size={20} /></button></div>
             <div className="p-6 space-y-4">
-              {isImporting ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-green-500 animate-spin" /><p className="text-sm text-green-300 font-mono animate-pulse">ANALIZANDO DATOS TÁCTICOS...</p></div>) : (<><p className="text-xs text-slate-400">Pega aquí cualquier tabla o lista (Excel/Web). La IA creará una plantilla.</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={`Ejemplo:\nPress Banca | 3 series | 10 reps | RPE 8\nSentadilla 4x8 100kg`} className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-green-500 focus:outline-none"></textarea><button onClick={handleSmartImport} className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2"><BrainCircuit size={16} /> Procesar con IA</button></>)}
+              {isImporting ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-green-500 animate-spin" /><p className="text-sm text-green-300 font-mono animate-pulse">ANALIZANDO DATOS TÁCTICOS...</p></div>) : (<><div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-xs text-amber-200">⚠️ Esta función está en mejora. Los resultados pueden ser inconsistentes.</div><p className="text-xs text-slate-400">Pega aquí cualquier tabla o lista (Excel/Web). La IA creará una plantilla.</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={`Ejemplo:\nPress Banca | 3 series | 10 reps | RPE 8\nSentadilla 4x8 100kg`} className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-green-500 focus:outline-none"></textarea><button onClick={handleSmartImport} className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2"><BrainCircuit size={16} /> Procesar con IA</button></>)}
             </div>
           </div>
         </Modal>
