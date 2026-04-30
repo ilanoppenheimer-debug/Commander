@@ -1,7 +1,9 @@
 import { db } from '../db/database';
 import { logger } from './logger';
+import { buildFilename } from '../utils/downloadNaming';
 
 const APP_VERSION = '14.1';
+const MAX_AUTO_BACKUPS = 7;
 
 const sha256 = async (str) => {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -76,8 +78,7 @@ export const restoreFromBackup = async (backupObj) => {
 export const downloadBackupAsFile = async () => {
   const backup = await createBackup();
   const json = JSON.stringify(backup, null, 2);
-  const date = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-  const filename = `iron-cmdr-backup-${date}.json`;
+  const filename = buildFilename('backup', '', 'json');
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -103,3 +104,51 @@ export const parseBackupFile = (file) =>
     reader.onerror = () => reject(new Error('Error leyendo archivo'));
     reader.readAsText(file);
   });
+
+// ── Auto-backups (stored in Dexie backups table) ───────────────────────────
+
+export const createAutoBackup = async (trigger = 'manual') => {
+  try {
+    const snapshot = await createBackup();
+    const entry = { ...snapshot, trigger, createdAt: new Date().toISOString() };
+    await db.backups.add(entry);
+
+    const all = await db.backups.orderBy('createdAt').toArray();
+    if (all.length > MAX_AUTO_BACKUPS) {
+      const toDelete = all.slice(0, all.length - MAX_AUTO_BACKUPS);
+      await Promise.all(toDelete.map(b => db.backups.delete(b.id)));
+    }
+
+    logger.info('Auto-backup created', { trigger });
+    return { success: true };
+  } catch (e) {
+    logger.error('Auto-backup failed', { error: String(e) });
+    return { success: false, error: String(e) };
+  }
+};
+
+export const listAutoBackups = () =>
+  db.backups.orderBy('createdAt').reverse().toArray();
+
+export const restoreFromAutoBackup = async (backupId) => {
+  const entry = await db.backups.get(backupId);
+  if (!entry) throw new Error('Backup no encontrado');
+  await createAutoBackup('pre-restore');
+  await restoreFromBackup(entry);
+};
+
+export const downloadAutoBackupAsFile = async (backup) => {
+  const label = backup.trigger ? backup.trigger.replace(/-/g, '_') : 'auto';
+  const filename = buildFilename(`backup_${label}`, '', 'json');
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return filename;
+};

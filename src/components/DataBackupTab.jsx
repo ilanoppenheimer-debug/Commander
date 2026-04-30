@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Cloud, CloudOff, Download, Upload, Trash2, RefreshCw, Database,
-  AlertTriangle, Check, Loader2, Eye, EyeOff, X, HardDrive, FileInput
+  AlertTriangle, Check, Loader2, Eye, EyeOff, X, HardDrive, FileInput, History
 } from 'lucide-react';
+import { buildFilename } from '../utils/downloadNaming';
 import StrongImportWizard from './import/StrongImportWizard';
 import Modal from './ui/Modal';
 import {
@@ -11,7 +12,8 @@ import {
 } from '../services/googleDriveService';
 import {
   createBackup, downloadBackupAsFile, parseBackupFile,
-  validateBackup, restoreFromBackup
+  validateBackup, restoreFromBackup,
+  createAutoBackup, listAutoBackups, restoreFromAutoBackup, downloadAutoBackupAsFile,
 } from '../services/backupService';
 import { getDatabaseCounts, clearAllData } from '../db/repository';
 import { getSetting } from '../db/repository';
@@ -31,6 +33,8 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
   const [showLogs, setShowLogs]           = useState(false);
   const [logs, setLogs]                   = useState([]);
   const [logFilter, setLogFilter]         = useState('all');
+  const [autoBackups, setAutoBackups]     = useState([]);
+  const [restoringAuto, setRestoringAuto] = useState(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -38,14 +42,16 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
   }, []);
 
   const loadStatus = async () => {
-    const [email, counts, lbd] = await Promise.all([
+    const [email, counts, lbd, autos] = await Promise.all([
       getSignedInEmail().catch(() => null),
       getDatabaseCounts().catch(() => null),
       getSetting('lastBackupDate').catch(() => null),
+      listAutoBackups().catch(() => []),
     ]);
     setDriveEmail(email);
     setCounts(counts);
     setLastBackupDate(lbd);
+    setAutoBackups(Array.isArray(autos) ? autos : []);
     if (email) loadDriveBackups();
   };
 
@@ -145,6 +151,35 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
     setResetConfirm('');
   };
 
+  const handleRestoreAutoBackup = async (backup) => {
+    const confirmed = window.confirm(
+      `Esto reemplazará tus datos actuales con el respaldo del ${new Date(backup.createdAt).toLocaleString('es-CL')}.\n` +
+      `Se creará un respaldo de seguridad antes de continuar. ¿Continuar?`
+    );
+    if (!confirmed) return;
+    setRestoringAuto(backup.id);
+    try {
+      await restoreFromAutoBackup(backup.id);
+      showNotify?.('Datos restaurados. Recarga la página para ver los cambios.', 'success');
+      await loadStatus();
+    } catch (e) {
+      showNotify?.('Error restaurando: ' + String(e), 'error');
+    } finally {
+      setRestoringAuto(null);
+    }
+  };
+
+  const handleCleanLocalStorage = () => {
+    const confirmed = window.confirm(
+      'Esto eliminará el localStorage IronSuiteDataV14 que se mantiene como respaldo desde la migración.\n' +
+      'Solo hacerlo si confirmaste que todo funciona bien con la nueva DB. ¿Continuar?'
+    );
+    if (!confirmed) return;
+    localStorage.removeItem('IronSuiteDataV14');
+    localStorage.removeItem('ironCmdrExMeta');
+    showNotify?.('localStorage antiguo eliminado.', 'success');
+  };
+
   const handleShowLogs = async () => {
     const recent = await getRecentLogs(100);
     setLogs(recent);
@@ -157,7 +192,7 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `iron-cmdr-logs-${new Date().toISOString().slice(0,10)}.txt`;
+    a.download = buildFilename('logs', '', 'txt');
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -287,6 +322,49 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
         </section>
       )}
 
+      {/* Auto-backups */}
+      <section>
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <History size={14} /> Respaldos automáticos
+        </h3>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <p className="text-[10px] text-slate-500">
+            Se crea uno automáticamente al finalizar cada sesión. Se mantienen los últimos 7.
+          </p>
+          {autoBackups.length === 0 ? (
+            <p className="text-slate-600 text-sm text-center py-2">Aún no hay respaldos automáticos.</p>
+          ) : (
+            <ul className="space-y-1">
+              {autoBackups.map(b => (
+                <li key={b.id} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
+                  <div>
+                    <div className="text-[11px] text-slate-300">{new Date(b.createdAt).toLocaleString('es-CL')}</div>
+                    <div className="text-[10px] text-slate-500 capitalize">{b.trigger?.replace(/-/g, ' ')}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => downloadAutoBackupAsFile(b)}
+                      className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-lg border border-slate-700 hover:border-slate-500 transition"
+                      title="Descargar"
+                    >
+                      <Download size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleRestoreAutoBackup(b)}
+                      disabled={restoringAuto === b.id}
+                      className="p-1.5 text-accent-400 hover:text-accent-300 bg-slate-800 rounded-lg border border-slate-700 hover:border-accent-500/50 transition disabled:opacity-50"
+                      title="Restaurar"
+                    >
+                      {restoringAuto === b.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
       {/* Import from Strong */}
       <section>
         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -316,6 +394,16 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
           <AlertTriangle size={14} /> Zona de Peligro
         </h3>
         <div className="bg-red-950/20 rounded-xl border border-red-900/50 p-4 space-y-3">
+          <button
+            onClick={handleCleanLocalStorage}
+            className="w-full py-2 bg-slate-900 border border-amber-700/50 text-amber-300/80 font-bold text-xs rounded-lg flex items-center justify-center gap-2 hover:border-amber-500/70 hover:text-amber-200 transition"
+          >
+            <Trash2 size={14} /> Eliminar respaldo localStorage antiguo
+          </button>
+          <p className="text-[10px] text-slate-600">
+            Solo si confirmaste que la migración a IndexedDB fue exitosa.
+          </p>
+          <div className="border-t border-red-900/30 pt-3" />
           <p className="text-[11px] text-red-300/70">
             Antes de resetear se descarga un backup automático. Escribe <span className="font-mono font-bold text-red-400">BORRAR</span> para confirmar.
           </p>

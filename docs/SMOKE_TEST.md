@@ -71,6 +71,21 @@ Verificación manual post-implementación de la fundación de datos.
 - [ ] **23.** Si el dispositivo soporta Web Share API: opción "Compartir…" abre el sheet nativo del sistema operativo
 - [ ] **24.** Descargar JSON del día genera archivo con nombre `IronCmdr_[Sesión]_[fecha].json` con datos correctos de la sesión
 
+## Bloque 9 — Paso 0b-2A: Dexie + backups + manifest + descargas
+
+- [ ] **25.** Migración inicial: abrir app post-update. En Application → IndexedDB existe `IronCommanderDB` con tablas `backups`, `history`, `routines`, `settings`.
+- [ ] **26.** Persistencia: crear plantilla nueva, recargar la app, plantilla sigue ahí.
+- [ ] **27.** Sesión activa persiste: iniciar sesión, marcar 1 set como completado, cerrar pestaña y reabrir. La sesión sigue activa con el progreso.
+- [ ] **28.** Backup automático: finalizar sesión, ir a Settings → Datos → Respaldos automáticos. Aparece un ítem con fecha actual y trigger "session completed".
+- [ ] **29.** Trim de backups: después de 8+ sesiones, solo se mantienen 7 backups (el más viejo desaparece).
+- [ ] **30.** Descargar backup automático: botón de descarga en ítem de respaldo descarga `IronCmdr_backup_session_completed_YYYY-MM-DD.json`.
+- [ ] **31.** Restaurar backup automático: botón restaurar pide confirmación. Tras confirmar, los datos se restauran y la app funciona.
+- [ ] **32.** Export manual: Settings → Datos → Backup Local → Descargar. Descarga `IronCmdr_backup_YYYY-MM-DD.json` con estructura válida.
+- [ ] **33.** Nombres de descarga: sesión individual descarga `IronCmdr_session_*`, historial CSV descarga `IronCmdr_history_*`, logs descargan `IronCmdr_logs_*`.
+- [ ] **34.** Manifest PWA: desinstalar la PWA actual. Reinstalar desde el navegador. El nombre debe ser "Iron Commander" y short_name "Iron Cmdr" (no "MySite").
+- [ ] **35.** localStorage intacto post-migración: en DevTools → Application → Local Storage, la key `IronSuiteDataV14_BACKUP_*` sigue presente.
+- [ ] **36.** Botón "Eliminar respaldo localStorage antiguo": en Settings → Datos → Zona de Peligro. Pide confirmación. La app sigue funcionando tras confirmar.
+
 ---
 
 ## Si algo falla

@@ -41,7 +41,7 @@ import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds } from "./db/migrations";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
-import { createBackup, downloadBackupAsFile } from "./services/backupService";
+import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
 import { isSignedIn, performDriveBackup } from "./services/googleDriveService";
 import { logger } from "./services/logger";
 import {
@@ -529,6 +529,9 @@ function AppMain() {
     showNotify("Misión Finalizada Exitosamente", "success");
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
 
+    // Non-blocking local auto-backup
+    createAutoBackup('session-completed').catch(() => {});
+
     // Non-blocking Drive backup after session
     (async () => {
       try {
@@ -639,7 +642,7 @@ function AppMain() {
     }
     const csv = historyToCSV(safeHistory);
     const today = new Date().toISOString().slice(0, 10);
-    downloadCSV(csv, `IronCommander_Historial_${today}.csv`);
+    downloadCSV(csv, `IronCmdr_history_${today}.csv`);
     showNotify(`Exportadas ${safeHistory.length} sesiones`, "success");
   };
 

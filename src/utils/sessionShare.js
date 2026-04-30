@@ -1,3 +1,5 @@
+import { buildFilename } from './downloadNaming';
+
 export const formatSessionAsText = (session, barUnit = 'kg') => {
   if (!session) return '';
   const safeExercises = Array.isArray(session.exercises) ? session.exercises : [];
@@ -29,7 +31,7 @@ export const formatSessionAsText = (session, barUnit = 'kg') => {
 };
 
 export const downloadSessionAsJSON = (session) => {
-  const filename = `IronCmdr_${(session.name || 'session').replace(/\s+/g, '_')}_${new Date(session.completedAt).toISOString().slice(0, 10)}.json`;
+  const filename = buildFilename('session', session.name || 'session', 'json');
   const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

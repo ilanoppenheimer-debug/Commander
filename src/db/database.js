@@ -9,3 +9,12 @@ db.version(1).stores({
   settings:        'key',
   logs:            '++_id, timestamp, level',
 });
+
+db.version(2).stores({
+  history:         '++_id, historyId, completedAt, name',
+  routines:        '++_id, routineId, name',
+  customExercises: '++_id, &name',
+  settings:        'key',
+  logs:            '++_id, timestamp, level',
+  backups:         '++id, createdAt, trigger',
+});
