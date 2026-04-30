@@ -12,7 +12,6 @@ import {
 import { calculatePlates } from "./utils/plateMath";
 import { historyToCSV, csvToHistory, downloadCSV } from "./utils/csvExport";
 import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
-import { calculate1RM, calculateTrainingWeight } from "./utils/strengthMath";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { playTacticalAlarm } from "./services/audioService";
@@ -28,7 +27,7 @@ import ExerciseSelectorModal from "./components/modals/ExerciseSelectorModal";
 import AdvancedTimer from "./features/AdvancedTimer";
 import TargetCalculator, { PlateVisualizer } from "./components/TargetCalculator";
 import ReverseCalculator from "./components/ReverseCalculator";
-import WorkCalculator from "./components/WorkCalculator";
+import StrengthCalculator from "./components/StrengthCalculator";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
 import DataBackupTab from "./components/DataBackupTab";
@@ -1049,7 +1048,7 @@ function AppMain() {
             {platesSubTab === 'reverse' && <ErrorBoundary FallbackComponent={ErrorFallback}><ReverseCalculator barWeight={barWeight} barUnit={barUnit} /></ErrorBoundary>}
           </div>
         )}
-        {activeTab === 'work' && <ErrorBoundary FallbackComponent={ErrorFallback}><WorkCalculator /></ErrorBoundary>}
+        {activeTab === 'work' && <ErrorBoundary FallbackComponent={ErrorFallback}><StrengthCalculator history={safeHistory} barUnit={barUnit} /></ErrorBoundary>}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 pb-safe z-40">

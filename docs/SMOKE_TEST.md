@@ -86,6 +86,21 @@ Verificación manual post-implementación de la fundación de datos.
 - [ ] **35.** localStorage intacto post-migración: en DevTools → Application → Local Storage, la key `IronSuiteDataV14_BACKUP_*` sigue presente.
 - [ ] **36.** Botón "Eliminar respaldo localStorage antiguo": en Settings → Datos → Zona de Peligro. Pide confirmación. La app sigue funcionando tras confirmar.
 
+## Bloque 10 — Paso 0b-2B: Calculadora de Fuerza Rediseñada
+
+- [ ] **37.** Abrir tab Fuerza. Por default está en "Mis 1RM". Si hay historial, aparece lista de ejercicios con 1RM estimado.
+- [ ] **38.** Cambiar timeframe de 12 sem a 6 sem. Lista se actualiza. Ejercicios sin sets recientes desaparecen.
+- [ ] **39.** Tocar un ejercicio (ej: Sentadilla). Aparecen los 3 top sets ordenados de mayor 1RM a menor. Las fechas son recientes.
+- [ ] **40.** Desde el detalle, tocar "Ver evolución". TrendModal abre con el ejercicio correcto.
+- [ ] **41.** Desde el detalle, tocar "Calcular series de trabajo". Va a Modo 2 con peso/reps/RPE pre-cargados del top set.
+- [ ] **42.** En Modo 2, cambiar el peso. El 1RM se recalcula instantáneamente. La tabla de series se actualiza.
+- [ ] **43.** Vaciar el campo RPE. Aparece warning "Usando Epley". El 1RM se recalcula con fórmula Epley.
+- [ ] **44.** En el selector de ejercicio de Modo 2, escribir "sent". Aparecen ejercicios que matchean (Sentadilla, etc).
+- [ ] **45.** Los pesos en la tabla de series son múltiplos de 2.5. Verificar: 1RM 200kg → 8 reps @ RPE 7 debe dar ~152.5kg.
+- [ ] **46.** El archivo `WorkCalculator.jsx` ya no existe. La app no rompe.
+- [ ] **47.** Sin historial: Modo 1 muestra "Aún no tenés sesiones registradas". Modo 2 funciona pero sin autocomplete.
+- [ ] **48.** Verificación matemática: set 160kg×2 @ RPE 9 → 1RM estimado ≈ 172kg (tabla RTS: factor 0.930 → 160/0.930 = 172.0).
+
 ---
 
 ## Si algo falla
