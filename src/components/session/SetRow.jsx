@@ -13,40 +13,70 @@ const TYPE_LABELS = {
   top: 'TOP', backoff: 'BACK', warmup: 'W', drop: 'DROP', amrap: 'AMRAP',
 };
 
+const hasRealValue = (v) => {
+  const n = parseFloat(v);
+  return !isNaN(n) && n > 0;
+};
+
 /**
  * SetRow — 56px tall.
  * Grid: [check 36px] [tag 52px] [weight 1fr] [reps 1fr] [rpe 52px] [del 32px]
+ *
+ * set.placeholder = { weight, reps, rpe } — historical top set, shown in muted italic
+ *   when the real value is empty. Stripped by updateSetField on first keystroke.
  */
 export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleType, onDelete, barUnit = 'kg' }) => {
   const isDone   = !!set?.completed;
   const type     = set?.type && set.type !== 'normal' ? set.type : null;
   const tagStyle = type ? (TYPE_STYLES[type] || TYPE_STYLES.warmup) : null;
   const tagLabel = type ? (TYPE_LABELS[type] || type.toUpperCase().slice(0, 4)) : null;
+  const ph       = !isDone ? (set?.placeholder ?? null) : null;
 
-  // Bug 4: show guion for empty/zero values
-  const wNum = parseFloat(set?.weight);
-  const rNum = parseInt(set?.reps, 10);
-  const eNum = parseFloat(set?.rpe);
-  const weightDisplay = (!isNaN(wNum) && wNum > 0) ? formatNumber(set.weight) : null;
-  const repsDisplay   = (!isNaN(rNum) && rNum > 0) ? formatNumber(set.reps)   : null;
-  const rpeDisplay    = (!isNaN(eNum) && eNum > 0) ? String(set.rpe)          : null;
-
-  // Bug 1.3: completed sets still tappeable — use color changes not line-through/opacity
   const fieldBtnClass = isDone
     ? 'bg-emerald-950/30 border border-emerald-800/30 cursor-pointer'
     : 'bg-slate-900/60 hover:bg-slate-900 active:bg-slate-800 border border-slate-800';
 
-  const valueClass = isDone ? 'text-slate-500' : 'text-slate-100';
-  const emptyClass = 'text-slate-700 font-normal';
-
-  // Bug 1.4: extended tap area via pseudo-element trick (before absolute overlay)
   const tapAreaClass = 'relative before:absolute before:inset-0 before:-my-1.5 before:content-[\'\']';
+
+  // Renders a field cell with real → placeholder → empty fallback
+  const renderField = (realVal, phVal, prefix = '') => {
+    if (hasRealValue(realVal)) {
+      return (
+        <span className={isDone ? 'text-slate-500' : 'text-slate-100'}>
+          {prefix}{formatNumber(realVal)}
+        </span>
+      );
+    }
+    if (!isDone && phVal && hasRealValue(phVal)) {
+      return (
+        <span className="text-slate-500 italic font-normal text-xs">
+          {prefix}{formatNumber(phVal)}
+        </span>
+      );
+    }
+    return <span className="text-slate-700 font-normal">{prefix}—</span>;
+  };
+
+  // Blue accent bar when placeholder is active (all real values empty)
+  const showPlaceholderHint =
+    ph &&
+    !hasRealValue(set?.weight) &&
+    !hasRealValue(set?.reps) &&
+    !isDone;
 
   return (
     <div
-      className={`grid items-center gap-1 px-2 border-b border-slate-900/80 last:border-0 ${isDone ? 'bg-emerald-950/20' : ''}`}
+      className={`relative grid items-center gap-1 px-2 border-b border-slate-900/80 last:border-0 ${isDone ? 'bg-emerald-950/20' : ''}`}
       style={{ gridTemplateColumns: '36px 52px 1fr 1fr 52px 32px', height: '56px' }}
     >
+      {/* Placeholder hint bar */}
+      {showPlaceholderHint && (
+        <div
+          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-blue-500/40"
+          title="Mostrando tu top histórico como sugerencia"
+        />
+      )}
+
       {/* Check */}
       <button
         onClick={onToggleCompleted}
@@ -77,10 +107,7 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
         className={`h-10 rounded-lg text-sm font-bold tabular-nums flex items-center justify-center transition-colors ${fieldBtnClass} ${tapAreaClass}`}
         aria-label="Editar peso"
       >
-        {weightDisplay !== null
-          ? <span className={valueClass}>{weightDisplay}</span>
-          : <span className={emptyClass}>—</span>
-        }
+        {renderField(set?.weight, ph?.weight)}
       </button>
 
       {/* Reps */}
@@ -89,10 +116,7 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
         className={`h-10 rounded-lg text-sm font-bold tabular-nums flex items-center justify-center transition-colors ${fieldBtnClass} ${tapAreaClass}`}
         aria-label="Editar reps"
       >
-        {repsDisplay !== null
-          ? <span className={valueClass}>{repsDisplay}</span>
-          : <span className={emptyClass}>—</span>
-        }
+        {renderField(set?.reps, ph?.reps)}
       </button>
 
       {/* RPE */}
@@ -101,10 +125,7 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
         className={`h-10 rounded-lg text-xs font-bold tabular-nums flex items-center justify-center transition-colors ${fieldBtnClass} ${tapAreaClass}`}
         aria-label="Editar RPE"
       >
-        {rpeDisplay !== null
-          ? <span className={valueClass}>@{rpeDisplay}</span>
-          : <span className={emptyClass}>@—</span>
-        }
+        {renderField(set?.rpe, ph?.rpe, '@')}
       </button>
 
       {/* Delete */}

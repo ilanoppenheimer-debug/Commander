@@ -31,6 +31,7 @@ import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { suggestNextSet, getLastFilledSet } from "../ai/progressionModel";
+import { getTopHistoricalSet } from "../utils/strengthMath";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 
@@ -206,9 +207,16 @@ export default function ActiveSession({
   }, [exercises]);
 
   const updateSetField = useCallback((exId, setIdx, field, value) => {
-    // Keep raw string while typing (e.g. "92.") so the display cursor works;
-    // store receives it as-is and formatNumber in SetRow handles display
+    // Keep raw string while typing; formatNumber in SetRow handles display
     storeUpdateSet(exId, setIdx, field, value);
+    // Strip placeholder once the user starts typing anything in any field
+    if (value !== '' && value !== null && value !== undefined) {
+      const ex = useSessionStore.getState().session?.exercises?.find(e => e.id === exId);
+      const s = ex?.sets?.[setIdx];
+      if (s?.placeholder) {
+        storeUpdateSet(exId, setIdx, 'placeholder', undefined);
+      }
+    }
   }, [storeUpdateSet]);
 
   const getPreviousPerformance = (exName) => {
@@ -326,7 +334,20 @@ export default function ActiveSession({
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
     } else {
+      // Add exercise then attach historical placeholder to its first set
       storeAddEx(exName);
+      const topHist = getTopHistoricalSet(exName, history);
+      if (topHist) {
+        // storeAddEx is synchronous — the new exercise is last in the list after this call
+        const newExercises = useSessionStore.getState().session?.exercises ?? [];
+        const newEx = newExercises[newExercises.length - 1];
+        if (newEx && newEx.sets?.length > 0) {
+          const patchedSets = newEx.sets.map((s, i) =>
+            i === 0 ? { ...s, placeholder: topHist } : s
+          );
+          storeUpdateEx(newEx.id, { sets: patchedSets });
+        }
+      }
     }
     setShowExSelector(false);
     setEditingExId(null);
@@ -335,12 +356,14 @@ export default function ActiveSession({
   const handleAddSet = (exId) => {
     const ex = exercises.find(e => e.id === exId);
     const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
+    // Use last set in the list (not getLastFilledSet) so we always copy the immediately preceding set
+    const lastSet = safeSets.length > 0 ? safeSets[safeSets.length - 1] : null;
     const lastFilled = getLastFilledSet(safeSets);
     const targetRPE = parseFloat(mode?.rpe) || 8;
     const suggestion = autoSuggestEnabled ? suggestNextSet({ lastSet: lastFilled, targetRPE }) : null;
     const nextSet = suggestion
-      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: 0, type: "normal", completed: false }
-      : { weight: lastFilled?.weight ?? 0, reps: lastFilled?.reps ?? 0, rpe: 0, type: "normal", completed: false };
+      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: lastSet?.rpe ?? 0, type: "normal", completed: false }
+      : { weight: lastSet?.weight ?? 0, reps: lastSet?.reps ?? 0, rpe: lastSet?.rpe ?? 0, type: "normal", completed: false };
     storeAddSet(exId, nextSet);
   };
 

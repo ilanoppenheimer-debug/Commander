@@ -157,6 +157,21 @@ export const computeExercise1RM = (exerciseName, history, options = {}) => {
 };
 
 /**
+ * Devuelve el top set histórico de un ejercicio (el que genera mayor 1RM estimado).
+ * Returns: { weight: string, reps: string, rpe: string } o null si no hay historial.
+ */
+export const getTopHistoricalSet = (exerciseName, history, options = {}) => {
+  const data = computeExercise1RM(exerciseName, history, { weeksBack: 12, ...options });
+  if (!data?.topSets?.length) return null;
+  const top = data.topSets[0];
+  return {
+    weight: top.weight != null && top.weight !== 0 ? String(top.weight) : '',
+    reps:   top.reps   != null && top.reps   !== 0 ? String(top.reps)   : '',
+    rpe:    top.rpe    != null && top.rpe    !== 0 ? String(top.rpe)    : '',
+  };
+};
+
+/**
  * Calcula 1RM estimado para todos los ejercicios con datos en el historial.
  * Returns: Array sorted by current1RM desc.
  */
