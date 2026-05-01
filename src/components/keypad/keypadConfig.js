@@ -26,9 +26,9 @@ export const applyDelta = (currentValue, delta, field = 'weight') => {
   const num = parseFloat(currentValue);
   const base = isNaN(num) ? 0 : num;
   const result = base + delta;
-  if (field === 'reps') return Math.max(0, Math.round(result));
-  if (field === 'rpe')  return Math.max(0, Math.min(10, Math.round(result * 2) / 2));
-  return Math.max(0, Math.round(result * 100) / 100);
+  if (field === 'reps') return Math.max(0, Math.min(99,  Math.round(result)));
+  if (field === 'rpe')  return Math.max(0, Math.min(10,  Math.round(result * 2) / 2));
+  return Math.max(0, Math.min(999, Math.round(result * 100) / 100));
 };
 
 export const formatNumber = (val) => {

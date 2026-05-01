@@ -36,6 +36,7 @@ const AdvancedTimer = () => {
   const [initialTimerSeconds, setInitialTimerSeconds] = useState(60);
   const [isActive, setIsActive] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [keypadOpen, setKeypadOpen] = useState(false);
 
   const timerRef = useRef(null);
   const draggingRef = useRef(false);
@@ -59,6 +60,18 @@ const AdvancedTimer = () => {
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
+  }, []);
+
+  // Hide floating button while custom keypad is open
+  useEffect(() => {
+    const show = () => setKeypadOpen(true);
+    const hide = () => setKeypadOpen(false);
+    window.addEventListener('iron-cmdr:keypad-opened', show);
+    window.addEventListener('iron-cmdr:keypad-closed', hide);
+    return () => {
+      window.removeEventListener('iron-cmdr:keypad-opened', show);
+      window.removeEventListener('iron-cmdr:keypad-closed', hide);
+    };
   }, []);
 
   // Timer tick
@@ -241,10 +254,10 @@ const AdvancedTimer = () => {
         </div>
       )}
 
-      {/* Floating button */}
+      {/* Floating button — hidden while custom keypad is open */}
       <div
         ref={timerRef}
-        className="fixed top-0 left-0 z-[98]"
+        className={`fixed top-0 left-0 z-[98] transition-opacity duration-150 ${keypadOpen && !isExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         style={{ touchAction: 'none' }}
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}

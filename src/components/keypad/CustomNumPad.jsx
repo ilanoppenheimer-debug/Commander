@@ -5,14 +5,8 @@ import { KeypadIncrements } from './KeypadIncrements';
 import { KeypadGrid } from './KeypadGrid';
 import { applyDelta, formatNumber } from './keypadConfig';
 
-/**
- * Bottom-sheet numeric keypad for editing a set.
- *
- * Props:
- *   open, onClose, set, exerciseName, equipment, exerciseMeta, globalOverrides,
- *   activeField, setIndex (1-based), prevSet,
- *   onChange(field, value), onSave, onNext, onSwitchField, onChangeIncrement
- */
+const MAX = { weight: 999, reps: 99, rpe: 10 };
+
 export const CustomNumPad = ({
   open,
   onClose,
@@ -32,33 +26,49 @@ export const CustomNumPad = ({
 }) => {
   const [visible, setVisible] = useState(false);
 
-  // Animate in/out
+  // Double-RAF so the slide-in always triggers even on rapid open→close→open
   useEffect(() => {
+    let r1, r2;
     if (open) {
-      // One-frame delay to let the element mount before starting the transition
-      const raf = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(raf);
+      setVisible(false);
+      r1 = requestAnimationFrame(() => {
+        r2 = requestAnimationFrame(() => setVisible(true));
+      });
     } else {
       setVisible(false);
     }
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
   }, [open]);
 
   // Scroll lock
   useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  // Notify AdvancedTimer so it can hide the floating button
+  useEffect(() => {
     if (open) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = prev; };
+      window.dispatchEvent(new CustomEvent('iron-cmdr:keypad-opened'));
+      return () => window.dispatchEvent(new CustomEvent('iron-cmdr:keypad-closed'));
     }
   }, [open]);
 
-  // Physical keyboard for desktop testing
+  // Physical keyboard (desktop testing)
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
       if (e.key >= '0' && e.key <= '9') {
         const cur = String(set?.[activeField] ?? '');
-        onChange(activeField, cur + e.key);
+        const next = cur + e.key;
+        const num = parseFloat(next);
+        if (!isNaN(num) && num > MAX[activeField]) return;
+        onChange(activeField, next);
         e.preventDefault();
       } else if (e.key === '.' && (activeField === 'weight' || activeField === 'rpe')) {
         const cur = String(set?.[activeField] ?? '');
@@ -80,9 +90,13 @@ export const CustomNumPad = ({
     return () => window.removeEventListener('keydown', handler);
   }, [open, activeField, set, onChange, onNext, onClose]);
 
+  // Bug 3: validate range on digit input
   const handleDigit = useCallback((d) => {
     const cur = String(set?.[activeField] ?? '');
-    onChange(activeField, cur + d);
+    const next = cur + d;
+    const num = parseFloat(next);
+    if (!isNaN(num) && num > MAX[activeField]) return;
+    onChange(activeField, next);
     if (navigator.vibrate) navigator.vibrate(12);
   }, [set, activeField, onChange]);
 
@@ -119,30 +133,23 @@ export const CustomNumPad = ({
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className={`fixed inset-0 bg-black/60 z-[48] transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
         onClick={onClose}
       />
-
-      {/* Sheet */}
       <div
         className={`fixed bottom-0 left-0 right-0 z-[49] bg-slate-950 border-t border-slate-800 rounded-t-2xl shadow-2xl transition-transform duration-200 ${visible ? 'translate-y-0' : 'translate-y-full'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-2 pb-1">
           <div className="w-10 h-1 bg-slate-700 rounded-full" />
         </div>
 
-        {/* Context bar */}
         <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 leading-none">
-              <span className="text-[9px] uppercase tracking-widest font-black text-accent-500">
-                SET {setIndex}
-              </span>
+              <span className="text-[9px] uppercase tracking-widest font-black text-accent-500">SET {setIndex}</span>
               {tagLabel && <span className="text-[9px] text-slate-500 uppercase">· {tagLabel}</span>}
             </div>
             <div className="text-sm font-bold text-slate-200 truncate mt-0.5">{exerciseName}</div>
