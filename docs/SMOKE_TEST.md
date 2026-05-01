@@ -103,6 +103,32 @@ Verificación manual post-implementación de la fundación de datos.
 
 ---
 
+## Bloque 11 — Paso 0b-2D: Teclado custom + rediseño de sets
+
+- [ ] **49.** Iniciar sesión, tap en el valor de peso de un set. Bottom sheet sube con animación desde abajo.
+- [ ] **50.** Tap fuera del sheet o tap en ✓ verde. Sheet baja con animación y el valor queda guardado.
+- [ ] **51.** Tipear "92.5" con el numpad. El campo KG muestra "92.5" en tiempo real.
+- [ ] **52.** Tap corto en ⌫ borra un dígito.
+- [ ] **53.** Tap largo (600ms) en ⌫ limpia el campo completo.
+- [ ] **54.** El botón "." está deshabilitado (opaco) cuando el campo activo es REPS. En KG y RPE funciona.
+- [ ] **55.** Tap en KG / REPS / RPE arriba del numpad cambia el campo activo. El borde accent-500 se mueve al nuevo campo.
+- [ ] **56.** Botón SIG→: estando en KG → pasa a REPS. En REPS → pasa a RPE. En RPE → si hay más sets, pasa al KG del siguiente; en el último set cierra el teclado.
+- [ ] **57.** Ejercicio tipo barbell muestra −5 / −2.5 / +2.5 / +5. Cambiar el equipo a dumbbell muestra −2 / −1 / +1 / +2.
+- [ ] **58.** Con peso=92.5, tap en +5 → 97.5. Tap en −2.5 → 95. Sin desbordarse.
+- [ ] **59.** Tap largo (500ms) en un botón ± abre el selector de incrementos con las opciones disponibles.
+- [ ] **60.** Elegir un incremento distinto en el selector. El botón del numpad se actualiza. Al cerrar y reabrir el teclado, el cambio persiste.
+- [ ] **61.** Cada fila de set ocupa ~56px de alto (contá visualmente: 3-4 sets ocupan ~224px, no ~320px de antes).
+- [ ] **62.** La etiqueta TOP aparece en naranja/ámbar, BACK en azul, W en gris. Tap en la etiqueta cicla al siguiente tipo.
+- [ ] **63.** Los valores de un set completado (✓ verde) tienen opacidad reducida y aparecen tachados.
+- [ ] **64.** Botón "+ Serie" es compacto (40px alto, solo ícono + texto), no una banda full-width.
+- [ ] **65.** Settings → Teclado (tab "Teclado") muestra sección de incrementos por equipo. Cambiar un valor, cerrar Settings, reabrir: el cambio persiste.
+- [ ] **66.** PreSessionModal (abrir plantilla con toggle "Vista previa" ON) usa el mismo teclado custom al tapear un campo de peso.
+- [ ] **67.** Timer flotante no choca con la tab bar inferior al hacer scroll.
+- [ ] **68.** El teclado en desktop: tipear con teclado físico actualiza el campo. Tab/Enter avanza al siguiente campo. Escape cierra.
+- [ ] **69.** Sin historial de incrementos guardados: los defaults por equipo se aplican correctamente.
+
+---
+
 ## Si algo falla
 
 1. **NO borres datos** — todo sigue respaldado en `IronSuiteDataV14_BACKUP_{fecha}` en localStorage

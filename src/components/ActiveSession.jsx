@@ -14,7 +14,10 @@ import {
   Sparkles,
   Check,
   Timer,
+  Plus,
 } from "lucide-react";
+import { CustomNumPad } from "./keypad/CustomNumPad";
+import { SetRow } from "./session/SetRow";
 
 import InputGroup from "./ui/InputGroup";
 import ToggleSwitch from "./ui/ToggleSwitch";
@@ -134,6 +137,7 @@ export default function ActiveSession({
   barUnit,
   showNotify,
   autoSuggestEnabled = true,
+  globalIncrementOverrides = {},
 }) {
   // ── Zustand store ──────────────────────────────────────────────────────────
   const session          = useSessionStore(s => s.session);
@@ -166,6 +170,46 @@ export default function ActiveSession({
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
   const [showFinishModal,   setShowFinishModal]   = useState(false);
+
+  // ── Custom keypad state ────────────────────────────────────────────────────
+  const [keypadState, setKeypadState] = useState({
+    open: false, exerciseId: null, setIndex: -1, activeField: 'weight',
+  });
+
+  const openKeypad = useCallback((exerciseId, setIdx, field) => {
+    setKeypadState({ open: true, exerciseId, setIndex: setIdx, activeField: field });
+  }, []);
+
+  const closeKeypad = useCallback(() => {
+    setKeypadState(prev => ({ ...prev, open: false }));
+  }, []);
+
+  const switchKeypadField = useCallback((field) => {
+    setKeypadState(prev => ({ ...prev, activeField: field }));
+  }, []);
+
+  const advanceKeypad = useCallback(() => {
+    setKeypadState(prev => {
+      const order = ['weight', 'reps', 'rpe'];
+      const curIdx = order.indexOf(prev.activeField);
+      if (curIdx < order.length - 1) {
+        return { ...prev, activeField: order[curIdx + 1] };
+      }
+      // Last field: try next set
+      const ex = exercises.find(e => e.id === prev.exerciseId);
+      const sets = Array.isArray(ex?.sets) ? ex.sets : [];
+      if (prev.setIndex < sets.length - 1) {
+        return { ...prev, setIndex: prev.setIndex + 1, activeField: 'weight' };
+      }
+      return { ...prev, open: false };
+    });
+  }, [exercises]);
+
+  const updateSetField = useCallback((exId, setIdx, field, value) => {
+    // Keep raw string while typing (e.g. "92.") so the display cursor works;
+    // store receives it as-is and formatNumber in SetRow handles display
+    storeUpdateSet(exId, setIdx, field, value);
+  }, [storeUpdateSet]);
 
   const getPreviousPerformance = (exName) => {
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
@@ -606,50 +650,20 @@ export default function ActiveSession({
                   </div>
                 </div>
 
-                <div className="p-2">
-                  <div className="grid grid-cols-12 gap-1 text-[10px] text-slate-500 font-mono text-center mb-1 uppercase">
-                    <div className="col-span-1">#</div>
-                    <div className="col-span-2">Tag</div>
-                    <div className="col-span-3">Kg</div>
-                    <div className="col-span-3">Reps</div>
-                    <div className="col-span-2">RPE</div>
-                    <div className="col-span-1"></div>
-                  </div>
+                <div className="pt-1">
                   {safeSets.map((s, i) => {
                     if (!s) return null;
-                    const setType = Object.values(SET_TYPES).find((t) => t.id === (s.type || "normal")) || SET_TYPES.NORMAL;
-                    const isDone = !!s.completed;
-                    const doneOpacity = isDone ? 'opacity-50' : '';
-                    const doneStrike = isDone ? 'line-through' : '';
                     return (
-                      <div key={i} className={`grid grid-cols-12 gap-2 mb-2 items-center rounded px-1 py-1 transition-all ${isDone ? 'bg-emerald-900/10' : setType.bg}`}>
-                        {/* Check button replaces # */}
-                        <button
-                          onClick={() => handleCompleteSet(ex, i)}
-                          className={`col-span-1 flex items-center justify-center min-h-[44px] rounded-lg transition-all ${isDone ? 'text-emerald-400 bg-emerald-900/30 border border-emerald-500/40' : 'text-slate-500 bg-slate-900 border border-slate-700 hover:border-accent-500/60 text-xs font-bold'}`}
-                          aria-label={isDone ? `Deshacer serie ${i + 1}` : `Completar serie ${i + 1}`}
-                        >
-                          {isDone ? <Check size={14} strokeWidth={3} /> : <span className="text-[10px] font-bold">{i + 1}</span>}
-                        </button>
-                        <div className={`col-span-2 flex justify-center ${doneOpacity}`}>
-                          <button
-                            onClick={() => storeCycleType(ex.id, i)}
-                            className={`text-[9px] font-bold px-1 py-2 rounded border border-white/10 w-full min-h-[44px] flex items-center justify-center ${setType.color}`}
-                          >
-                            {setType.label || "-"}
-                          </button>
-                        </div>
-                        <input type="number" value={s.weight === 0 ? "" : s.weight} onChange={(e) => storeUpdateSet(ex.id, i, "weight", e.target.value)} className={`col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-accent-500 font-bold ${doneOpacity} ${doneStrike}`} placeholder="0" />
-                        <input type="number" value={s.reps === 0 ? "" : s.reps} onChange={(e) => storeUpdateSet(ex.id, i, "reps", e.target.value)} className={`col-span-3 bg-slate-900 border border-slate-700 rounded p-1 text-center text-white ${doneOpacity} ${doneStrike}`} placeholder="0" />
-                        <input type="number" value={s.rpe === 0 ? "" : s.rpe} onChange={(e) => storeUpdateSet(ex.id, i, "rpe", e.target.value)} className={`col-span-2 bg-slate-900 border border-slate-700 rounded p-1 text-center text-slate-400 text-xs ${doneOpacity}`} placeholder="-" />
-                        <button
-                          onClick={() => storeRemoveSet(ex.id, i)}
-                          className="col-span-1 text-slate-600 hover:text-red-500 active:text-red-600 flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg active:bg-red-900/20 transition-colors"
-                          aria-label={`Eliminar serie ${i + 1}`}
-                        >
-                          <X size={20} strokeWidth={2.5} />
-                        </button>
-                      </div>
+                      <SetRow
+                        key={i}
+                        set={s}
+                        setIndex={i + 1}
+                        onToggleCompleted={() => handleCompleteSet(ex, i)}
+                        onTapField={(field) => openKeypad(ex.id, i, field)}
+                        onCycleType={() => storeCycleType(ex.id, i)}
+                        onDelete={() => storeRemoveSet(ex.id, i)}
+                        barUnit={barUnit}
+                      />
                     );
                   })}
                   {autoSuggestEnabled && (() => {
@@ -666,9 +680,9 @@ export default function ActiveSession({
                   })()}
                   <button
                     onClick={() => handleAddSet(ex.id)}
-                    className="w-full py-1 mt-1 text-xs text-slate-500 border border-dashed border-slate-700 rounded hover:text-accent-500 hover:border-accent-500 transition"
+                    className="w-full h-10 flex items-center justify-center gap-1 text-slate-500 hover:text-accent-400 hover:bg-slate-900/50 transition-colors text-xs font-bold uppercase tracking-wider"
                   >
-                    + Serie
+                    <Plus size={13} /> Serie
                   </button>
                 </div>
               </div>
@@ -693,6 +707,32 @@ export default function ActiveSession({
       </div>
 
       <div className="h-16"></div>
+
+      {/* Custom Keypad */}
+      {keypadState.open && (() => {
+        const kpEx = exercises.find(e => e.id === keypadState.exerciseId);
+        const kpSet = kpEx?.sets?.[keypadState.setIndex];
+        const kpPrev = keypadState.setIndex > 0 ? kpEx?.sets?.[keypadState.setIndex - 1] : null;
+        if (!kpEx || !kpSet) return null;
+        return (
+          <CustomNumPad
+            open={keypadState.open}
+            onClose={closeKeypad}
+            set={kpSet}
+            exerciseName={kpEx.name}
+            equipment={kpEx.equipment || 'barbell'}
+            exerciseMeta={null}
+            globalOverrides={globalIncrementOverrides}
+            activeField={keypadState.activeField}
+            setIndex={keypadState.setIndex + 1}
+            prevSet={kpPrev}
+            onChange={(field, value) => updateSetField(kpEx.id, keypadState.setIndex, field, value)}
+            onSave={closeKeypad}
+            onNext={advanceKeypad}
+            onSwitchField={switchKeypadField}
+          />
+        );
+      })()}
     </div>
   );
 }

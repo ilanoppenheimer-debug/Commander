@@ -14,6 +14,7 @@ import { historyToCSV, csvToHistory, downloadCSV } from "./utils/csvExport";
 import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
+import { DEFAULT_INCREMENTS_BY_EQUIPMENT } from "./components/keypad/keypadConfig";
 import { playTacticalAlarm } from "./services/audioService";
 import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -68,6 +69,8 @@ const FullSettingsModal = ({
   setShowPreSessionPreview,
   autoSuggestEnabled,
   setAutoSuggestEnabled,
+  globalIncrementOverrides,
+  setGlobalIncrementOverrides,
 }) => {
   const [editingModeId, setEditingModeId] = useState(null);
   const [showAIPhaseInput, setShowAIPhaseInput] = useState(false);
@@ -151,6 +154,7 @@ const FullSettingsModal = ({
     { id: 'apariencia', label: 'Apariencia' },
     { id: 'fases',     label: 'Fases'      },
     { id: 'equipo',    label: 'Equipo'     },
+    { id: 'incrementos', label: 'Teclado'  },
     { id: 'datos',     label: 'Datos'      },
   ];
 
@@ -347,6 +351,68 @@ const FullSettingsModal = ({
             </div>
           )}
 
+          {settingsTab === 'incrementos' && (
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-2">
+                  <Timer size={14} /> Teclado Custom — Incrementos
+                </h3>
+                <p className="text-[10px] text-slate-500 mb-3">
+                  Botones de ajuste rápido al editar peso. Tap largo sobre un botón ± en el teclado para cambiarlo en el momento.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {Object.entries(DEFAULT_INCREMENTS_BY_EQUIPMENT).map(([equip, defaults]) => {
+                  const cur = globalIncrementOverrides?.weight?.[equip] || defaults.weight;
+                  const updateInc = (size, val) => {
+                    setGlobalIncrementOverrides(prev => ({
+                      ...prev,
+                      weight: { ...(prev?.weight || {}), [equip]: { ...cur, [size]: val } }
+                    }));
+                  };
+                  const equipLabel = { barbell: 'Barra', dumbbell: 'Mancuernas', cable: 'Polea', machine: 'Máquina', kettlebell: 'Kettlebell', bodyweight: 'Peso corporal', smith: 'Multipower', other: 'Otro' }[equip] || equip;
+                  return (
+                    <div key={equip} className="bg-slate-800 rounded-xl border border-slate-700 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-slate-200">{equipLabel}</span>
+                        <button
+                          onClick={() => {
+                            setGlobalIncrementOverrides(prev => {
+                              const w = { ...(prev?.weight || {}) };
+                              delete w[equip];
+                              return { ...prev, weight: w };
+                            });
+                          }}
+                          className="text-[10px] text-slate-500 hover:text-slate-300"
+                        >
+                          Resetear
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-slate-500 w-12">Chico:</span>
+                        <select
+                          value={cur.small}
+                          onChange={(e) => updateInc('small', parseFloat(e.target.value))}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 text-xs"
+                        >
+                          {defaults.weight.options.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        <span className="text-slate-500 w-12">Grande:</span>
+                        <select
+                          value={cur.large}
+                          onChange={(e) => updateInc('large', parseFloat(e.target.value))}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 text-xs"
+                        >
+                          {defaults.weight.options.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {settingsTab === 'datos' && (
             <DataBackupTab showNotify={showNotify} onGoToHistory={onGoToHistory} />
           )}
@@ -399,8 +465,9 @@ function AppMain() {
   const [historyPeriod,      setHistoryPeriod]      = useState('all');
   const [historySort,        setHistorySort]        = useState('newest');
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
-  const [showPreSessionPreview, setShowPreSessionPreview] = useState(false);
-  const [autoSuggestEnabled,    setAutoSuggestEnabled]    = useState(true);
+  const [showPreSessionPreview,     setShowPreSessionPreview]     = useState(false);
+  const [autoSuggestEnabled,        setAutoSuggestEnabled]        = useState(true);
+  const [globalIncrementOverrides,  setGlobalIncrementOverrides]  = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
 
   // Guard: only persist settings to Dexie after initial load is complete
@@ -421,7 +488,7 @@ function AppMain() {
       await fixHardcodedRoutineIds();
 
       // Load settings from Dexie
-      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled'];
+      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled','globalIncrementOverrides'];
       const values = await Promise.all(keys.map(k => getSetting(k)));
       const s = Object.fromEntries(keys.map((k, i) => [k, values[i]]));
 
@@ -442,6 +509,7 @@ function AppMain() {
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
       if (s.autoSuggestEnabled !== undefined) setAutoSuggestEnabled(s.autoSuggestEnabled);
+      if (s.globalIncrementOverrides !== undefined && s.globalIncrementOverrides !== null) setGlobalIncrementOverrides(s.globalIncrementOverrides);
 
       // Hydrate active session from Dexie
       await useSessionStore.getState().hydrateFromDb();
@@ -462,6 +530,7 @@ function AppMain() {
   useEffect(() => { if (isSettingsLoaded.current) setSetting('inventory', inventory); }, [inventory]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('showPreSessionPreview', showPreSessionPreview); }, [showPreSessionPreview]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('autoSuggestEnabled', autoSuggestEnabled); }, [autoSuggestEnabled]);
+  useEffect(() => { if (isSettingsLoaded.current) setSetting('globalIncrementOverrides', globalIncrementOverrides); }, [globalIncrementOverrides]);
 
   // ── Auto backup check on load ─────────────────────────────────────────────
   useEffect(() => {
@@ -785,6 +854,7 @@ function AppMain() {
               barUnit={barUnit}
               showNotify={showNotify}
               autoSuggestEnabled={autoSuggestEnabled}
+              globalIncrementOverrides={globalIncrementOverrides}
             />
           </ErrorBoundary>
         )}
@@ -1106,6 +1176,8 @@ function AppMain() {
           setShowPreSessionPreview={setShowPreSessionPreview}
           autoSuggestEnabled={autoSuggestEnabled}
           setAutoSuggestEnabled={setAutoSuggestEnabled}
+          globalIncrementOverrides={globalIncrementOverrides}
+          setGlobalIncrementOverrides={setGlobalIncrementOverrides}
         />
       )}
 

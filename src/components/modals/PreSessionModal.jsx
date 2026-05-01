@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { X, Plus, Minus, Play } from 'lucide-react';
 import Modal from '../ui/Modal';
 import ExerciseSelectorModal from './ExerciseSelectorModal';
+import { CustomNumPad } from '../keypad/CustomNumPad';
+import { SetRow } from '../session/SetRow';
+import { formatNumber } from '../keypad/keypadConfig';
 
 export default function PreSessionModal({ routine, onStart, onCancel, customExercises, addCustomExercise, removeCustomExercise }) {
-  // Deep clone so we don't mutate the original routine
   const [draft, setDraft] = useState(() => ({
     ...routine,
     exercises: (Array.isArray(routine?.exercises) ? routine.exercises : []).map(ex => ({
@@ -15,7 +17,27 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
 
   const [showExSelector, setShowExSelector] = useState(false);
 
-  const updateSet = (exIdx, setIdx, field, val) => {
+  // Keypad state
+  const [kp, setKp] = useState({ open: false, exIdx: -1, setIdx: -1, activeField: 'weight' });
+
+  const openKp = useCallback((exIdx, setIdx, field) => {
+    setKp({ open: true, exIdx, setIdx, activeField: field });
+  }, []);
+
+  const closeKp = useCallback(() => setKp(prev => ({ ...prev, open: false })), []);
+
+  const advanceKp = useCallback(() => {
+    setKp(prev => {
+      const order = ['weight', 'reps', 'rpe'];
+      const ci = order.indexOf(prev.activeField);
+      if (ci < order.length - 1) return { ...prev, activeField: order[ci + 1] };
+      const sets = draft.exercises[prev.exIdx]?.sets || [];
+      if (prev.setIdx < sets.length - 1) return { ...prev, setIdx: prev.setIdx + 1, activeField: 'weight' };
+      return { ...prev, open: false };
+    });
+  }, [draft.exercises]);
+
+  const updateSet = useCallback((exIdx, setIdx, field, val) => {
     setDraft(prev => {
       const exs = prev.exercises.map((ex, ei) => {
         if (ei !== exIdx) return ex;
@@ -24,7 +46,7 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
       });
       return { ...prev, exercises: exs };
     });
-  };
+  }, []);
 
   const addSet = (exIdx) => {
     setDraft(prev => {
@@ -65,6 +87,11 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
     setShowExSelector(false);
   };
 
+  // Active keypad set (for live updates in display)
+  const kpEx  = kp.open ? draft.exercises[kp.exIdx] : null;
+  const kpSet = kpEx?.sets?.[kp.setIdx] ?? null;
+  const kpPrev = kp.setIdx > 0 ? kpEx?.sets?.[kp.setIdx - 1] : null;
+
   return (
     <>
       <Modal isOpen onClose={onCancel} size="lg" align="center">
@@ -85,32 +112,73 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
                     <X size={14} />
                   </button>
                 </div>
-                <div className="p-3 space-y-2">
+
+                <div>
+                  {/* Column header */}
+                  <div className="grid px-2 pt-1 pb-0 text-[9px] uppercase tracking-widest text-slate-600 font-bold"
+                    style={{ gridTemplateColumns: '36px 52px 1fr 1fr 52px 32px' }}>
+                    <div />
+                    <div className="text-center">Tag</div>
+                    <div className="text-center">KG</div>
+                    <div className="text-center">REPS</div>
+                    <div className="text-center">RPE</div>
+                    <div />
+                  </div>
                   {ex.sets.map((s, si) => (
-                    <div key={si} className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-600 w-4 text-center font-bold">{si + 1}</span>
-                      <input
-                        type="number"
-                        value={s.weight || ''}
-                        onChange={e => updateSet(exIdx, si, 'weight', parseFloat(e.target.value) || 0)}
-                        placeholder="kg"
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-2 text-center text-accent-500 font-bold text-sm focus:border-accent-500 focus:outline-none"
-                      />
-                      <input
-                        type="number"
-                        value={s.reps || ''}
-                        onChange={e => updateSet(exIdx, si, 'reps', parseInt(e.target.value) || 0)}
-                        placeholder="reps"
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-2 text-center text-white text-sm focus:border-accent-500 focus:outline-none"
-                      />
-                    </div>
+                    <SetRow
+                      key={si}
+                      set={s}
+                      setIndex={si + 1}
+                      onToggleCompleted={() => {
+                        setDraft(prev => {
+                          const exs = prev.exercises.map((e, ei) => {
+                            if (ei !== exIdx) return e;
+                            const sets = e.sets.map((st, sti) => sti === si ? { ...st, completed: !st.completed } : st);
+                            return { ...e, sets };
+                          });
+                          return { ...prev, exercises: exs };
+                        });
+                      }}
+                      onTapField={(field) => openKp(exIdx, si, field)}
+                      onCycleType={() => {
+                        const types = ['normal', 'warmup', 'top', 'backoff', 'drop', 'amrap'];
+                        setDraft(prev => {
+                          const exs = prev.exercises.map((e, ei) => {
+                            if (ei !== exIdx) return e;
+                            const sets = e.sets.map((st, sti) => {
+                              if (sti !== si) return st;
+                              const cur = types.indexOf(st.type || 'normal');
+                              return { ...st, type: types[(cur + 1) % types.length] };
+                            });
+                            return { ...e, sets };
+                          });
+                          return { ...prev, exercises: exs };
+                        });
+                      }}
+                      onDelete={() => {
+                        setDraft(prev => {
+                          const exs = prev.exercises.map((e, ei) => {
+                            if (ei !== exIdx || e.sets.length <= 1) return e;
+                            return { ...e, sets: e.sets.filter((_, sti) => sti !== si) };
+                          });
+                          return { ...prev, exercises: exs };
+                        });
+                      }}
+                    />
                   ))}
-                  <div className="flex gap-2 pt-1">
-                    <button onClick={() => addSet(exIdx)} className="flex-1 flex items-center justify-center gap-1 py-1.5 border border-dashed border-slate-700 hover:border-accent-500/60 text-slate-500 hover:text-accent-400 text-xs rounded-lg transition">
+
+                  <div className="flex gap-2 px-2 py-2">
+                    <button
+                      onClick={() => addSet(exIdx)}
+                      className="flex-1 flex items-center justify-center gap-1 h-9 border border-dashed border-slate-700 hover:border-accent-500/60 text-slate-500 hover:text-accent-400 text-xs font-bold rounded-lg transition"
+                    >
                       <Plus size={12} /> Serie
                     </button>
                     {ex.sets.length > 1 && (
-                      <button onClick={() => removeLastSet(exIdx)} className="px-3 py-1.5 border border-dashed border-slate-700 hover:border-red-500/50 text-slate-500 hover:text-red-400 text-xs rounded-lg transition">
+                      <button
+                        onClick={() => removeLastSet(exIdx)}
+                        className="px-3 h-9 border border-dashed border-slate-700 hover:border-red-500/50 text-slate-500 hover:text-red-400 text-xs rounded-lg transition"
+                      >
                         <Minus size={12} />
                       </button>
                     )}
@@ -145,6 +213,25 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
           customExercises={customExercises}
           addCustomExercise={addCustomExercise}
           removeCustomExercise={removeCustomExercise}
+        />
+      )}
+
+      {kp.open && kpSet && (
+        <CustomNumPad
+          open={kp.open}
+          onClose={closeKp}
+          set={kpSet}
+          exerciseName={kpEx?.name || ''}
+          equipment={kpEx?.equipment || 'barbell'}
+          exerciseMeta={null}
+          globalOverrides={{}}
+          activeField={kp.activeField}
+          setIndex={kp.setIdx + 1}
+          prevSet={kpPrev}
+          onChange={(field, value) => updateSet(kp.exIdx, kp.setIdx, field, value)}
+          onSave={closeKp}
+          onNext={advanceKp}
+          onSwitchField={(f) => setKp(prev => ({ ...prev, activeField: f }))}
         />
       )}
     </>
