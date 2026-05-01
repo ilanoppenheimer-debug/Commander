@@ -3,7 +3,8 @@
     "allow": [
       "Bash(xargs wc *)",
       "Bash(npx vite *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
