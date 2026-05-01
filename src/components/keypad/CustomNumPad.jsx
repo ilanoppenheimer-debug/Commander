@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { KeypadDisplay } from './KeypadDisplay';
 import { KeypadIncrements } from './KeypadIncrements';
@@ -123,7 +124,6 @@ export const CustomNumPad = ({
     if (navigator.vibrate) navigator.vibrate(18);
   }, [set, activeField, onChange]);
 
-  // Never render without the sheet — both backdrop and sheet are always together
   if (!shouldRender) return null;
 
   const tagLabel = set?.type && set.type !== 'normal' ? set.type.toUpperCase() : null;
@@ -131,11 +131,11 @@ export const CustomNumPad = ({
     ? `Anterior: ${formatNumber(prevSet.weight)} × ${prevSet.reps || '?'}${prevSet.rpe ? ` @ ${prevSet.rpe}` : ''}`
     : 'Primer set';
 
-  return (
+  return createPortal(
     <>
-      {/* Backdrop — inline style so opacity-0/100 controls the whole element */}
+      {/* Backdrop — mounted as child of document.body via portal so fixed anchors to viewport */}
       <div
-        className={`fixed inset-0 z-[48] transition-opacity duration-200`}
+        className="fixed inset-0 z-[48] transition-opacity duration-200"
         style={{
           backgroundColor: 'rgba(0,0,0,0.6)',
           opacity: animateIn ? 1 : 0,
@@ -144,18 +144,16 @@ export const CustomNumPad = ({
         onClick={onClose}
       />
 
-      {/* Sheet — always rendered when shouldRender=true */}
+      {/* Sheet */}
       <div
         className={`fixed bottom-0 left-0 right-0 z-[49] bg-slate-950 border-t border-slate-800 rounded-t-2xl shadow-2xl transition-transform duration-200 ${animateIn ? 'translate-y-0' : 'translate-y-full'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle */}
         <div className="flex justify-center pt-2 pb-1">
           <div className="w-10 h-1 bg-slate-700 rounded-full" />
         </div>
 
-        {/* Context bar */}
         <div className="px-4 py-2 border-b border-slate-800 flex items-center gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 leading-none">
@@ -172,7 +170,6 @@ export const CustomNumPad = ({
           </button>
         </div>
 
-        {/* Content — always rendered (no internal null returns) */}
         {set ? (
           <>
             <KeypadDisplay set={set} activeField={activeField} onSwitchField={onSwitchField} />
@@ -198,6 +195,7 @@ export const CustomNumPad = ({
           <div className="p-8 text-center text-slate-600 text-sm">Sin datos del set</div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   );
 };

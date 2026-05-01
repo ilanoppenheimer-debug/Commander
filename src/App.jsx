@@ -38,7 +38,7 @@ import SessionDetailModal from "./components/history/SessionDetailModal";
 import SessionEditor from "./components/history/SessionEditor";
 import PreSessionModal from "./components/modals/PreSessionModal";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
-import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds } from "./db/migrations";
+import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
@@ -486,6 +486,7 @@ function AppMain() {
       setIsMigrating(true);
       await migrateFromLocalStorageIfNeeded();
       await fixHardcodedRoutineIds();
+      await sanitizeInvalidSetValues();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled','globalIncrementOverrides'];

@@ -1,6 +1,62 @@
 import { db } from './database';
 import { logger } from '../services/logger';
 
+const SANITATION_FLAG = 'sanitizedInvalidSets_v1';
+
+/**
+ * One-time sanitization: clamps RPE ≤ 10, reps ≤ 99, weight ≤ 999 in all persisted sets.
+ * Created to fix values entered before range validation was added.
+ */
+export const sanitizeInvalidSetValues = async () => {
+  try {
+    const flag = await db.settings.get(SANITATION_FLAG);
+    if (flag?.value === true) return { ran: false };
+
+    let fixedCount = 0;
+
+    const clamp = (set) => {
+      let changed = false;
+      const rpe = parseFloat(set.rpe);
+      if (!isNaN(rpe) && rpe > 10) { set.rpe = 10; changed = true; fixedCount++; }
+      const reps = parseInt(set.reps, 10);
+      if (!isNaN(reps) && reps > 99) { set.reps = 99; changed = true; fixedCount++; }
+      const w = parseFloat(set.weight);
+      if (!isNaN(w) && w > 999) { set.weight = 999; changed = true; fixedCount++; }
+      return changed;
+    };
+
+    // History
+    const sessions = await db.history.toArray();
+    for (const session of sessions) {
+      if (!Array.isArray(session.exercises)) continue;
+      let dirty = false;
+      for (const ex of session.exercises) {
+        if (!Array.isArray(ex.sets)) continue;
+        for (const s of ex.sets) { if (clamp(s)) dirty = true; }
+      }
+      if (dirty) await db.history.put(session);
+    }
+
+    // Active session in settings
+    const activeSetting = await db.settings.get('activeSession');
+    if (activeSetting?.value && Array.isArray(activeSetting.value.exercises)) {
+      let dirty = false;
+      for (const ex of activeSetting.value.exercises) {
+        if (!Array.isArray(ex.sets)) continue;
+        for (const s of ex.sets) { if (clamp(s)) dirty = true; }
+      }
+      if (dirty) await db.settings.put({ key: 'activeSession', value: activeSetting.value });
+    }
+
+    await db.settings.put({ key: SANITATION_FLAG, value: true });
+    logger.info('sanitizeInvalidSetValues', { fixedCount });
+    return { ran: true, fixedCount };
+  } catch (e) {
+    logger.error('sanitizeInvalidSetValues failed', { error: String(e) });
+    return { ran: false, error: String(e) };
+  }
+};
+
 const MIGRATION_FLAG = 'MIGRATED_TO_DEXIE_V1';
 const MIGRATION_FLAG_V2 = 'MIGRATED_ROUTINE_IDS_V2';
 const SOURCE_KEY = 'IronSuiteDataV14';
