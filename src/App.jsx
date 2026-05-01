@@ -64,6 +64,10 @@ const FullSettingsModal = ({
   showNotify,
   onClose,
   onGoToHistory,
+  showPreSessionPreview,
+  setShowPreSessionPreview,
+  autoSuggestEnabled,
+  setAutoSuggestEnabled,
 }) => {
   const [editingModeId, setEditingModeId] = useState(null);
   const [showAIPhaseInput, setShowAIPhaseInput] = useState(false);
@@ -202,17 +206,31 @@ const FullSettingsModal = ({
                   ))}
                 </div>
               </div>
-              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mt-4">
+              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mt-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-bold text-white">Vista previa antes de iniciar</div>
                     <div className="text-[10px] text-slate-500 mt-0.5">Abre editor al tocar ▶ en una plantilla</div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setShowPreSessionPreview(v => !v)}
-                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${showPreSessionPreview ? 'bg-accent-600' : 'bg-slate-700'}`}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${showPreSessionPreview ? 'bg-accent-600' : 'bg-slate-700'}`}
                   >
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${showPreSessionPreview ? 'translate-x-7' : 'translate-x-1'}`} />
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${showPreSessionPreview ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="border-t border-slate-700/50 pt-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-white">Sugerencias automáticas de peso</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Muestra "Próxima: X kg" y autocompleta series</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSuggestEnabled(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${autoSuggestEnabled ? 'bg-accent-600' : 'bg-slate-700'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${autoSuggestEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
               </div>
@@ -382,6 +400,7 @@ function AppMain() {
   const [historySort,        setHistorySort]        = useState('newest');
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
   const [showPreSessionPreview, setShowPreSessionPreview] = useState(false);
+  const [autoSuggestEnabled,    setAutoSuggestEnabled]    = useState(true);
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
 
   // Guard: only persist settings to Dexie after initial load is complete
@@ -402,7 +421,7 @@ function AppMain() {
       await fixHardcodedRoutineIds();
 
       // Load settings from Dexie
-      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview'];
+      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled'];
       const values = await Promise.all(keys.map(k => getSetting(k)));
       const s = Object.fromEntries(keys.map((k, i) => [k, values[i]]));
 
@@ -422,6 +441,7 @@ function AppMain() {
       }
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
+      if (s.autoSuggestEnabled !== undefined) setAutoSuggestEnabled(s.autoSuggestEnabled);
 
       // Hydrate active session from Dexie
       await useSessionStore.getState().hydrateFromDb();
@@ -441,6 +461,7 @@ function AppMain() {
   useEffect(() => { if (isSettingsLoaded.current) setSetting('modes', modes); }, [modes]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('inventory', inventory); }, [inventory]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('showPreSessionPreview', showPreSessionPreview); }, [showPreSessionPreview]);
+  useEffect(() => { if (isSettingsLoaded.current) setSetting('autoSuggestEnabled', autoSuggestEnabled); }, [autoSuggestEnabled]);
 
   // ── Auto backup check on load ─────────────────────────────────────────────
   useEffect(() => {
@@ -763,6 +784,7 @@ function AppMain() {
               removeCustomExercise={removeCustomExercise}
               barUnit={barUnit}
               showNotify={showNotify}
+              autoSuggestEnabled={autoSuggestEnabled}
             />
           </ErrorBoundary>
         )}
@@ -1080,6 +1102,10 @@ function AppMain() {
           showNotify={showNotify}
           onClose={() => setShowSettings(false)}
           onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }}
+          showPreSessionPreview={showPreSessionPreview}
+          setShowPreSessionPreview={setShowPreSessionPreview}
+          autoSuggestEnabled={autoSuggestEnabled}
+          setAutoSuggestEnabled={setAutoSuggestEnabled}
         />
       )}
 

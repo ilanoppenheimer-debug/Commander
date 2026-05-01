@@ -158,10 +158,12 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             <span className="text-sm text-white font-medium">Unilateral</span>
             <button
               type="button"
+              role="switch"
+              aria-checked={!bilateral}
               onClick={() => setBilateral(v => !v)}
-              className={`w-10 h-5 rounded-full transition-colors relative ${!bilateral ? 'bg-accent-600' : 'bg-slate-700'}`}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${!bilateral ? 'bg-accent-600' : 'bg-slate-700'}`}
             >
-              <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${!bilateral ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${!bilateral ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
 

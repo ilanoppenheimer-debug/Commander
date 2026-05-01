@@ -178,8 +178,30 @@ const AdvancedTimer = () => {
               </div>
             </div>
 
-            <div className={`text-center text-6xl font-bold font-mono mb-4 ${alertRed ? 'text-red-500' : 'text-white'}`}>
-              {formatTime(seconds)}
+            <div className="flex items-center justify-center gap-3 my-4">
+              <button
+                onClick={() => {
+                  setSeconds(prev => Math.max(0, prev - 15));
+                  if (navigator.vibrate) navigator.vibrate(30);
+                }}
+                className="w-12 h-12 rounded-full bg-slate-800 border border-accent-500/30 text-accent-400 font-bold text-sm flex items-center justify-center hover:bg-slate-700 active:scale-95 transition"
+                aria-label="Restar 15 segundos"
+              >
+                −15s
+              </button>
+              <div className={`text-6xl font-black font-mono tabular-nums ${alertRed ? 'text-red-500' : 'text-white'}`}>
+                {formatTime(seconds)}
+              </div>
+              <button
+                onClick={() => {
+                  setSeconds(prev => prev + 15);
+                  if (navigator.vibrate) navigator.vibrate(30);
+                }}
+                className="w-12 h-12 rounded-full bg-slate-800 border border-accent-500/30 text-accent-400 font-bold text-sm flex items-center justify-center hover:bg-slate-700 active:scale-95 transition"
+                aria-label="Sumar 15 segundos"
+              >
+                +15s
+              </button>
             </div>
 
             <div className="flex justify-center gap-3 mb-4">

@@ -133,6 +133,7 @@ export default function ActiveSession({
   removeCustomExercise,
   barUnit,
   showNotify,
+  autoSuggestEnabled = true,
 }) {
   // ── Zustand store ──────────────────────────────────────────────────────────
   const session          = useSessionStore(s => s.session);
@@ -292,10 +293,10 @@ export default function ActiveSession({
     const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
     const lastFilled = getLastFilledSet(safeSets);
     const targetRPE = parseFloat(mode?.rpe) || 8;
-    const suggestion = suggestNextSet({ lastSet: lastFilled, targetRPE });
+    const suggestion = autoSuggestEnabled ? suggestNextSet({ lastSet: lastFilled, targetRPE }) : null;
     const nextSet = suggestion
-      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: 0, type: "normal" }
-      : { weight: 0, reps: 0, rpe: 0, type: "normal" };
+      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: 0, type: "normal", completed: false }
+      : { weight: lastFilled?.weight ?? 0, reps: lastFilled?.reps ?? 0, rpe: 0, type: "normal", completed: false };
     storeAddSet(exId, nextSet);
   };
 
@@ -569,7 +570,7 @@ export default function ActiveSession({
                           </button>
                         )}
 
-                        {suggestion && (
+                        {autoSuggestEnabled && suggestion && (
                           <span className={`text-[10px] flex items-center gap-1 ${mode?.color || "text-slate-400"}`}>
                             <Info size={10} /> {suggestion}
                           </span>
@@ -651,7 +652,7 @@ export default function ActiveSession({
                       </div>
                     );
                   })}
-                  {(() => {
+                  {autoSuggestEnabled && (() => {
                     const lastFilled = getLastFilledSet(safeSets);
                     const nextSuggestion = suggestNextSet({ lastSet: lastFilled, targetRPE: parseFloat(mode?.rpe) || 8 });
                     if (!nextSuggestion) return null;
