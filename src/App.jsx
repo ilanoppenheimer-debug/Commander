@@ -29,6 +29,9 @@ import AdvancedTimer from "./features/AdvancedTimer";
 import TargetCalculator, { PlateVisualizer } from "./components/TargetCalculator";
 import ReverseCalculator from "./components/ReverseCalculator";
 import StrengthCalculator from "./components/StrengthCalculator";
+import { BlocksTab } from "./components/blocks/BlocksTab";
+import { getActiveBlocks, incrementBlockSessions } from "./db/blocks";
+import { getExerciseMeta } from "./constants/exerciseMetadata";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
 import DataBackupTab from "./components/DataBackupTab";
@@ -39,6 +42,7 @@ import SessionEditor from "./components/history/SessionEditor";
 import PreSessionModal from "./components/modals/PreSessionModal";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
+import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
@@ -465,6 +469,7 @@ function AppMain() {
   const [historyPeriod,      setHistoryPeriod]      = useState('all');
   const [historySort,        setHistorySort]        = useState('newest');
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
+  const [workSubTab,         setWorkSubTab]         = useState('strength');
   const [showPreSessionPreview,     setShowPreSessionPreview]     = useState(false);
   const [autoSuggestEnabled,        setAutoSuggestEnabled]        = useState(true);
   const [globalIncrementOverrides,  setGlobalIncrementOverrides]  = useState({});
@@ -487,6 +492,7 @@ function AppMain() {
       await migrateFromLocalStorageIfNeeded();
       await fixHardcodedRoutineIds();
       await sanitizeInvalidSetValues();
+      await migrateLegacyModes();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled','globalIncrementOverrides'];
@@ -567,7 +573,7 @@ function AppMain() {
   const tabs = [
     { id: 'routines', label: 'Rutinas',   icon: ClipboardList },
     { id: 'history',  label: 'Historial', icon: Clock },
-    { id: 'plates',   label: 'Placas',    icon: Calculator },
+    { id: 'blocks',   label: 'Bloques',   icon: Layers },
     { id: 'work',     label: 'Fuerza',    icon: TrendingUp },
   ];
 
@@ -618,6 +624,22 @@ function AppMain() {
     storeFinish();
     showNotify("Misión Finalizada Exitosamente", "success");
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
+
+    // Increment sessionsLogged for active blocks that covered this session's exercise tags
+    (async () => {
+      try {
+        const activeBlocks = await getActiveBlocks();
+        if (activeBlocks.length === 0) return;
+        const sessionTags = new Set(
+          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
+        );
+        for (const block of activeBlocks) {
+          if ((block.appliesTo || []).some(t => sessionTags.has(t))) {
+            await incrementBlockSessions(block.id);
+          }
+        }
+      } catch { /* non-blocking */ }
+    })();
 
     // Non-blocking local auto-backup
     createAutoBackup('session-completed').catch(() => {});
@@ -1124,24 +1146,43 @@ function AppMain() {
           />
         )}
 
-        {activeTab === 'plates' && (
+        {activeTab === 'blocks' && (
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <BlocksTab />
+          </ErrorBoundary>
+        )}
+        {activeTab === 'work' && (
           <div className="animate-fade-in">
+            {/* Fuerza / Placas sub-tabs */}
             <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700 mb-4">
-              {[{ id: 'target', label: 'Cargar' }, { id: 'reverse', label: 'Sumar' }].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setPlatesSubTab(t.id)}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors ${platesSubTab === t.id ? 'bg-accent-600 text-black shadow' : 'text-slate-400 hover:text-white'}`}
-                >
-                  {t.label}
-                </button>
+              {[{ id: 'strength', label: 'Fuerza' }, { id: 'plates', label: 'Placas' }].map(t => (
+                <button key={t.id} onClick={() => setWorkSubTab(t.id)}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors ${workSubTab === t.id ? 'bg-accent-600 text-black shadow' : 'text-slate-400 hover:text-white'}`}
+                >{t.label}</button>
               ))}
             </div>
-            {platesSubTab === 'target'  && <ErrorBoundary FallbackComponent={ErrorFallback}><TargetCalculator barWeight={barWeight} barUnit={barUnit} inventory={inventory} /></ErrorBoundary>}
-            {platesSubTab === 'reverse' && <ErrorBoundary FallbackComponent={ErrorFallback}><ReverseCalculator barWeight={barWeight} barUnit={barUnit} /></ErrorBoundary>}
+            {workSubTab === 'strength' && (
+              <ErrorBoundary FallbackComponent={ErrorFallback}>
+                <StrengthCalculator history={safeHistory} barUnit={barUnit} />
+              </ErrorBoundary>
+            )}
+            {workSubTab === 'plates' && (
+              <ErrorBoundary FallbackComponent={ErrorFallback}>
+                <div>
+                  <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700 mb-4">
+                    {[{ id: 'target', label: 'Cargar' }, { id: 'reverse', label: 'Sumar' }].map(t => (
+                      <button key={t.id} onClick={() => setPlatesSubTab(t.id)}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors ${platesSubTab === t.id ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                      >{t.label}</button>
+                    ))}
+                  </div>
+                  {platesSubTab === 'target'  && <TargetCalculator barWeight={barWeight} barUnit={barUnit} inventory={inventory} />}
+                  {platesSubTab === 'reverse' && <ReverseCalculator barWeight={barWeight} barUnit={barUnit} />}
+                </div>
+              </ErrorBoundary>
+            )}
           </div>
         )}
-        {activeTab === 'work' && <ErrorBoundary FallbackComponent={ErrorFallback}><StrengthCalculator history={safeHistory} barUnit={barUnit} /></ErrorBoundary>}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 pb-safe z-40">

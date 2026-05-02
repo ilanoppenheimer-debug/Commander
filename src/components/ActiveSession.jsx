@@ -18,6 +18,14 @@ import {
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
+import { BlockBanner } from "./blocks/BlockBanner";
+import { TagPicker } from "./blocks/TagPicker";
+import { BlockColorDot } from "./blocks/BlockColorDot";
+import { useActiveBlocks } from "../hooks/useActiveBlocks";
+import { calculateSuggestedWeight } from "../utils/blocksMath";
+import { incrementBlockSessions } from "../db/blocks";
+import { getExerciseMeta, saveExerciseMeta } from "../constants/exerciseMetadata";
+import { TAG_LABELS } from "../constants/blockTemplates";
 
 import InputGroup from "./ui/InputGroup";
 import ToggleSwitch from "./ui/ToggleSwitch";
@@ -171,6 +179,11 @@ export default function ActiveSession({
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
   const [showFinishModal,   setShowFinishModal]   = useState(false);
+
+  // ── Active blocks ──────────────────────────────────────────────────────────
+  const [blocksRefresh,  setBlocksRefresh]  = useState(0);
+  const { blocks: activeBlocks }            = useActiveBlocks(blocksRefresh);
+  const [tagPickerExId,  setTagPickerExId]  = useState(null);
 
   // ── Custom keypad state ────────────────────────────────────────────────────
   const [keypadState, setKeypadState] = useState({
@@ -334,17 +347,19 @@ export default function ActiveSession({
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
     } else {
-      // Add exercise then attach historical placeholder to its first set
       storeAddEx(exName);
-      const topHist = getTopHistoricalSet(exName, history);
-      if (topHist) {
-        // storeAddEx is synchronous — the new exercise is last in the list after this call
-        const newExercises = useSessionStore.getState().session?.exercises ?? [];
-        const newEx = newExercises[newExercises.length - 1];
-        if (newEx && newEx.sets?.length > 0) {
-          const patchedSets = newEx.sets.map((s, i) =>
-            i === 0 ? { ...s, placeholder: topHist } : s
-          );
+      // Attach placeholder: prefer block-based suggestion, fallback to historical top
+      const newExercises = useSessionStore.getState().session?.exercises ?? [];
+      const newEx = newExercises[newExercises.length - 1];
+      if (newEx && newEx.sets?.length > 0) {
+        const exMeta = getExerciseMeta(exName);
+        const exerciseForCalc = { ...newEx, metadata: exMeta };
+        const blockSugg = calculateSuggestedWeight(exerciseForCalc, history, activeBlocks);
+        const ph = blockSugg
+          ? { weight: blockSugg.weight, reps: blockSugg.reps, rpe: blockSugg.rpe, sourceBlockColor: blockSugg.sourceBlockColor }
+          : getTopHistoricalSet(exName, history);
+        if (ph) {
+          const patchedSets = newEx.sets.map((s, i) => i === 0 ? { ...s, placeholder: ph } : s);
           storeUpdateEx(newEx.id, { sets: patchedSets });
         }
       }
@@ -540,6 +555,11 @@ export default function ActiveSession({
         )}
       </div>
 
+      <BlockBanner
+        activeBlocks={activeBlocks}
+        onTapBlock={() => {}}
+      />
+
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
         {exercises.map((ex, index) => {
           if (!ex) return null;
@@ -626,6 +646,43 @@ export default function ActiveSession({
                           >
                             <Timer size={10} /> {ex.restSeconds ?? 90}s
                           </button>
+                        </div>
+
+                        {/* Tag button */}
+                        <div className="relative">
+                          {(() => {
+                            const exMeta = getExerciseMeta(ex.name);
+                            const tag = exMeta?.defaultTag;
+                            const isImplicit = !tag;
+                            const block = activeBlocks.find(b => Array.isArray(b.appliesTo) && b.appliesTo.includes(tag || 'accessory'));
+                            return (
+                              <>
+                                <button
+                                  onClick={() => setTagPickerExId(tagPickerExId === ex.id ? null : ex.id)}
+                                  className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-slate-700/50 hover:border-slate-600 transition"
+                                >
+                                  <BlockColorDot color={isImplicit ? '#475569' : (block?.color || '#64748b')} size={6} />
+                                  <span className={isImplicit ? 'text-slate-600 italic' : 'text-slate-500'}>
+                                    {tag ? TAG_LABELS[tag] : 'accessory?'}
+                                  </span>
+                                </button>
+                                {tagPickerExId === ex.id && (
+                                  <div className="absolute top-full mt-1 left-0 z-30">
+                                    <TagPicker
+                                      value={tag || 'accessory'}
+                                      onChange={(newTag) => {
+                                        const meta = getExerciseMeta(ex.name);
+                                        saveExerciseMeta(ex.name, { ...meta, defaultTag: newTag, tagAssignedAt: new Date().toISOString() });
+                                        setTagPickerExId(null);
+                                        setBlocksRefresh(r => r + 1);
+                                      }}
+                                      onClose={() => setTagPickerExId(null)}
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {mode && mode.id !== "standard" && !isGlobalDeload && (

@@ -129,6 +129,31 @@ Verificación manual post-implementación de la fundación de datos.
 
 ---
 
+## Bloque 12 — Paso 0b-2C: Sistema de Bloques Multi
+
+- [ ] **70.** Tab bar ahora dice "Bloques" en lugar de "Placas". Placas movida a Fuerza → sub-tab.
+- [ ] **71.** Crear bloque Peaking: Bloques → Nuevo bloque → tipo Peaking → tags [main_lift] → Crear y activar. Aparece en activos con barra de progreso.
+- [ ] **72.** BlockBanner en sesión: al tener un bloque activo, iniciar sesión muestra banner con nombre y contador "0/10".
+- [ ] **73.** Banner colapsable: tap expande mostrando todos los bloques activos. Tap de nuevo colapsa.
+- [ ] **74.** Tag inline por ejercicio: cada card de ejercicio en sesión muestra su tag (ej: "accessory?") en gris cursiva si no tiene tag asignado.
+- [ ] **75.** Tag picker funciona: tap en tag de ejercicio abre picker, cambiar a "Main Lift" actualiza el label y el dot de color cambia al del bloque Peaking.
+- [ ] **76.** Sin tag = accessory implícito: el label muestra "accessory?" en gris cursiva, con dot gris.
+- [ ] **77.** Placeholder con bloque: ejercicio marcado como Main Lift + bloque Peaking activo + historial → set vacío muestra peso/reps/RPE calculados en gris cursiva.
+- [ ] **78.** Crear segundo bloque paralelo: crear "Hipertrofia" para [accessory, isolation]. Banner muestra "Peaking +1" colapsado.
+- [ ] **79.** Cada ejercicio respeta su bloque: main_lift → placeholder de Peaking, accessory → placeholder de Hipertrofia.
+- [ ] **80.** Finalizar sesión incrementa sessionsLogged: en Bloques tab, el bloque que aplicó muestra +1 en contador.
+- [ ] **81.** Pausar bloque: desde edit, pausar. En sesión siguiente el bloque NO aparece en banner.
+- [ ] **82.** Reanudar bloque: reanudar → vuelve a aparecer en banner.
+- [ ] **83.** Completar bloque: completar → pasa a sección "Completados". El banner no lo muestra más.
+- [ ] **84.** Borrar bloque sin sesiones → eliminado duro. Borrar bloque con sesiones → archivado.
+- [ ] **85.** Migración legacy: si había "fases" en el sistema anterior, aparecen como bloques en "Archivados" (status archived).
+- [ ] **86.** Sin bloques activos: banner muestra "Modo libre · sin bloques activos" con CTA "Crear bloque".
+- [ ] **87.** Placas en sub-tab Fuerza: ir a Fuerza → sub-tab Placas → ambas calculadoras (Cargar/Sumar) funcionan igual.
+- [ ] **88.** Bloques no rompen sesión: logguear series normales con/sin bloques activos, finalizar. Todo persiste correctamente.
+- [ ] **89.** Performance: lista de Bloques con 5+ bloques carga sin lag visible.
+
+---
+
 ## Si algo falla
 
 1. **NO borres datos** — todo sigue respaldado en `IronSuiteDataV14_BACKUP_{fecha}` en localStorage
