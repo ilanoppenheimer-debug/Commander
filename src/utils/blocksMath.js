@@ -5,52 +5,164 @@ const ROUND_INCREMENTS = {
   machine: 5, kettlebell: 2, bodyweight: 1, other: 2.5,
 };
 
-const roundToEquipment = (weight, equipment) => {
+export const roundToEquipment = (weight, equipment) => {
   const inc = ROUND_INCREMENTS[equipment] || 2.5;
   return Math.round(weight / inc) * inc;
 };
 
+const clampReps = (n) => Math.max(1, Math.min(12, Math.round(n)));
+const clampRpe  = (n) => Math.max(6, Math.min(10, Math.round(n * 2) / 2));
+
 /**
- * Calcula peso sugerido para un ejercicio dado su bloque activo + 1RM histórico.
- * Returns: { weight, reps, rpe, sourceBlockId, sourceBlockName, sourceBlockColor, rationale } | null
+ * Finds the active block that covers the exercise's tag.
  */
-export const calculateSuggestedWeight = (exercise, history, activeBlocks) => {
-  if (!exercise || !Array.isArray(activeBlocks) || activeBlocks.length === 0) return null;
+export const findBlockForExercise = (exercise, activeBlocks) => {
+  if (!exercise || !Array.isArray(activeBlocks)) return null;
+  const tag = exercise.metadata?.defaultTag || 'accessory';
+  return activeBlocks.find(b =>
+    b && Array.isArray(b.appliesTo) && b.appliesTo.includes(tag)
+  ) || null;
+};
 
-  const tag = exercise?.metadata?.defaultTag || 'accessory';
-  const block = activeBlocks.find(b => Array.isArray(b.appliesTo) && b.appliesTo.includes(tag));
-  if (!block) return null;
+/**
+ * Calculates suggested weight for a TOP set from estimated 1RM.
+ * Uses RPE_CHART: 1RM × factor (not peso_anterior × wMod).
+ * Returns: { weight, reps, rpe, sourceBlockId, sourceBlockColor } | null
+ */
+export const calculateTopSetSuggestion = (exercise, history, block) => {
+  if (!exercise || !block || !block.params) return null;
 
-  const oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: 12 });
-  if (!oneRMData?.current1RM) return null;
+  // Try 12-week window first, then full history
+  let oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: 12 });
+  if (!oneRMData?.current1RM || oneRMData.current1RM <= 0) {
+    oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: null });
+  }
+  if (!oneRMData?.current1RM || oneRMData.current1RM <= 0) return null;
 
-  const repsRange = block.params?.repsRange || [5, 8];
-  const rpeRange  = block.params?.rpeRange  || [7, 8];
-  const targetReps = Math.round((repsRange[0] + repsRange[1]) / 2);
-  const targetRpe  = Math.round((rpeRange[0] + rpeRange[1]) * 2) / 2 / 2;
+  const repsRange = block.params.repsRange || [5, 8];
+  const rpeRange  = block.params.rpeRange  || [7, 8];
 
-  const repsClamped = Math.min(Math.max(targetReps, 1), 12);
-  const rpeRounded  = Math.round(targetRpe * 2) / 2;
-  const factor = RPE_CHART[repsClamped]?.[rpeRounded];
-  if (!factor) return null;
+  // TOP uses the hardest end of the rep range
+  const targetReps = clampReps(Math.max(...repsRange));
+  const targetRpe  = clampRpe((rpeRange[0] + rpeRange[1]) / 2);
 
-  const weeksInBlock = (block.sessionsLogged || 0) / Math.max(1, block.params?.suggestedFrequency || 2);
-  const rawWeight  = oneRMData.current1RM * factor * Math.pow(block.params?.weeklyMod || 1.0, weeksInBlock);
-  const finalWeight = roundToEquipment(rawWeight, exercise.equipment || 'barbell');
+  const factor = RPE_CHART[targetReps]?.[targetRpe];
+  if (typeof factor !== 'number' || factor <= 0 || factor > 1) return null;
+
+  const weeklyMod = (typeof block.params.weeklyMod === 'number'
+    && block.params.weeklyMod > 0.5
+    && block.params.weeklyMod < 1.5)
+    ? block.params.weeklyMod : 1.0;
+
+  const sessionsLogged = Math.max(0, block.sessionsLogged || 0);
+  const freq = Math.max(1, block.params.suggestedFrequency || 2);
+  const weeksInBlock = sessionsLogged / freq;
+  const progressionFactor = Math.pow(weeklyMod, weeksInBlock);
+
+  const rawWeight = oneRMData.current1RM * factor * progressionFactor;
+
+  // Sanity clamp: 30%–105% of 1RM
+  const clamped = Math.max(
+    oneRMData.current1RM * 0.3,
+    Math.min(oneRMData.current1RM * 1.05, rawWeight)
+  );
+
+  const finalWeight = roundToEquipment(clamped, exercise.equipment || 'barbell');
+
+  console.debug('[blocksMath TOP]', {
+    exercise: exercise.name,
+    oneRM: oneRMData.current1RM,
+    targetReps,
+    targetRpe,
+    factor,
+    progressionFactor,
+    rawWeight,
+    finalWeight,
+  });
 
   return {
     weight: String(finalWeight),
     reps:   String(targetReps),
     rpe:    String(targetRpe),
     sourceBlockId:    block.id,
-    sourceBlockName:  block.name,
     sourceBlockColor: block.color,
-    rationale: `${tag} · ${block.name} · ${Math.round(factor * 100)}% 1RM`,
   };
 };
 
 /**
- * Detecta señales de fatiga sostenida en un bloque.
+ * Calculates suggested weight for a BACK set, reactive to the real TOP weight.
+ * If TOP set has a typed weight, uses it as reference; otherwise uses topSuggestion.
+ * Returns: { weight, reps, rpe, sourceBlockId, sourceBlockColor } | null
+ */
+export const calculateBackoffSuggestion = (topSet, topSuggestion, block, exercise) => {
+  if (!block || !block.params) return null;
+
+  let referenceWeight, referenceReps, referenceRpe;
+
+  const topWeight = parseFloat(topSet?.weight);
+  const topReps   = parseInt(topSet?.reps, 10);
+  const topRpe    = parseFloat(topSet?.rpe);
+
+  if (!isNaN(topWeight) && topWeight > 0) {
+    // Reactive to real TOP
+    referenceWeight = topWeight;
+    referenceReps   = (!isNaN(topReps) && topReps > 0) ? topReps : (parseInt(topSuggestion?.reps, 10) || 5);
+    referenceRpe    = (!isNaN(topRpe)  && topRpe  > 0) ? topRpe  : (parseFloat(topSuggestion?.rpe) || 8);
+  } else if (topSuggestion) {
+    // Fallback to predictive suggestion
+    referenceWeight = parseFloat(topSuggestion.weight);
+    referenceReps   = parseInt(topSuggestion.reps, 10);
+    referenceRpe    = parseFloat(topSuggestion.rpe);
+  } else {
+    return null;
+  }
+
+  if (!referenceWeight || referenceWeight <= 0) return null;
+
+  const backoffPct = (typeof block.params.backoffPctOfTop === 'number'
+    && block.params.backoffPctOfTop > 0.5
+    && block.params.backoffPctOfTop <= 1.0)
+    ? block.params.backoffPctOfTop : 0.90;
+
+  const repsAdjust = Number.isInteger(block.params.backoffRepsAdjust)
+    ? block.params.backoffRepsAdjust : 0;
+
+  const backoffWeight = referenceWeight * backoffPct;
+  const backoffReps   = clampReps(referenceReps + repsAdjust);
+  const backoffRpe    = clampRpe(referenceRpe - 0.5);
+
+  const finalWeight = roundToEquipment(backoffWeight, exercise?.equipment || 'barbell');
+
+  return {
+    weight: String(finalWeight),
+    reps:   String(backoffReps),
+    rpe:    String(backoffRpe),
+    sourceBlockId:    block.id,
+    sourceBlockColor: block.color,
+  };
+};
+
+/**
+ * Returns the first explicitly-typed TOP set, or the first set as de-facto TOP.
+ */
+export const findTopSetInExercise = (exercise) => {
+  if (!exercise || !Array.isArray(exercise.sets)) return null;
+  const explicit = exercise.sets.find(s => (s?.type || '').toLowerCase() === 'top');
+  return explicit || exercise.sets[0] || null;
+};
+
+export const isTopSet = (set) => {
+  const t = (set?.type || '').toLowerCase();
+  return t === 'top' || t === 'normal' || t === '';
+};
+
+export const isBackSet = (set) => {
+  const t = (set?.type || '').toLowerCase();
+  return t === 'back' || t === 'backoff';
+};
+
+/**
+ * Detects sustained fatigue signals in a block.
  * Returns: { severity, message, reasons } | null
  */
 export const checkFatigueSignals = (block, recentSessions) => {
@@ -76,7 +188,7 @@ export const checkFatigueSignals = (block, recentSessions) => {
   const maxWeights = blockSessions.map(s => _extractMaxWeight(s, tags)).filter(w => w > 0);
   let progressStall = 0;
   if (maxWeights.length >= 3) {
-    const allEqual = maxWeights.every(w => w === maxWeights[0]);
+    const allEqual   = maxWeights.every(w => w === maxWeights[0]);
     const decreasing = maxWeights.every((w, i) => i === 0 || w <= maxWeights[i - 1]);
     if (allEqual || (decreasing && maxWeights[0] > maxWeights[maxWeights.length - 1])) {
       progressStall = blockSessions.length;
@@ -85,8 +197,8 @@ export const checkFatigueSignals = (block, recentSessions) => {
 
   if (rpeOverTarget >= 3 || progressStall >= 4) {
     const reasons = [];
-    if (rpeOverTarget >= 3) reasons.push('RPE alto sostenido en últimas sesiones');
-    if (progressStall >= 4) reasons.push('Sin progreso de carga en 4+ sesiones');
+    if (rpeOverTarget >= 3)  reasons.push('RPE alto sostenido en últimas sesiones');
+    if (progressStall >= 4)  reasons.push('Sin progreso de carga en 4+ sesiones');
     return { severity: 'high', message: 'Considerá un deload o cambiar de bloque', reasons };
   }
   return null;

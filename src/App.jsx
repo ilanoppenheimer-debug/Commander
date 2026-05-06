@@ -4,7 +4,6 @@ import {
   DEFAULT_EXERCISE_DB,
   EQUIPMENT_TYPES,
   DEFAULT_MODES,
-  PHASE_COLORS,
   SET_TYPES,
 
   ACCENT_PRESETS
@@ -51,7 +50,7 @@ import { logger } from "./services/logger";
 import {
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
   X, ChevronLeft, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
-  Timer, Pause, RotateCcw, Wand2, ChevronUp, ChevronDown, Target, RefreshCw, ClipboardList,
+  Timer, Pause, RotateCcw, ChevronUp, ChevronDown, RefreshCw, ClipboardList,
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check
 } from 'lucide-react';
 
@@ -62,8 +61,6 @@ const FullSettingsModal = ({
   setBarWeight,
   barUnit,
   setBarUnit,
-  modes,
-  setModes,
   accent,
   setAccent,
   showNotify,
@@ -71,17 +68,10 @@ const FullSettingsModal = ({
   onGoToHistory,
   showPreSessionPreview,
   setShowPreSessionPreview,
-  autoSuggestEnabled,
-  setAutoSuggestEnabled,
   globalIncrementOverrides,
   setGlobalIncrementOverrides,
 }) => {
-  const [editingModeId, setEditingModeId] = useState(null);
-  const [showAIPhaseInput, setShowAIPhaseInput] = useState(false);
-  const [aiPhasePrompt, setAiPhasePrompt] = useState("");
-  const [isGeneratingPhase, setIsGeneratingPhase] = useState(false);
-  const [aiPhaseError, setAiPhaseError] = useState(null);
-  const [settingsTab, setSettingsTab] = useState('fases');
+  const [settingsTab, setSettingsTab] = useState('apariencia');
 
   const updateCount = (unit, weight, delta) => {
     setInventory((prev) => {
@@ -94,72 +84,14 @@ const FullSettingsModal = ({
     });
   };
 
-  const addMode = () => {
-    const safeModes = Array.isArray(modes) ? modes : DEFAULT_MODES;
-    const newMode = {
-      id: `phase-${Date.now()}`,
-      label: "Nueva Fase",
-      rpe: "8",
-      repRange: "8-10",
-      sets: "3",
-      weightMod: 1.0,
-      color: PHASE_COLORS[safeModes.length % PHASE_COLORS.length],
-      desc: "Fase personalizada.",
-    };
-    setModes([...safeModes, newMode]);
-    setEditingModeId(newMode.id);
-  };
-
-  const generatePhaseWithAI = async () => {
-    if (!aiPhasePrompt.trim()) return;
-    setIsGeneratingPhase(true);
-    setAiPhaseError(null);
-    const safeModes = Array.isArray(modes) ? modes : DEFAULT_MODES;
-    const promptText = `Actúa como un entrenador táctico experto. Analiza este texto y extrae/crea una fase de entrenamiento: "${aiPhasePrompt}". Responde ÚNICAMENTE con un objeto JSON válido usando esta estructura exacta: { "label": "Nombre corto de la Fase", "rpe": "ej. 8 o 7-8", "repRange": "ej. 5 o 8-10", "sets": "ej. 3", "weightMod": 1.0, "desc": "Descripción breve y motivadora" }`;
-    try {
-      const textResponse = await callGeminiAPI(promptText);
-      const cleanJson = textResponse.replace(/```json|```/g, "").trim();
-      const parsedData = JSON.parse(cleanJson);
-      const newMode = {
-        id: `phase-${Date.now()}`,
-        label: parsedData.label || "Fase IA Táctica",
-        rpe: String(parsedData.rpe || "8"),
-        repRange: String(parsedData.repRange || "8-10"),
-        sets: String(parsedData.sets || "3"),
-        weightMod: parseFloat(parsedData.weightMod) || 1.0,
-        color: PHASE_COLORS[safeModes.length % PHASE_COLORS.length],
-        desc: parsedData.desc || "Protocolo calculado por IA.",
-      };
-      setModes([...safeModes, newMode]);
-      setAiPhasePrompt("");
-      setShowAIPhaseInput(false);
-    } catch (error) {
-      console.error("AI Phase Generation Failed:", error);
-      setAiPhaseError("No se pudo descifrar la fase. Intenta ser más descriptivo.");
-    } finally {
-      setIsGeneratingPhase(false);
-    }
-  };
-
-  const updateMode = (id, field, val) => {
-    setModes((prev) => Array.isArray(prev) ? prev.map((m) => (m.id === id ? { ...m, [field]: val } : m)) : DEFAULT_MODES);
-  };
-
-  const removeMode = (id) => {
-    setModes((prev) => Array.isArray(prev) ? prev.filter((m) => m.id !== id) : DEFAULT_MODES);
-    if (editingModeId === id) setEditingModeId(null);
-  };
-
   const sortedKg = Object.keys(PLATE_CONFIG.kg).map(Number).sort((a, b) => b - a);
   const sortedLb = Object.keys(PLATE_CONFIG.lb).map(Number).sort((a, b) => b - a);
-  const safeModesToRender = Array.isArray(modes) ? modes : DEFAULT_MODES;
 
   const SETTINGS_TABS = [
-    { id: 'apariencia', label: 'Apariencia' },
-    { id: 'fases',     label: 'Fases'      },
-    { id: 'equipo',    label: 'Equipo'     },
-    { id: 'incrementos', label: 'Teclado'  },
-    { id: 'datos',     label: 'Datos'      },
+    { id: 'apariencia',  label: 'Apariencia' },
+    { id: 'equipo',      label: 'Equipo'     },
+    { id: 'incrementos', label: 'Teclado'    },
+    { id: 'datos',       label: 'Datos'      },
   ];
 
   return (
@@ -228,78 +160,6 @@ const FullSettingsModal = ({
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${showPreSessionPreview ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
-                <div className="border-t border-slate-700/50 pt-4 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-bold text-white">Sugerencias automáticas de peso</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Muestra "Próxima: X kg" y autocompleta series</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAutoSuggestEnabled(v => !v)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${autoSuggestEnabled ? 'bg-accent-600' : 'bg-slate-700'}`}
-                  >
-                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${autoSuggestEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {settingsTab === 'fases' && (
-            <section>
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Target size={14} /> Fases / Mesociclos
-              </h3>
-              <div className="space-y-3 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                {safeModesToRender.map((m) => (
-                  <div key={m.id}>
-                    {editingModeId === m.id ? (
-                      <div className="bg-slate-950 p-3 rounded-lg border border-accent-500/50 space-y-3 animate-fade-in-down">
-                        <InputGroup label="Nombre de la Fase" value={m.label} onChange={(v) => updateMode(m.id, "label", v)} />
-                        <div className="grid grid-cols-2 gap-2">
-                          <InputGroup label="Series" value={m.sets} onChange={(v) => updateMode(m.id, "sets", v)} />
-                          <InputGroup label="Reps" value={m.repRange} onChange={(v) => updateMode(m.id, "repRange", v)} />
-                          <InputGroup label="RPE" value={m.rpe} onChange={(v) => updateMode(m.id, "rpe", v)} />
-                          <InputGroup label="Multiplicador (Carga)" value={m.weightMod} type="number" step="0.05" onChange={(v) => updateMode(m.id, "weightMod", parseFloat(v) || 1)} />
-                        </div>
-                        <InputGroup label="Descripción" value={m.desc} onChange={(v) => updateMode(m.id, "desc", v)} />
-                        <div className="flex justify-end pt-2">
-                          <button onClick={() => setEditingModeId(null)} className="px-4 py-2 bg-accent-600 text-black font-bold text-xs rounded hover:bg-accent-500">Listo</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded-lg border border-slate-800 group">
-                        <div>
-                          <div className={`text-sm font-bold ${m.color}`}>{m.label}</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">{m.sets}x{m.repRange} @ RPE {m.rpe} | {m.weightMod}x Carga</div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => setEditingModeId(m.id)} className="p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition"><Edit3 size={14} /></button>
-                          {m.id !== "standard" && <button onClick={() => removeMode(m.id)} className="p-2 rounded text-slate-400 hover:text-red-500 hover:bg-slate-700 transition"><Trash2 size={14} /></button>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {!showAIPhaseInput ? (
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={addMode} className="flex-1 py-2 border border-dashed border-slate-600 text-slate-400 hover:text-accent-500 hover:border-accent-500 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1"><Plus size={14} /> Manual</button>
-                    <button onClick={() => setShowAIPhaseInput(true)} className="flex-1 py-2 border border-dashed border-purple-500/50 text-purple-400 hover:text-purple-300 hover:border-purple-400 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-1 bg-purple-900/10"><Zap size={14} /> Importar/IA</button>
-                  </div>
-                ) : (
-                  <div className="bg-slate-950 p-3 rounded-lg border border-purple-500/50 space-y-3 mt-2 animate-fade-in-down">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1"><Zap size={12} /> Constructor Táctico IA</span>
-                      <button onClick={() => setShowAIPhaseInput(false)} className="text-slate-500 hover:text-white"><X size={14} /></button>
-                    </div>
-                    <textarea value={aiPhasePrompt} onChange={(e) => setAiPhasePrompt(e.target.value)} placeholder="Ej: Copia tu bloque de Excel, o escribe: 'Fase de hipertrofia, 4 series de 12 reps, RPE 8'" className="w-full h-20 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:border-purple-500 focus:outline-none resize-none" />
-                    {aiPhaseError && <div className="text-[10px] text-red-500">{aiPhaseError}</div>}
-                    <button onClick={generatePhaseWithAI} disabled={isGeneratingPhase || !aiPhasePrompt.trim()} className="w-full py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-xs rounded transition flex items-center justify-center gap-2">
-                      {isGeneratingPhase ? <><Loader2 size={14} className="animate-spin" /> Procesando...</> : <><Sparkles size={14} /> Generar Fase</>}
-                    </button>
-                  </div>
-                )}
               </div>
             </section>
           )}
@@ -470,9 +330,8 @@ function AppMain() {
   const [historySort,        setHistorySort]        = useState('newest');
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
   const [workSubTab,         setWorkSubTab]         = useState('strength');
-  const [showPreSessionPreview,     setShowPreSessionPreview]     = useState(false);
-  const [autoSuggestEnabled,        setAutoSuggestEnabled]        = useState(true);
-  const [globalIncrementOverrides,  setGlobalIncrementOverrides]  = useState({});
+  const [showPreSessionPreview,    setShowPreSessionPreview]    = useState(false);
+  const [globalIncrementOverrides, setGlobalIncrementOverrides] = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
 
   // Guard: only persist settings to Dexie after initial load is complete
@@ -495,7 +354,7 @@ function AppMain() {
       await migrateLegacyModes();
 
       // Load settings from Dexie
-      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','autoSuggestEnabled','globalIncrementOverrides'];
+      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
       const values = await Promise.all(keys.map(k => getSetting(k)));
       const s = Object.fromEntries(keys.map((k, i) => [k, values[i]]));
 
@@ -515,7 +374,6 @@ function AppMain() {
       }
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
-      if (s.autoSuggestEnabled !== undefined) setAutoSuggestEnabled(s.autoSuggestEnabled);
       if (s.globalIncrementOverrides !== undefined && s.globalIncrementOverrides !== null) setGlobalIncrementOverrides(s.globalIncrementOverrides);
 
       // Hydrate active session from Dexie
@@ -536,7 +394,6 @@ function AppMain() {
   useEffect(() => { if (isSettingsLoaded.current) setSetting('modes', modes); }, [modes]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('inventory', inventory); }, [inventory]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('showPreSessionPreview', showPreSessionPreview); }, [showPreSessionPreview]);
-  useEffect(() => { if (isSettingsLoaded.current) setSetting('autoSuggestEnabled', autoSuggestEnabled); }, [autoSuggestEnabled]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('globalIncrementOverrides', globalIncrementOverrides); }, [globalIncrementOverrides]);
 
   // ── Auto backup check on load ─────────────────────────────────────────────
@@ -562,12 +419,10 @@ function AppMain() {
   };
 
   // ── Derived safe refs ──────────────────────────────────────────────────────
-  const safeRoutines    = Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)         : [];
-  const safeHistory     = Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)          : [];
-  const safeCustomExs   = Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean)  : [];
-  const safeModes       = Array.isArray(modes) && modes.length > 0 ? modes : DEFAULT_MODES;
-  const currentMode     = safeModes.find(m => m.id === activeModeId) || safeModes[0] || DEFAULT_MODES[0];
-  const athleteProfile  = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
+  const safeRoutines   = Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)        : [];
+  const safeHistory    = Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [];
+  const safeCustomExs  = Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [];
+  const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   const isTraining      = session !== null;
 
   const tabs = [
@@ -843,21 +698,6 @@ function AppMain() {
           </div>
         </div>
 
-        {/* Fase Global — only on routines tab and only when non-default mode or training */}
-        {(activeTab === 'routines' || isTraining) && (activeModeId !== 'standard' || isTraining) && (
-          <div className="bg-slate-950 px-4 py-1.5 border-b border-slate-800 relative z-20">
-            <div className="max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-slate-600 uppercase">Fase:</span>
-              <select
-                value={activeModeId}
-                onChange={(e) => setActiveModeId(e.target.value)}
-                className={`bg-transparent border-0 text-xs font-bold uppercase focus:outline-none ${currentMode?.color || 'text-slate-500'}`}
-              >
-                {safeModes.map(m => (<option key={m.id} value={m.id} className={`bg-slate-900 ${m.color}`}>{m.label}</option>))}
-              </select>
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="flex-1 overflow-y-auto max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto w-full p-4 md:px-6 lg:px-8 pb-24 relative">
@@ -868,7 +708,6 @@ function AppMain() {
               key={session.id || 'active-session'}
               onFinishMission={handleFinishMission}
               onDiscardSession={() => { storeDiscard(); showNotify("Sesión descartada.", "info"); }}
-              mode={currentMode}
               history={safeHistory}
               athleteProfile={athleteProfile}
               customExercises={safeCustomExs}
@@ -876,7 +715,6 @@ function AppMain() {
               removeCustomExercise={removeCustomExercise}
               barUnit={barUnit}
               showNotify={showNotify}
-              autoSuggestEnabled={autoSuggestEnabled}
               globalIncrementOverrides={globalIncrementOverrides}
             />
           </ErrorBoundary>
@@ -1209,15 +1047,12 @@ function AppMain() {
           inventory={inventory} setInventory={setInventory}
           barWeight={barWeight} setBarWeight={setBarWeight}
           barUnit={barUnit} setBarUnit={setBarUnit}
-          modes={modes} setModes={setModes}
           accent={accent} setAccent={setAccent}
           showNotify={showNotify}
           onClose={() => setShowSettings(false)}
           onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }}
           showPreSessionPreview={showPreSessionPreview}
           setShowPreSessionPreview={setShowPreSessionPreview}
-          autoSuggestEnabled={autoSuggestEnabled}
-          setAutoSuggestEnabled={setAutoSuggestEnabled}
           globalIncrementOverrides={globalIncrementOverrides}
           setGlobalIncrementOverrides={setGlobalIncrementOverrides}
         />
