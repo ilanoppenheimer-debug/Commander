@@ -19,11 +19,16 @@ import {
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
 import { BlockBanner } from "./blocks/BlockBanner";
+import { BlockCreateModal } from "./blocks/BlockCreateModal";
 import { TagPicker } from "./blocks/TagPicker";
 import { BlockColorDot } from "./blocks/BlockColorDot";
 import { useActiveBlocks } from "../hooks/useActiveBlocks";
-import { calculateSuggestedWeight } from "../utils/blocksMath";
-import { incrementBlockSessions } from "../db/blocks";
+import {
+  findBlockForExercise,
+  calculateTopSetSuggestion,
+  calculateBackoffSuggestion,
+  findTopSetInExercise,
+} from "../utils/blocksMath";
 import { getExerciseMeta, saveExerciseMeta } from "../constants/exerciseMetadata";
 import { TAG_LABELS } from "../constants/blockTemplates";
 
@@ -34,11 +39,10 @@ import Modal from "./ui/Modal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import PostSessionReport from "./PostSessionReport";
-import { EQUIPMENT_TYPES, SET_TYPES } from "../constants/gymConstants";
+import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
-import { suggestNextSet, getLastFilledSet } from "../ai/progressionModel";
 import { getTopHistoricalSet } from "../utils/strengthMath";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
@@ -137,7 +141,6 @@ export const FinishMissionModal = ({
 export default function ActiveSession({
   onFinishMission,
   onDiscardSession,
-  mode,
   history,
   athleteProfile,
   customExercises,
@@ -145,7 +148,6 @@ export default function ActiveSession({
   removeCustomExercise,
   barUnit,
   showNotify,
-  autoSuggestEnabled = true,
   globalIncrementOverrides = {},
 }) {
   // ── Zustand store ──────────────────────────────────────────────────────────
@@ -159,13 +161,11 @@ export default function ActiveSession({
   const storeToggleCompleted   = useSessionStore(s => s.toggleSetCompleted);
   const storeCycleType         = useSessionStore(s => s.cycleSetType);
   const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
-  const storeTogglePhase = useSessionStore(s => s.togglePhaseForEx);
   const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
   const storeSetBriefing = useSessionStore(s => s.setBriefing);
   const storeSetSubjState= useSessionStore(s => s.setSubjectiveState);
 
   const exercises        = session?.exercises ?? [];
-  const phaseEnabledExIds= session?.phaseEnabledExIds ?? [];
   const warmupPlan       = session?.warmupPlan ?? null;
   const briefing         = session?.briefing ?? null;
   const subjectiveState  = session?.subjectiveState ?? '';
@@ -183,7 +183,8 @@ export default function ActiveSession({
   // ── Active blocks ──────────────────────────────────────────────────────────
   const [blocksRefresh,  setBlocksRefresh]  = useState(0);
   const { blocks: activeBlocks }            = useActiveBlocks(blocksRefresh);
-  const [tagPickerExId,  setTagPickerExId]  = useState(null);
+  const [tagPickerExId,       setTagPickerExId]       = useState(null);
+  const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
 
   // ── Custom keypad state ────────────────────────────────────────────────────
   const [keypadState, setKeypadState] = useState({
@@ -219,18 +220,104 @@ export default function ActiveSession({
     });
   }, [exercises]);
 
-  const updateSetField = useCallback((exId, setIdx, field, value) => {
-    // Keep raw string while typing; formatNumber in SetRow handles display
-    storeUpdateSet(exId, setIdx, field, value);
-    // Strip placeholder once the user starts typing anything in any field
-    if (value !== '' && value !== null && value !== undefined) {
-      const ex = useSessionStore.getState().session?.exercises?.find(e => e.id === exId);
-      const s = ex?.sets?.[setIdx];
-      if (s?.placeholder) {
-        storeUpdateSet(exId, setIdx, 'placeholder', undefined);
+  // Recalculates TOP and BACK placeholders for one exercise based on active blocks.
+  // Only writes placeholder on sets whose weight field is empty. Never overwrites typed values.
+  const recalculateExercisePlaceholders = useCallback((exId) => {
+    const currentExercises = useSessionStore.getState().session?.exercises ?? [];
+    const ex = currentExercises.find(e => e.id === exId);
+    if (!ex || !Array.isArray(ex.sets) || ex.sets.length === 0) return;
+
+    const exMeta = getExerciseMeta(ex.name);
+    const exerciseForCalc = { ...ex, metadata: exMeta };
+    const block = findBlockForExercise(exerciseForCalc, activeBlocks);
+
+    if (!block) {
+      // No block: use historical top as placeholder for first set (simple memory)
+      const topHistorical = getTopHistoricalSet(ex.name, history);
+      if (topHistorical) {
+        const firstSet = ex.sets[0];
+        if (firstSet && !parseFloat(firstSet.weight)) {
+          const newSets = ex.sets.map((s, i) =>
+            i === 0 ? { ...s, placeholder: topHistorical } : s
+          );
+          storeUpdateEx(exId, { sets: newSets });
+        }
       }
+      return;
     }
-  }, [storeUpdateSet]);
+
+    const topSuggestion = calculateTopSetSuggestion(exerciseForCalc, history, block);
+    if (!topSuggestion) {
+      // Block exists but no 1RM data: fallback to historical top
+      const topHistorical = getTopHistoricalSet(ex.name, history);
+      if (topHistorical) {
+        const firstSet = ex.sets[0];
+        if (firstSet && !parseFloat(firstSet.weight)) {
+          const newSets = ex.sets.map((s, i) =>
+            i === 0 ? { ...s, placeholder: topHistorical } : s
+          );
+          storeUpdateEx(exId, { sets: newSets });
+        }
+      }
+      return;
+    }
+
+    const topSet = findTopSetInExercise(ex);
+    const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
+
+    const newSets = ex.sets.map((set, i) => {
+      if (!set) return set;
+      const hasTypedValue = parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0;
+
+      if (hasTypedValue) {
+        // Strip stale placeholder if user typed over it
+        if (set.placeholder) {
+          const { placeholder: _ph, ...rest } = set;
+          return rest;
+        }
+        return set;
+      }
+
+      const isTop = set === topSet || (!hasExplicitTop && i === 0);
+
+      if (isTop) {
+        return {
+          ...set,
+          placeholder: {
+            weight:          topSuggestion.weight,
+            reps:            topSuggestion.reps,
+            rpe:             topSuggestion.rpe,
+            sourceBlockColor: topSuggestion.sourceBlockColor,
+          },
+        };
+      }
+
+      // BACK set: reactive to real TOP weight or falls back to TOP suggestion
+      const backoffSuggestion = calculateBackoffSuggestion(topSet, topSuggestion, block, exerciseForCalc);
+      if (!backoffSuggestion) return set;
+      return {
+        ...set,
+        placeholder: {
+          weight:          backoffSuggestion.weight,
+          reps:            backoffSuggestion.reps,
+          rpe:             backoffSuggestion.rpe,
+          sourceBlockColor: backoffSuggestion.sourceBlockColor,
+        },
+      };
+    });
+
+    // Only update if something changed (avoid infinite loops)
+    const changed = newSets.some((s, i) =>
+      JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
+    );
+    if (changed) storeUpdateEx(exId, { sets: newSets });
+  }, [activeBlocks, history, storeUpdateEx]);
+
+  const updateSetField = useCallback((exId, setIdx, field, value) => {
+    storeUpdateSet(exId, setIdx, field, value);
+    // Recalculate placeholders (handles stripping on typed sets + updating BACK sets)
+    recalculateExercisePlaceholders(exId);
+  }, [storeUpdateSet, recalculateExercisePlaceholders]);
 
   const getPreviousPerformance = (exName) => {
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
@@ -254,38 +341,6 @@ export default function ActiveSession({
     return null;
   };
 
-  const getSuggestion = (exerciseName, isPhaseEnabled) => {
-    if (!mode || mode.id === "standard" || !isPhaseEnabled) return null;
-    if (!exerciseName) return null;
-
-    let baseWeight = 0;
-    if (Array.isArray(history)) {
-      for (const session of history) {
-        const pastEx = (session?.exercises || []).find(
-          (e) => String(e?.name || "").toLowerCase() === String(exerciseName).toLowerCase()
-        );
-        if (pastEx && Array.isArray(pastEx.sets) && pastEx.sets.length > 0) {
-          const topSet = pastEx.sets.reduce((max, s) => {
-            const w = parseFloat(s?.weight) || 0;
-            return w > (parseFloat(max?.weight) || 0) ? s : max;
-          }, pastEx.sets[0]);
-          if (parseFloat(topSet?.weight) > 0) {
-            baseWeight = parseFloat(topSet.weight);
-            break;
-          }
-        }
-      }
-    }
-
-    if (baseWeight === 0) {
-      return `Fase: ${mode.sets}×${mode.repRange} @ RPE ${mode.rpe} (sin historial)`;
-    }
-
-    const wMod = parseFloat(mode.weightMod) || 1.0;
-    const targetWeight = Math.round(baseWeight * wMod * 2) / 2;
-    return `Sug: ${targetWeight}${barUnit} | ${mode.sets}×${mode.repRange} @ RPE ${mode.rpe}`;
-  };
-
   const fetchBriefing = async () => {
     if (exercises.length === 0) { setBriefingError("Agrega ejercicios primero"); return; }
     setIsLoadingBriefing(true);
@@ -294,7 +349,6 @@ export default function ActiveSession({
       const result = await requestSessionBriefing({
         sessionName: session?.name,
         exercises,
-        mode,
         history,
         athleteProfile,
         subjectiveState: subjectiveState.trim() || null,
@@ -346,23 +400,13 @@ export default function ActiveSession({
   const handleSelectExercise = (exName) => {
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
+      // Recalculate after name change
+      recalculateExercisePlaceholders(editingExId);
     } else {
       storeAddEx(exName);
-      // Attach placeholder: prefer block-based suggestion, fallback to historical top
       const newExercises = useSessionStore.getState().session?.exercises ?? [];
       const newEx = newExercises[newExercises.length - 1];
-      if (newEx && newEx.sets?.length > 0) {
-        const exMeta = getExerciseMeta(exName);
-        const exerciseForCalc = { ...newEx, metadata: exMeta };
-        const blockSugg = calculateSuggestedWeight(exerciseForCalc, history, activeBlocks);
-        const ph = blockSugg
-          ? { weight: blockSugg.weight, reps: blockSugg.reps, rpe: blockSugg.rpe, sourceBlockColor: blockSugg.sourceBlockColor }
-          : getTopHistoricalSet(exName, history);
-        if (ph) {
-          const patchedSets = newEx.sets.map((s, i) => i === 0 ? { ...s, placeholder: ph } : s);
-          storeUpdateEx(newEx.id, { sets: patchedSets });
-        }
-      }
+      if (newEx?.id) recalculateExercisePlaceholders(newEx.id);
     }
     setShowExSelector(false);
     setEditingExId(null);
@@ -371,15 +415,14 @@ export default function ActiveSession({
   const handleAddSet = (exId) => {
     const ex = exercises.find(e => e.id === exId);
     const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
-    // Use last set in the list (not getLastFilledSet) so we always copy the immediately preceding set
     const lastSet = safeSets.length > 0 ? safeSets[safeSets.length - 1] : null;
-    const lastFilled = getLastFilledSet(safeSets);
-    const targetRPE = parseFloat(mode?.rpe) || 8;
-    const suggestion = autoSuggestEnabled ? suggestNextSet({ lastSet: lastFilled, targetRPE }) : null;
-    const nextSet = suggestion
-      ? { weight: suggestion.weight, reps: suggestion.reps, rpe: lastSet?.rpe ?? 0, type: "normal", completed: false }
-      : { weight: lastSet?.weight ?? 0, reps: lastSet?.reps ?? 0, rpe: lastSet?.rpe ?? 0, type: "normal", completed: false };
+    const nextSet = {
+      weight: '', reps: '', rpe: '',
+      type: lastSet?.type || 'normal',
+      completed: false,
+    };
     storeAddSet(exId, nextSet);
+    recalculateExercisePlaceholders(exId);
   };
 
   const isLastInSupersetGroup = useCallback((exercise, allExercises) => {
@@ -406,7 +449,12 @@ export default function ActiveSession({
     }
   }, [storeToggleCompleted, isLastInSupersetGroup, exercises]);
 
-  const isGlobalDeload = mode?.label?.toLowerCase().includes("descarga");
+  // Recalculate all exercise placeholders when blocks or history change (and on mount)
+  React.useEffect(() => {
+    if (!Array.isArray(exercises) || exercises.length === 0) return;
+    exercises.forEach(ex => { if (ex?.id) recalculateExercisePlaceholders(ex.id); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBlocks, history]);
 
   if (!session) return null;
 
@@ -557,7 +605,9 @@ export default function ActiveSession({
 
       <BlockBanner
         activeBlocks={activeBlocks}
-        onTapBlock={() => {}}
+        onTapBlock={(block) => {
+          if (block === null) setShowCreateBlockModal(true);
+        }}
       />
 
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
@@ -573,9 +623,7 @@ export default function ActiveSession({
           const isGroupFirst     = isSupersetTop && !isSupersetBottom;
           const groupBadge       = groupSize === 2 ? 'DUETO' : groupSize === 3 ? 'TRISET' : groupSize >= 4 ? `GIANT SET (${groupSize})` : null;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
-          const isPhaseEnabledForEx = isGlobalDeload || phaseEnabledExIds.includes(ex.id);
-          const suggestion   = getSuggestion(ex.name, isPhaseEnabledForEx);
-          const details      = getExerciseDetails(ex.name);
+          const details  = getExerciseDetails(ex.name);
           const prevPerformance = getPreviousPerformance(ex.name);
 
           return (
@@ -667,38 +715,21 @@ export default function ActiveSession({
                                   </span>
                                 </button>
                                 {tagPickerExId === ex.id && (
-                                  <div className="absolute top-full mt-1 left-0 z-30">
-                                    <TagPicker
-                                      value={tag || 'accessory'}
-                                      onChange={(newTag) => {
-                                        const meta = getExerciseMeta(ex.name);
-                                        saveExerciseMeta(ex.name, { ...meta, defaultTag: newTag, tagAssignedAt: new Date().toISOString() });
-                                        setTagPickerExId(null);
-                                        setBlocksRefresh(r => r + 1);
-                                      }}
-                                      onClose={() => setTagPickerExId(null)}
-                                    />
-                                  </div>
+                                  <TagPicker
+                                    value={tag || 'accessory'}
+                                    onChange={(newTag) => {
+                                      const meta = getExerciseMeta(ex.name);
+                                      saveExerciseMeta(ex.name, { ...meta, defaultTag: newTag, tagAssignedAt: new Date().toISOString() });
+                                      setTagPickerExId(null);
+                                      setBlocksRefresh(r => r + 1);
+                                    }}
+                                    onClose={() => setTagPickerExId(null)}
+                                  />
                                 )}
                               </>
                             );
                           })()}
                         </div>
-
-                        {mode && mode.id !== "standard" && !isGlobalDeload && (
-                          <button
-                            onClick={() => storeTogglePhase(ex.id)}
-                            className={`flex items-center gap-1 text-[9px] px-1.5 py-1 rounded border transition-colors font-bold uppercase tracking-wider ${isPhaseEnabledForEx ? `${mode.color} border-current bg-slate-800` : "text-slate-500 border-slate-700 bg-slate-900/50 hover:text-slate-400"}`}
-                          >
-                            <Target size={10} /> {isPhaseEnabledForEx ? "Fase Activa" : "Ignorar Fase"}
-                          </button>
-                        )}
-
-                        {autoSuggestEnabled && suggestion && (
-                          <span className={`text-[10px] flex items-center gap-1 ${mode?.color || "text-slate-400"}`}>
-                            <Info size={10} /> {suggestion}
-                          </span>
-                        )}
 
                         {prevPerformance && (
                           <button
@@ -746,18 +777,6 @@ export default function ActiveSession({
                       />
                     );
                   })}
-                  {autoSuggestEnabled && (() => {
-                    const lastFilled = getLastFilledSet(safeSets);
-                    const nextSuggestion = suggestNextSet({ lastSet: lastFilled, targetRPE: parseFloat(mode?.rpe) || 8 });
-                    if (!nextSuggestion) return null;
-                    const hintColor = nextSuggestion.shouldStop ? "text-red-400 border-red-500/40" : "text-sky-400 border-sky-500/30";
-                    return (
-                      <div className={`text-[10px] px-2 py-1 mt-1 border rounded bg-slate-900/60 ${hintColor}`}>
-                        <span className="font-bold">Próxima:</span> {nextSuggestion.weight}{barUnit} × {nextSuggestion.reps}{" "}
-                        <span className="text-slate-500">· {nextSuggestion.reason}</span>
-                      </div>
-                    );
-                  })()}
                   <button
                     onClick={() => handleAddSet(ex.id)}
                     className="w-full h-10 flex items-center justify-center gap-1 text-slate-500 hover:text-accent-400 hover:bg-slate-900/50 transition-colors text-xs font-bold uppercase tracking-wider"
@@ -787,6 +806,17 @@ export default function ActiveSession({
       </div>
 
       <div className="h-16"></div>
+
+      {showCreateBlockModal && (
+        <BlockCreateModal
+          open={showCreateBlockModal}
+          onClose={() => setShowCreateBlockModal(false)}
+          onCreated={() => {
+            setShowCreateBlockModal(false);
+            setBlocksRefresh(r => r + 1);
+          }}
+        />
+      )}
 
       {/* Custom Keypad */}
       {keypadState.open && (() => {
