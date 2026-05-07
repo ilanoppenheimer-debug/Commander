@@ -419,9 +419,9 @@ function AppMain() {
   };
 
   // ── Derived safe refs ──────────────────────────────────────────────────────
-  const safeRoutines   = Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)        : [];
-  const safeHistory    = Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [];
-  const safeCustomExs  = Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [];
+  const safeRoutines   = useMemo(() => Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)        : [], [dbRoutines]);
+  const safeHistory    = useMemo(() => Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [], [dbHistory]);
+  const safeCustomExs  = useMemo(() => Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [], [dbCustomExercises]);
   const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   const isTraining      = session !== null;
 
