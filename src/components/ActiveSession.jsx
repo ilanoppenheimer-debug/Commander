@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
   Target,
   Loader2,
@@ -46,6 +46,77 @@ import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet } from "../utils/strengthMath";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
+
+// Pure function — derives an exercise with placeholder fields computed from history + blocks.
+// Never writes to the Zustand store. Returns same reference if nothing changed.
+function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
+  if (!ex || !Array.isArray(ex.sets) || ex.sets.length === 0) return ex;
+
+  const exMeta = getExerciseMeta(ex.name);
+  const exerciseForCalc = { ...ex, metadata: exMeta };
+  const block = findBlockForExercise(exerciseForCalc, Array.isArray(activeBlocks) ? activeBlocks : []);
+
+  const buildFallback = () => {
+    const topHistorical = getTopHistoricalSet(ex.name, history);
+    if (!topHistorical) return ex;
+    if (parseFloat(ex.sets[0]?.weight) > 0) return ex;
+    const newSets = ex.sets.map((s, i) => i === 0 ? { ...s, placeholder: topHistorical } : s);
+    const changed = newSets.some((s, i) =>
+      JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
+    );
+    return changed ? { ...ex, sets: newSets } : ex;
+  };
+
+  if (!block) return buildFallback();
+
+  const topSuggestion = calculateTopSetSuggestion(exerciseForCalc, history, block);
+  if (!topSuggestion) return buildFallback();
+
+  const topSet = findTopSetInExercise(ex);
+  const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
+
+  const newSets = ex.sets.map((set, i) => {
+    if (!set) return set;
+    const hasTypedValue = parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0;
+    if (hasTypedValue) {
+      if (set.placeholder) {
+        const { placeholder: _ph, ...rest } = set;
+        return rest;
+      }
+      return set;
+    }
+
+    const isTop = set === topSet || (!hasExplicitTop && i === 0);
+    if (isTop) {
+      return {
+        ...set,
+        placeholder: {
+          weight:           topSuggestion.weight,
+          reps:             topSuggestion.reps,
+          rpe:              topSuggestion.rpe,
+          sourceBlockColor: topSuggestion.sourceBlockColor,
+        },
+      };
+    }
+
+    const backoffSuggestion = calculateBackoffSuggestion(topSet, topSuggestion, block, exerciseForCalc);
+    if (!backoffSuggestion) return set;
+    return {
+      ...set,
+      placeholder: {
+        weight:           backoffSuggestion.weight,
+        reps:             backoffSuggestion.reps,
+        rpe:              backoffSuggestion.rpe,
+        sourceBlockColor: backoffSuggestion.sourceBlockColor,
+      },
+    };
+  });
+
+  const changed = newSets.some((s, i) =>
+    JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
+  );
+  return changed ? { ...ex, sets: newSets } : ex;
+}
 
 export const FinishMissionModal = ({
   sessionName,
@@ -186,6 +257,14 @@ export default function ActiveSession({
   const [tagPickerExId,       setTagPickerExId]       = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
 
+  // Placeholder-enriched exercises — derived state, never written back to the store.
+  const exercisesWithPlaceholders = useMemo(
+    () => (Array.isArray(exercises) ? exercises : []).map(
+      ex => recalculatePlaceholdersForExercise(ex, history, activeBlocks)
+    ),
+    [exercises, history, activeBlocks]
+  );
+
   // ── Custom keypad state ────────────────────────────────────────────────────
   const [keypadState, setKeypadState] = useState({
     open: false, exerciseId: null, setIndex: -1, activeField: 'weight',
@@ -220,104 +299,9 @@ export default function ActiveSession({
     });
   }, [exercises]);
 
-  // Recalculates TOP and BACK placeholders for one exercise based on active blocks.
-  // Only writes placeholder on sets whose weight field is empty. Never overwrites typed values.
-  const recalculateExercisePlaceholders = useCallback((exId) => {
-    const currentExercises = useSessionStore.getState().session?.exercises ?? [];
-    const ex = currentExercises.find(e => e.id === exId);
-    if (!ex || !Array.isArray(ex.sets) || ex.sets.length === 0) return;
-
-    const exMeta = getExerciseMeta(ex.name);
-    const exerciseForCalc = { ...ex, metadata: exMeta };
-    const block = findBlockForExercise(exerciseForCalc, activeBlocks);
-
-    if (!block) {
-      // No block: use historical top as placeholder for first set (simple memory)
-      const topHistorical = getTopHistoricalSet(ex.name, history);
-      if (topHistorical) {
-        const firstSet = ex.sets[0];
-        if (firstSet && !parseFloat(firstSet.weight)) {
-          const newSets = ex.sets.map((s, i) =>
-            i === 0 ? { ...s, placeholder: topHistorical } : s
-          );
-          storeUpdateEx(exId, { sets: newSets });
-        }
-      }
-      return;
-    }
-
-    const topSuggestion = calculateTopSetSuggestion(exerciseForCalc, history, block);
-    if (!topSuggestion) {
-      // Block exists but no 1RM data: fallback to historical top
-      const topHistorical = getTopHistoricalSet(ex.name, history);
-      if (topHistorical) {
-        const firstSet = ex.sets[0];
-        if (firstSet && !parseFloat(firstSet.weight)) {
-          const newSets = ex.sets.map((s, i) =>
-            i === 0 ? { ...s, placeholder: topHistorical } : s
-          );
-          storeUpdateEx(exId, { sets: newSets });
-        }
-      }
-      return;
-    }
-
-    const topSet = findTopSetInExercise(ex);
-    const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
-
-    const newSets = ex.sets.map((set, i) => {
-      if (!set) return set;
-      const hasTypedValue = parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0;
-
-      if (hasTypedValue) {
-        // Strip stale placeholder if user typed over it
-        if (set.placeholder) {
-          const { placeholder: _ph, ...rest } = set;
-          return rest;
-        }
-        return set;
-      }
-
-      const isTop = set === topSet || (!hasExplicitTop && i === 0);
-
-      if (isTop) {
-        return {
-          ...set,
-          placeholder: {
-            weight:          topSuggestion.weight,
-            reps:            topSuggestion.reps,
-            rpe:             topSuggestion.rpe,
-            sourceBlockColor: topSuggestion.sourceBlockColor,
-          },
-        };
-      }
-
-      // BACK set: reactive to real TOP weight or falls back to TOP suggestion
-      const backoffSuggestion = calculateBackoffSuggestion(topSet, topSuggestion, block, exerciseForCalc);
-      if (!backoffSuggestion) return set;
-      return {
-        ...set,
-        placeholder: {
-          weight:          backoffSuggestion.weight,
-          reps:            backoffSuggestion.reps,
-          rpe:             backoffSuggestion.rpe,
-          sourceBlockColor: backoffSuggestion.sourceBlockColor,
-        },
-      };
-    });
-
-    // Only update if something changed (avoid infinite loops)
-    const changed = newSets.some((s, i) =>
-      JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
-    );
-    if (changed) storeUpdateEx(exId, { sets: newSets });
-  }, [activeBlocks, history, storeUpdateEx]);
-
   const updateSetField = useCallback((exId, setIdx, field, value) => {
     storeUpdateSet(exId, setIdx, field, value);
-    // Recalculate placeholders (handles stripping on typed sets + updating BACK sets)
-    recalculateExercisePlaceholders(exId);
-  }, [storeUpdateSet, recalculateExercisePlaceholders]);
+  }, [storeUpdateSet]);
 
   const getPreviousPerformance = (exName) => {
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
@@ -400,13 +384,8 @@ export default function ActiveSession({
   const handleSelectExercise = (exName) => {
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
-      // Recalculate after name change
-      recalculateExercisePlaceholders(editingExId);
     } else {
       storeAddEx(exName);
-      const newExercises = useSessionStore.getState().session?.exercises ?? [];
-      const newEx = newExercises[newExercises.length - 1];
-      if (newEx?.id) recalculateExercisePlaceholders(newEx.id);
     }
     setShowExSelector(false);
     setEditingExId(null);
@@ -416,13 +395,11 @@ export default function ActiveSession({
     const ex = exercises.find(e => e.id === exId);
     const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
     const lastSet = safeSets.length > 0 ? safeSets[safeSets.length - 1] : null;
-    const nextSet = {
+    storeAddSet(exId, {
       weight: '', reps: '', rpe: '',
       type: lastSet?.type || 'normal',
       completed: false,
-    };
-    storeAddSet(exId, nextSet);
-    recalculateExercisePlaceholders(exId);
+    });
   };
 
   const isLastInSupersetGroup = useCallback((exercise, allExercises) => {
@@ -448,13 +425,6 @@ export default function ActiveSession({
       }
     }
   }, [storeToggleCompleted, isLastInSupersetGroup, exercises]);
-
-  // Recalculate all exercise placeholders when blocks or history change (and on mount)
-  React.useEffect(() => {
-    if (!Array.isArray(exercises) || exercises.length === 0) return;
-    exercises.forEach(ex => { if (ex?.id) recalculateExercisePlaceholders(ex.id); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBlocks, history]);
 
   if (!session) return null;
 
@@ -611,7 +581,7 @@ export default function ActiveSession({
       />
 
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
-        {exercises.map((ex, index) => {
+        {exercisesWithPlaceholders.map((ex, index) => {
           if (!ex) return null;
           const isSupersetTop    = ex.supersetId != null && exercises[index + 1]?.supersetId === ex.supersetId;
           const isSupersetBottom = ex.supersetId != null && exercises[index - 1]?.supersetId === ex.supersetId;
