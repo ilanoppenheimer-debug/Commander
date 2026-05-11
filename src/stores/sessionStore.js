@@ -31,7 +31,10 @@ export const useSessionStore = create((set, get) => ({
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
       exercises: routine?.exercises
-        ? JSON.parse(JSON.stringify(routine.exercises))
+        ? JSON.parse(JSON.stringify(routine.exercises)).map(ex => ({
+            ...ex,
+            sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({ ...s, completed: false })) : ex.sets,
+          }))
         : [],
       startTime: new Date().toISOString(),
       phaseEnabledExIds: routine?.exercises?.map(e => e.id) ?? [],

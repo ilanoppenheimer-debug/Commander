@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit3, Trash2, Copy, FileText, TrendingUp, AlertTriangle, Check } from 'lucide-react';
+import { X, Edit3, Trash2, Save, FileText, TrendingUp, AlertTriangle, Check } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { deleteSession, saveRoutine } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
@@ -13,8 +13,10 @@ function formatSet(s, barUnit = 'kg') {
 }
 
 const SET_TYPE_COLORS = {
-  warmup:  'text-blue-400',
-  backoff: 'text-sky-400',
+  top:     'text-amber-400',
+  warmup:  'text-slate-400',
+  backoff: 'text-slate-400',
+  back:    'text-slate-400',
   drop:    'text-red-400',
   amrap:   'text-purple-400',
   normal:  'text-slate-400',
@@ -153,7 +155,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                                 {s.type && s.type !== 'normal' ? s.type : '—'}
                               </td>
                               <td className="py-2 text-right text-slate-300 font-mono">
-                                {s.weight > 0 ? `${s.weight}${barUnit}` : 'PC'}
+                                {parseFloat(s.weight) > 0 ? `${parseFloat(s.weight)}${barUnit}` : 'PC'}
                               </td>
                               <td className="py-2 text-right text-slate-300 font-mono">{s.reps}</td>
                               <td className="py-2 text-right text-slate-500">{s.rpe > 0 ? s.rpe : '—'}</td>
@@ -216,7 +218,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                 onClick={handleDuplicateAsTemplate}
                 className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
               >
-                <Copy size={14} /> Plantilla
+                <Save size={14} /> Guardar como rutina
               </button>
               <button
                 onClick={() => setConfirmDelete(true)}

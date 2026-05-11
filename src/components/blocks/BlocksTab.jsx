@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAllBlocks } from '../../db/blocks';
 import { BlockCard } from './BlockCard';
 import { BlockCreateModal } from './BlockCreateModal';
 import { BlockEditModal } from './BlockEditModal';
 
 export const BlocksTab = () => {
-  const [blocks,       setBlocks]       = useState([]);
-  const [refresh,      setRefresh]      = useState(0);
-  const [showCreate,   setShowCreate]   = useState(false);
-  const [editingBlock, setEditingBlock] = useState(null);
+  const [blocks,            setBlocks]            = useState([]);
+  const [refresh,           setRefresh]           = useState(0);
+  const [showCreate,        setShowCreate]        = useState(false);
+  const [editingBlock,      setEditingBlock]      = useState(null);
+  const [completedOpen,     setCompletedOpen]     = useState(false);
+  const [archivedOpen,      setArchivedOpen]      = useState(false);
 
   useEffect(() => {
     getAllBlocks().then(setBlocks).catch(console.error);
@@ -40,6 +42,30 @@ export const BlocksTab = () => {
     </section>
   );
 
+  const renderCollapsibleGroup = (label, list, isOpen, setOpen, muted = false) => list.length > 0 && (
+    <section className={muted ? 'opacity-60' : ''}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2 hover:text-slate-400 transition-colors"
+      >
+        {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {label} ({list.length})
+      </button>
+      {isOpen && (
+        <div className="space-y-2">
+          {list.map(b => (
+            <BlockCard
+              key={b.id}
+              block={b}
+              onTap={() => setEditingBlock(b)}
+              onMenu={() => setEditingBlock(b)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="p-4 space-y-6 pb-24">
       {/* Active */}
@@ -66,8 +92,8 @@ export const BlocksTab = () => {
       </section>
 
       {renderGroup('Pausados', grouped.paused)}
-      {renderGroup('Completados', grouped.completed)}
-      {renderGroup('Archivados', grouped.archived, true)}
+      {renderCollapsibleGroup('Completados', grouped.completed, completedOpen, setCompletedOpen)}
+      {renderCollapsibleGroup('Archivados', grouped.archived, archivedOpen, setArchivedOpen, true)}
 
       <BlockCreateModal
         open={showCreate}

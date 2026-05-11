@@ -3,6 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert } from '../services/audioService';
 
 const CORNER_KEY = 'timerCorner';
+const TIMER_STORAGE_KEY = 'ironcmdr_active_timer';
 const MARGIN = 16;
 const TIMER_SIZE = 56;
 const BOTTOM_NAV_HEIGHT = 80;
@@ -11,7 +12,7 @@ function getCornerPos(corner) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   switch (corner) {
-    case 'tl': return { x: MARGIN, y: MARGIN + 60 }; // clear header
+    case 'tl': return { x: MARGIN, y: MARGIN + 60 };
     case 'tr': return { x: w - TIMER_SIZE - MARGIN, y: MARGIN + 60 };
     case 'bl': return { x: MARGIN, y: h - TIMER_SIZE - BOTTOM_NAV_HEIGHT - MARGIN };
     case 'br': default:
@@ -31,17 +32,211 @@ function snapToCorner(x, y) {
 }
 
 const AdvancedTimer = () => {
-  const [mode, setMode] = useState('stopwatch');
-  const [seconds, setSeconds] = useState(0);
-  const [initialTimerSeconds, setInitialTimerSeconds] = useState(60);
-  const [isActive, setIsActive] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [keypadOpen, setKeypadOpen] = useState(false);
+  const [mode,               setMode]               = useState('stopwatch');
+  const [initialTimerSeconds,setInitialTimerSeconds] = useState(60);
+  const [isActive,           setIsActive]           = useState(false);
+  const [isExpanded,         setIsExpanded]         = useState(false);
+  const [keypadOpen,         setKeypadOpen]         = useState(false);
+  // Tick triggers re-renders; source of truth is always Date.now() - startedAt
+  const [tick,               setTick]               = useState(0);
 
-  const timerRef = useRef(null);
-  const draggingRef = useRef(false);
-  const startPosRef = useRef({ x: null, y: null });
-  const posRef = useRef({ x: 0, y: 0 });
+  // Time accounting refs (not state — mutations don't cause re-renders)
+  const startedAtRef      = useRef(null); // ms when the current running period began
+  const accumulatedMsRef  = useRef(0);    // ms from completed running periods
+  const adjustSecsRef     = useRef(0);    // cumulative +/- from user buttons
+  const completedRef      = useRef(false);
+  const preAlertFiredRef  = useRef(false);
+
+  // Draggable button ref
+  const timerRef     = useRef(null);
+  const draggingRef  = useRef(false);
+  const startPosRef  = useRef({ x: null, y: null });
+  const posRef       = useRef({ x: 0, y: 0 });
+
+  // ── Core time calculation ──────────────────────────────────────────────────
+
+  const getElapsedMs = () => {
+    const acc = accumulatedMsRef.current;
+    if (!startedAtRef.current) return acc;
+    return acc + (Date.now() - startedAtRef.current);
+  };
+
+  const getDisplaySeconds = () => {
+    const elapsedSecs = getElapsedMs() / 1000;
+    if (mode === 'timer') {
+      return Math.max(0, Math.ceil(initialTimerSeconds + adjustSecsRef.current - elapsedSecs));
+    }
+    return Math.floor(elapsedSecs + adjustSecsRef.current);
+  };
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  // ── Interval — ticks every 250ms while active ──────────────────────────────
+
+  useEffect(() => {
+    if (!isActive) return;
+    const interval = setInterval(() => setTick(t => t + 1), 250);
+    return () => clearInterval(interval);
+  }, [isActive]);
+
+  // ── Completion detection and pre-alert (runs after every tick) ────────────
+
+  useEffect(() => {
+    if (!isActive || mode !== 'timer') return;
+    const remaining = getDisplaySeconds();
+    if (remaining <= 10 && !preAlertFiredRef.current) {
+      preAlertFiredRef.current = true;
+      playPreAlert();
+    }
+    if (remaining <= 0 && !completedRef.current) {
+      completedRef.current = true;
+      setIsActive(false);
+      persistTimerState(null); // clear storage
+      playTacticalAlarm();
+    }
+  }); // runs on every render; fine since it checks refs before acting
+
+  // ── Wake-up on tab/app returning to foreground ─────────────────────────────
+
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') setTick(t => t + 1);
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
+  // ── Restore from localStorage on mount ────────────────────────────────────
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(TIMER_STORAGE_KEY) || 'null');
+      if (stored && stored.startedAt && stored.duration) {
+        const elapsed = (Date.now() - stored.startedAt - (stored.accumulatedMs || 0)) / 1000;
+        if (elapsed < stored.duration + (stored.adjustSecs || 0)) {
+          startedAtRef.current     = stored.startedAt;
+          accumulatedMsRef.current = stored.accumulatedMs || 0;
+          adjustSecsRef.current    = stored.adjustSecs || 0;
+          completedRef.current     = false;
+          preAlertFiredRef.current = false;
+          setMode('timer');
+          setInitialTimerSeconds(stored.duration);
+          setIsActive(true);
+          setTick(t => t + 1);
+        } else {
+          localStorage.removeItem(TIMER_STORAGE_KEY);
+        }
+      }
+    } catch {
+      localStorage.removeItem(TIMER_STORAGE_KEY);
+    }
+  }, []);
+
+  // ── localStorage helpers ───────────────────────────────────────────────────
+
+  const persistTimerState = (state) => {
+    try {
+      if (state) localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(state));
+      else localStorage.removeItem(TIMER_STORAGE_KEY);
+    } catch {}
+  };
+
+  // ── Controls ───────────────────────────────────────────────────────────────
+
+  const startOrResume = () => {
+    startedAtRef.current = Date.now();
+    completedRef.current     = false;
+    preAlertFiredRef.current = false;
+    setIsActive(true);
+    setTick(t => t + 1);
+    if (mode === 'timer') {
+      persistTimerState({
+        startedAt:    Date.now(),
+        duration:     initialTimerSeconds,
+        accumulatedMs: accumulatedMsRef.current,
+        adjustSecs:   adjustSecsRef.current,
+      });
+    }
+  };
+
+  const pause = () => {
+    if (!startedAtRef.current) return;
+    accumulatedMsRef.current += Date.now() - startedAtRef.current;
+    startedAtRef.current = null;
+    setIsActive(false);
+    persistTimerState(null);
+  };
+
+  const resetTimer = () => {
+    startedAtRef.current     = null;
+    accumulatedMsRef.current = 0;
+    adjustSecsRef.current    = 0;
+    completedRef.current     = false;
+    preAlertFiredRef.current = false;
+    setIsActive(false);
+    setTick(t => t + 1);
+    persistTimerState(null);
+  };
+
+  const handleToggleActive = () => {
+    if (isActive) pause();
+    else startOrResume();
+  };
+
+  const handleAdjust = (deltaSecs) => {
+    adjustSecsRef.current += deltaSecs;
+    if (mode === 'timer' && getDisplaySeconds() <= 0) {
+      adjustSecsRef.current -= deltaSecs; // revert
+    }
+    setTick(t => t + 1);
+    if (navigator.vibrate) navigator.vibrate(30);
+    // Update localStorage
+    if (mode === 'timer' && startedAtRef.current) {
+      persistTimerState({
+        startedAt:    startedAtRef.current,
+        duration:     initialTimerSeconds,
+        accumulatedMs: accumulatedMsRef.current,
+        adjustSecs:   adjustSecsRef.current,
+      });
+    }
+  };
+
+  const setTimerPreset = (secs) => {
+    startedAtRef.current     = Date.now();
+    accumulatedMsRef.current = 0;
+    adjustSecsRef.current    = 0;
+    completedRef.current     = false;
+    preAlertFiredRef.current = false;
+    setMode('timer');
+    setInitialTimerSeconds(secs);
+    setIsActive(true);
+    setIsExpanded(false);
+    setTick(t => t + 1);
+    persistTimerState({
+      startedAt: Date.now(),
+      duration:  secs,
+      accumulatedMs: 0,
+      adjustSecs: 0,
+    });
+  };
+
+  // ── Listen for auto-trigger from session sets ──────────────────────────────
+
+  useEffect(() => {
+    let autoCloseTimer;
+    const handler = (e) => {
+      const { seconds: restSecs } = e.detail || {};
+      if (!restSecs) return;
+      setTimerPreset(restSecs);
+      setIsExpanded(true);
+      clearTimeout(autoCloseTimer);
+      autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
+    };
+    window.addEventListener('iron-cmdr:start-rest-timer', handler);
+    return () => { window.removeEventListener('iron-cmdr:start-rest-timer', handler); clearTimeout(autoCloseTimer); };
+  }, []);
+
+  // ── Corner positioning / drag ──────────────────────────────────────────────
 
   const applyPos = (x, y, animated = false) => {
     if (!timerRef.current) return;
@@ -50,7 +245,6 @@ const AdvancedTimer = () => {
     posRef.current = { x, y };
   };
 
-  // Load saved corner and reposition on resize
   useEffect(() => {
     const place = () => {
       const savedCorner = localStorage.getItem(CORNER_KEY) || 'br';
@@ -62,7 +256,6 @@ const AdvancedTimer = () => {
     return () => window.removeEventListener('resize', place);
   }, []);
 
-  // Hide floating button while custom keypad is open
   useEffect(() => {
     const show = () => setKeypadOpen(true);
     const hide = () => setKeypadOpen(false);
@@ -73,50 +266,6 @@ const AdvancedTimer = () => {
       window.removeEventListener('iron-cmdr:keypad-closed', hide);
     };
   }, []);
-
-  // Timer tick
-  useEffect(() => {
-    if (!isActive) return;
-    const interval = setInterval(() => {
-      setSeconds(s => {
-        if (mode === 'timer') {
-          if (s === 11) playPreAlert();
-          if (s <= 1) { clearInterval(interval); setIsActive(false); playTacticalAlarm(); return 0; }
-          return s - 1;
-        }
-        return s + 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isActive, mode]);
-
-  // Listen for auto-trigger events from session
-  useEffect(() => {
-    let autoCloseTimer;
-    const handler = (e) => {
-      const { seconds: restSecs } = e.detail || {};
-      if (!restSecs) return;
-      setMode('timer');
-      setInitialTimerSeconds(restSecs);
-      setSeconds(restSecs);
-      setIsActive(true);
-      setIsExpanded(true);
-      clearTimeout(autoCloseTimer);
-      autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
-    };
-    window.addEventListener('iron-cmdr:start-rest-timer', handler);
-    return () => { window.removeEventListener('iron-cmdr:start-rest-timer', handler); clearTimeout(autoCloseTimer); };
-  }, []);
-
-  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  const setTimerPreset = (secs) => {
-    setMode('timer');
-    setInitialTimerSeconds(secs);
-    setSeconds(secs);
-    setIsActive(true);
-    setIsExpanded(false);
-  };
 
   const handlePointerDown = (e) => {
     draggingRef.current = false;
@@ -155,11 +304,13 @@ const AdvancedTimer = () => {
     draggingRef.current = false;
   };
 
-  const alertRed = isActive && mode === 'timer' && seconds <= 10;
+  // ── Derived display values ─────────────────────────────────────────────────
+
+  const displaySecs = getDisplaySeconds();
+  const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
 
   return (
     <>
-      {/* Expanded sheet modal */}
       {isExpanded && (
         <div
           className="fixed inset-0 z-[99] bg-black/60 backdrop-blur-sm flex items-end justify-center p-4 animate-fade-in"
@@ -178,8 +329,8 @@ const AdvancedTimer = () => {
                   onClick={() => {
                     const next = mode === 'stopwatch' ? 'timer' : 'stopwatch';
                     setMode(next);
-                    setIsActive(false);
-                    setSeconds(next === 'timer' ? initialTimerSeconds : 0);
+                    resetTimer();
+                    if (next === 'timer') setInitialTimerSeconds(60);
                   }}
                   className="text-xs bg-slate-800 px-3 py-1.5 rounded text-slate-300 hover:text-white border border-slate-700 transition"
                 >
@@ -193,23 +344,17 @@ const AdvancedTimer = () => {
 
             <div className="flex items-center justify-center gap-3 my-4">
               <button
-                onClick={() => {
-                  setSeconds(prev => Math.max(0, prev - 15));
-                  if (navigator.vibrate) navigator.vibrate(30);
-                }}
+                onClick={() => handleAdjust(-15)}
                 className="w-12 h-12 rounded-full bg-slate-800 border border-accent-500/30 text-accent-400 font-bold text-sm flex items-center justify-center hover:bg-slate-700 active:scale-95 transition"
                 aria-label="Restar 15 segundos"
               >
                 −15s
               </button>
               <div className={`text-6xl font-black font-mono tabular-nums ${alertRed ? 'text-red-500' : 'text-white'}`}>
-                {formatTime(seconds)}
+                {formatTime(displaySecs)}
               </div>
               <button
-                onClick={() => {
-                  setSeconds(prev => prev + 15);
-                  if (navigator.vibrate) navigator.vibrate(30);
-                }}
+                onClick={() => handleAdjust(15)}
                 className="w-12 h-12 rounded-full bg-slate-800 border border-accent-500/30 text-accent-400 font-bold text-sm flex items-center justify-center hover:bg-slate-700 active:scale-95 transition"
                 aria-label="Sumar 15 segundos"
               >
@@ -219,14 +364,14 @@ const AdvancedTimer = () => {
 
             <div className="flex justify-center gap-3 mb-4">
               <button
-                onClick={() => setIsActive(v => !v)}
+                onClick={handleToggleActive}
                 className={`p-4 rounded-full transition ${isActive ? 'bg-accent-600/20 text-accent-500 border-2 border-accent-500/40' : 'bg-accent-600 text-black hover:bg-accent-500'}`}
                 aria-label={isActive ? 'Pausar' : 'Iniciar'}
               >
                 {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
               </button>
               <button
-                onClick={() => { setIsActive(false); setSeconds(mode === 'timer' ? initialTimerSeconds : 0); }}
+                onClick={resetTimer}
                 className="p-4 rounded-full bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
                 aria-label="Reiniciar"
               >
@@ -254,7 +399,6 @@ const AdvancedTimer = () => {
         </div>
       )}
 
-      {/* Floating button — hidden while custom keypad is open */}
       <div
         ref={timerRef}
         className={`fixed top-0 left-0 z-[98] transition-opacity duration-150 ${keypadOpen && !isExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -286,7 +430,7 @@ const AdvancedTimer = () => {
             className={`text-[10px] font-bold font-mono leading-tight mt-0.5 ${alertRed ? 'text-red-500' : 'text-white'}`}
             style={{ pointerEvents: 'none' }}
           >
-            {formatTime(seconds)}
+            {formatTime(displaySecs)}
           </span>
         </div>
       </div>
