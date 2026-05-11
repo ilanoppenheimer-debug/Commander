@@ -42,6 +42,8 @@ import PreSessionModal from "./components/modals/PreSessionModal";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
 import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
+import RoutineImportWizard from "./components/import/RoutineImportWizard";
+import CoachContextModal from "./components/import/CoachContextModal";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
@@ -333,6 +335,8 @@ function AppMain() {
   const [showPreSessionPreview,    setShowPreSessionPreview]    = useState(false);
   const [globalIncrementOverrides, setGlobalIncrementOverrides] = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
+  const [showCoachContext,      setShowCoachContext]      = useState(false);
+  const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -478,6 +482,7 @@ function AppMain() {
 
     storeFinish();
     showNotify("Misión Finalizada Exitosamente", "success");
+    setShowPostSessionBanner(true);
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
 
     // Increment sessionsLogged for active blocks that covered this session's exercise tags
@@ -689,9 +694,9 @@ function AppMain() {
                   <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
                 </div>
                 <div className="relative">
-                  <button onClick={() => setShowImportModal(true)} className="p-2 text-green-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-green-500/50 transition" title="Importar Texto"><FileText size={20} /></button>
-                  <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
+                  <button onClick={() => setShowImportModal(true)} className="p-2 text-green-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-green-500/50 transition" title="Importar rutina v4"><FileText size={20} /></button>
                 </div>
+                <button onClick={() => setShowCoachContext(true)} className="p-2 text-sky-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-sky-500/50 transition" title="Contexto para Coach"><ClipboardList size={20} /></button>
               </>
             )}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors" title="Configuración"><Settings className="w-5 h-5" /></button>
@@ -766,7 +771,7 @@ function AppMain() {
                   <div className="col-span-3 text-center py-12 space-y-4">
                     <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
-                      <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar texto</button>
+                      <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar rutina v4</button>
                       <button onClick={() => setShowAIModal(true)} className="flex-1 px-4 py-3 bg-purple-900/30 border border-purple-700/50 text-purple-300 text-xs font-bold rounded-xl hover:bg-purple-900/50 transition flex items-center justify-center gap-2"><BrainCircuit size={14}/> Generar con IA</button>
                       <button onClick={createRoutine} className="flex-1 px-4 py-3 bg-accent-600 text-black text-xs font-bold rounded-xl hover:bg-accent-500 transition flex items-center justify-center gap-2"><Plus size={14}/> Crear manual</button>
                     </div>
@@ -1087,14 +1092,41 @@ function AppMain() {
       )}
 
       {showImportModal && (
-        <Modal isOpen onClose={() => !isImporting && setShowImportModal(false)} closeOnEscape={!isImporting} size="lg">
-          <div className="bg-slate-900 w-full rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-white flex items-center gap-2"><FileText className="text-green-500" /> Importar</h3><button onClick={() => setShowImportModal(false)} className="p-1 text-slate-400 hover:text-white transition"><X size={20} /></button></div>
-            <div className="p-6 space-y-4">
-              {isImporting ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-green-500 animate-spin" /><p className="text-sm text-green-300 font-mono animate-pulse">ANALIZANDO DATOS TÁCTICOS...</p></div>) : (<><div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-xs text-amber-200">⚠️ Esta función está en mejora. Los resultados pueden ser inconsistentes.</div><p className="text-xs text-slate-400">Pega aquí cualquier tabla o lista (Excel/Web). La IA creará una plantilla.</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={`Ejemplo:\nPress Banca | 3 series | 10 reps | RPE 8\nSentadilla 4x8 100kg`} className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-green-500 focus:outline-none"></textarea><button onClick={handleSmartImport} className="w-full py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2"><BrainCircuit size={16} /> Procesar con IA</button></>)}
+        <RoutineImportWizard
+          onClose={() => setShowImportModal(false)}
+          onSaved={() => showNotify('Plantilla importada', 'success')}
+          onStartSession={(routine) => {
+            setShowImportModal(false);
+            startRoutineFromTemplate(routine);
+          }}
+        />
+      )}
+
+      {showCoachContext && (
+        <CoachContextModal onClose={() => setShowCoachContext(false)} />
+      )}
+
+      {showPostSessionBanner && !isTraining && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none">
+          <div className="bg-slate-900 border border-accent-500/40 rounded-2xl p-3 shadow-2xl max-w-sm w-full flex items-center gap-3 pointer-events-auto animate-fade-in">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white">¿Pedís rutina al coach?</p>
+              <p className="text-[10px] text-slate-400">Generá el contexto para pegarlo en Claude.</p>
             </div>
+            <button
+              onClick={() => { setShowCoachContext(true); setShowPostSessionBanner(false); }}
+              className="shrink-0 px-3 py-1.5 bg-accent-600 text-black text-xs font-bold rounded-lg hover:bg-accent-500 transition"
+            >
+              Generar
+            </button>
+            <button
+              onClick={() => setShowPostSessionBanner(false)}
+              className="shrink-0 p-1 text-slate-500 hover:text-white transition"
+            >
+              <X size={14} />
+            </button>
           </div>
-        </Modal>
+        </div>
       )}
 
       <style>{`
