@@ -2,8 +2,9 @@ import { CheckCircle2, Circle, X as XIcon } from 'lucide-react';
 import { formatNumber } from '../keypad/keypadConfig';
 
 const TYPE_STYLES = {
-  top:     'bg-accent-500/25 border-accent-500 text-accent-300',
-  backoff: 'bg-blue-500/25 border-blue-500 text-blue-300',
+  top:     'bg-amber-500/20 border-amber-500/50 text-amber-300',
+  backoff: 'bg-slate-700/40 border-slate-600 text-slate-400',
+  back:    'bg-slate-700/40 border-slate-600 text-slate-400',
   warmup:  'bg-slate-700/50 border-slate-500 text-slate-300',
   drop:    'bg-purple-500/25 border-purple-500 text-purple-300',
   amrap:   'bg-rose-500/25 border-rose-500 text-rose-300',
@@ -84,8 +85,10 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
         aria-label={isDone ? 'Desmarcar' : 'Completar'}
       >
         {isDone
-          ? <CheckCircle2 size={21} className="text-emerald-400" />
-          : <Circle      size={21} className="text-slate-600" />
+          ? <CheckCircle2 size={24} className="text-emerald-400 stroke-2" />
+          : (hasRealValue(set?.weight) || hasRealValue(set?.reps))
+            ? <Circle size={24} className="text-slate-400 stroke-2 fill-slate-800" />
+            : <Circle size={24} className="text-slate-600 stroke-2" />
         }
       </button>
 

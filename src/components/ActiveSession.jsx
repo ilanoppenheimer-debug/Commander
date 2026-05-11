@@ -318,7 +318,7 @@ export default function ActiveSession({
           return cw > mw ? cur : max;
         }, pastEx.sets[0]);
         if (maxSet && parseFloat(maxSet.weight) > 0) {
-          return `Top Previo: ${maxSet.weight}${barUnit} x ${maxSet.reps}`;
+          return `Top Previo: ${parseFloat(maxSet.weight)}${barUnit} x ${parseFloat(maxSet.reps)}`;
         }
       }
     }
@@ -473,22 +473,13 @@ export default function ActiveSession({
 
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => showNotify("Auto-Guardado. Usa las pestañas inferiores para ir a Calculadoras sin perder tu progreso.", "info")}
-            className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors"
-          >
-            <Info size={20} className="text-sky-400" />
-          </button>
           <div className="flex-1 min-w-0">
-            <h2 className="text-2xl font-bold text-white uppercase tracking-wider leading-none truncate">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider leading-none truncate">
               {session.name || "Misión"}
             </h2>
-            <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              Sesión Activa
-            </span>
           </div>
         </div>
+        {/* BRIEFING IA and CALENTAMIENTO buttons hidden — keep functions/state for future use
         <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
           <button
             onClick={() => setShowBriefingInput((v) => !v)}
@@ -503,6 +494,7 @@ export default function ActiveSession({
             <Flame size={14} /> CALENTAMIENTO
           </button>
         </div>
+        */}
 
         {showBriefingInput && !briefing && (
           <div className="bg-slate-950 border border-accent-500/30 rounded-lg p-3 space-y-2">

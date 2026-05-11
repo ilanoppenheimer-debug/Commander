@@ -51,7 +51,7 @@ import { isSignedIn, performDriveBackup } from "./services/googleDriveService";
 import { logger } from "./services/logger";
 import {
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
-  X, ChevronLeft, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
+  X, ChevronLeft, ChevronRight, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
   Timer, Pause, RotateCcw, ChevronUp, ChevronDown, RefreshCw, ClipboardList,
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check
 } from 'lucide-react';
@@ -727,11 +727,14 @@ function AppMain() {
 
         {!isTraining && activeTab === 'routines' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="p-4 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-500 transition shadow-lg" onClick={startFreestyleSession}>
-              <Activity size={32} className="text-accent-500" />
-              <span className="text-sm font-bold uppercase text-white">Entrenamiento Libre</span>
-              <span className="text-[10px] text-slate-500">Iniciar sesión vacía (sin plantilla)</span>
-            </div>
+            <button
+              onClick={startFreestyleSession}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 hover:border-accent-500 transition w-full"
+            >
+              <Activity size={20} className="text-accent-500 shrink-0" />
+              <span className="text-sm font-bold text-white">Entrenamiento Libre</span>
+              <ChevronRight size={16} className="text-slate-500 ml-auto shrink-0" />
+            </button>
 
             <div>
               <div className="flex justify-between items-end mb-3 border-b border-slate-800 pb-2">
