@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
-import { getAllBlocks } from '../../db/blocks';
+import { getAllBlocks, cloneBlock } from '../../db/blocks';
 import { BlockCard } from './BlockCard';
 import { BlockCreateModal } from './BlockCreateModal';
 import { BlockEditModal } from './BlockEditModal';
@@ -26,18 +26,26 @@ export const BlocksTab = () => {
 
   const bump = () => setRefresh(r => r + 1);
 
+  const handleClone = async (block) => {
+    const cloned = await cloneBlock(block.id);
+    if (cloned) {
+      bump();
+      setEditingBlock(cloned);
+    }
+  };
+
+  const cardProps = (b) => ({
+    block:   b,
+    onTap:   () => setEditingBlock(b),
+    onMenu:  () => setEditingBlock(b),
+    onClone: handleClone,
+  });
+
   const renderGroup = (label, list, muted = false) => list.length > 0 && (
     <section className={muted ? 'opacity-60' : ''}>
       <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">{label}</h3>
       <div className="space-y-2">
-        {list.map(b => (
-          <BlockCard
-            key={b.id}
-            block={b}
-            onTap={() => setEditingBlock(b)}
-            onMenu={() => setEditingBlock(b)}
-          />
-        ))}
+        {list.map(b => <BlockCard key={b.id} {...cardProps(b)} />)}
       </div>
     </section>
   );
@@ -53,14 +61,7 @@ export const BlocksTab = () => {
       </button>
       {isOpen && (
         <div className="space-y-2">
-          {list.map(b => (
-            <BlockCard
-              key={b.id}
-              block={b}
-              onTap={() => setEditingBlock(b)}
-              onMenu={() => setEditingBlock(b)}
-            />
-          ))}
+          {list.map(b => <BlockCard key={b.id} {...cardProps(b)} />)}
         </div>
       )}
     </section>
@@ -78,9 +79,7 @@ export const BlocksTab = () => {
           </div>
         ) : (
           <div className="space-y-2">
-            {grouped.active.map(b => (
-              <BlockCard key={b.id} block={b} onTap={() => setEditingBlock(b)} onMenu={() => setEditingBlock(b)} />
-            ))}
+            {grouped.active.map(b => <BlockCard key={b.id} {...cardProps(b)} />)}
           </div>
         )}
         <button

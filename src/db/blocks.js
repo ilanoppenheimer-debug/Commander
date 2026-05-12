@@ -65,3 +65,42 @@ export const incrementBlockSessions = async (blockId) => {
   if (!block) return null;
   await upsertBlock({ ...block, sessionsLogged: (block.sessionsLogged || 0) + 1 });
 };
+
+export const cloneBlock = async (sourceId) => {
+  const source = await getBlock(sourceId);
+  if (!source) return null;
+
+  const baseName = (source.name || 'Bloque').replace(/\s*\(repetido(\s*\d+)?\)\s*$/i, '');
+  const allBlocks = await getAllBlocks();
+  const esc = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^${esc}\\s*\\(repetido(\\s*\\d+)?\\)\\s*$`, 'i');
+
+  let maxNum = 0;
+  for (const b of allBlocks) {
+    if (b.name === `${baseName} (repetido)`) maxNum = Math.max(maxNum, 1);
+    const m = (b.name || '').match(regex);
+    if (m && m[1]) {
+      const n = parseInt(m[1].trim(), 10);
+      if (!isNaN(n)) maxNum = Math.max(maxNum, n);
+    }
+  }
+
+  const newName = maxNum === 0
+    ? `${baseName} (repetido)`
+    : `${baseName} (repetido ${maxNum + 1})`;
+
+  const cloned = {
+    ...source,
+    id:             `blk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name:           newName,
+    status:         'draft',
+    createdAt:      new Date().toISOString(),
+    startedAt:      null,
+    completedAt:    null,
+    sessionsLogged: 0,
+    fatigueSignals: { rpeOverTargetCount: 0, progressStallSessions: 0, lastChecked: null },
+  };
+
+  await upsertBlock(cloned);
+  return cloned;
+};

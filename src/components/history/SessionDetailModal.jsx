@@ -157,8 +157,12 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                               <td className="py-2 text-right text-slate-300 font-mono">
                                 {parseFloat(s.weight) > 0 ? `${parseFloat(s.weight)}${barUnit}` : 'PC'}
                               </td>
-                              <td className="py-2 text-right text-slate-300 font-mono">{s.reps}</td>
-                              <td className="py-2 text-right text-slate-500">{s.rpe > 0 ? s.rpe : '—'}</td>
+                              <td className="py-2 text-right text-slate-300 font-mono">
+                                {s.reps != null && s.reps !== '' ? (parseInt(s.reps, 10) || s.reps) : '—'}
+                              </td>
+                              <td className="py-2 text-right text-slate-500">
+                                {parseFloat(s.rpe) > 0 ? parseFloat(s.rpe) : '—'}
+                              </td>
                               <td className="pr-4 py-2 text-right text-slate-600 text-[10px] max-w-[80px] truncate">{s.notes || ''}</td>
                             </tr>
                           );
