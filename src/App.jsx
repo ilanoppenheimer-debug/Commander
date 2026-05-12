@@ -42,6 +42,9 @@ import PreSessionModal from "./components/modals/PreSessionModal";
 import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
 import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
+import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
+import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal";
+import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
 import CoachContextModal from "./components/import/CoachContextModal";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
@@ -337,6 +340,7 @@ function AppMain() {
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
   const [showCoachContext,      setShowCoachContext]      = useState(false);
   const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
+  const [showCleanup,           setShowCleanup]           = useState(false);
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -356,6 +360,7 @@ function AppMain() {
       await fixHardcodedRoutineIds();
       await sanitizeInvalidSetValues();
       await migrateLegacyModes();
+      migrateMainLiftTags();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
@@ -525,7 +530,26 @@ function AppMain() {
 
   const duplicateRoutine = async (e, routine) => {
     e.stopPropagation();
-    const newRoutine = { ...routine, id: `routine-${Date.now()}`, name: `${routine.name || 'Rutina'} (Copia)`, lastPerformed: null };
+    const baseName = (routine.name || 'Rutina').replace(/\s*\(copia(\s*\d+)?\)\s*$/i, '');
+    const esc = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${esc}\\s*\\(copia(\\s*\\d+)?\\)\\s*$`, 'i');
+    let maxNum = 0;
+    for (const r of safeRoutines) {
+      if (r.name === `${baseName} (copia)`) maxNum = Math.max(maxNum, 1);
+      const m = (r.name || '').match(regex);
+      if (m && m[1]) {
+        const n = parseInt(m[1].trim(), 10);
+        if (!isNaN(n)) maxNum = Math.max(maxNum, n);
+      }
+    }
+    const newName = maxNum === 0 ? `${baseName} (copia)` : `${baseName} (copia ${maxNum + 1})`;
+    const newRoutine = {
+      ...routine,
+      id: `routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: newName,
+      lastPerformed: null,
+      createdAt: new Date().toISOString(),
+    };
     await saveRoutine(newRoutine);
     showNotify("Plantilla Clonada", "success");
   };
@@ -739,9 +763,17 @@ function AppMain() {
             <div>
               <div className="flex justify-between items-end mb-3 border-b border-slate-800 pb-2">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Mis Plantillas</h3>
-                <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
-                  <Plus size={12} /> Nueva
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCleanup(true)}
+                    className="text-[10px] text-slate-500 hover:text-accent-400 flex items-center gap-1 transition"
+                  >
+                    <Sparkles size={11} /> Limpiar
+                  </button>
+                  <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
+                    <Plus size={12} /> Nueva
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {safeRoutines.map(routine => (
@@ -759,7 +791,10 @@ function AppMain() {
                             <button onClick={(e) => startEditingTemplateName(e, routine)} className="text-slate-500 opacity-0 group-hover/edit:opacity-100 hover:text-white transition-opacity"><Edit3 size={12}/></button>
                           </div>
                         )}
-                        <p className="text-xs text-slate-500 font-mono">{Array.isArray(routine.exercises) ? routine.exercises.length : 0} Ejercicios</p>
+                        <p className="text-xs text-slate-500 font-mono">
+                          {Array.isArray(routine.exercises) ? routine.exercises.length : 0} Ejercicios
+                          {routine.lastPerformed && <span className="ml-2 text-slate-600">· {formatRelativeTime(routine.lastPerformed)}</span>}
+                        </p>
                       </div>
                       <button onClick={() => startRoutineFromTemplate(routine)} className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 shadow-lg shadow-accent-900/20" title="Iniciar esta rutina"><Play fill="currentColor" size={16} className="ml-0.5" /></button>
                     </div>
@@ -1107,6 +1142,14 @@ function AppMain() {
 
       {showCoachContext && (
         <CoachContextModal onClose={() => setShowCoachContext(false)} />
+      )}
+
+      {showCleanup && (
+        <CleanupRoutinesModal
+          open={showCleanup}
+          onClose={() => setShowCleanup(false)}
+          onCleaned={(deleted) => showNotify(`${deleted} plantilla${deleted !== 1 ? 's' : ''} eliminada${deleted !== 1 ? 's' : ''}`, 'success')}
+        />
       )}
 
       {showPostSessionBanner && !isTraining && (

@@ -586,7 +586,9 @@ export default function ActiveSession({
           const groupBadge       = groupSize === 2 ? 'DUETO' : groupSize === 3 ? 'TRISET' : groupSize >= 4 ? `GIANT SET (${groupSize})` : null;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
           const details  = getExerciseDetails(ex.name);
-          const prevPerformance = getPreviousPerformance(ex.name);
+          const exMeta   = getExerciseMeta(ex.name);
+          const hasActiveBlock = !!findBlockForExercise({ ...ex, metadata: exMeta }, activeBlocks);
+          const prevPerformance = hasActiveBlock ? null : getPreviousPerformance(ex.name);
 
           return (
             <div key={ex.id || index} className={`relative pl-4 ${isInSuperset ? 'lg:col-span-2' : ''}`}>

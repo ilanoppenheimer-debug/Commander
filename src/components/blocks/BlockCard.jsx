@@ -1,8 +1,8 @@
-import { MoreVertical, AlertTriangle } from 'lucide-react';
+import { MoreVertical, AlertTriangle, Copy } from 'lucide-react';
 import { BlockColorDot } from './BlockColorDot';
 import { TAG_LABELS } from '../../constants/blockTemplates';
 
-export const BlockCard = ({ block, onTap, onMenu, fatigueWarning }) => {
+export const BlockCard = ({ block, onTap, onMenu, onClone, fatigueWarning }) => {
   const progress = block.sessionsTarget
     ? (block.sessionsLogged / block.sessionsTarget) * 100
     : null;
@@ -21,6 +21,15 @@ export const BlockCard = ({ block, onTap, onMenu, fatigueWarning }) => {
         <span className={`text-xs tabular-nums ${targetReached ? 'text-amber-400' : 'text-slate-400'}`}>
           {block.sessionsLogged}/{block.sessionsTarget ?? '∞'}
         </span>
+        {onClone && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClone(block); }}
+            className="p-1 text-slate-600 hover:text-slate-300 transition-colors"
+            title="Clonar bloque"
+          >
+            <Copy size={13} />
+          </button>
+        )}
         <button onClick={() => onMenu?.(block)} className="p-1 text-slate-500 hover:text-slate-300">
           <MoreVertical size={14} />
         </button>
