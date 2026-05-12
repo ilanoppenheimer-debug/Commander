@@ -8,29 +8,38 @@ const normalize = (name) => {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[\s\-_\.]+/g, ' ')
-    .replace(/\(plantilla\)|\(copia(\s*\d+)?\)|\(copy\)|\(repetido(\s*\d+)?\)|\d+$/g, '')
+    .replace(/\(plantilla\)|\(copia\s*\d*\)|\(copy\)|\(repetido\s*\d*\)/gi, '')
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
 export const findDuplicatesAndShells = async () => {
   const routines = await db.routines.toArray();
 
+  console.debug('[cleanup] total routines in DB:', routines.length);
+
   const groups = new Map();
   const emptyShells = [];
 
   for (const routine of routines) {
     const exCount = Array.isArray(routine.exercises) ? routine.exercises.length : 0;
+
     if (exCount === 0) {
       emptyShells.push(routine);
       continue;
     }
 
     const key = normalize(routine.name);
-    if (!key) continue;
+    if (!key) {
+      console.debug('[cleanup] skipped (empty key):', routine.id, JSON.stringify(routine.name));
+      continue;
+    }
 
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(routine);
   }
+
+  console.debug('[cleanup] groups:', [...groups.entries()].map(([k, v]) => `"${k}" × ${v.length}`));
 
   const duplicateGroups = new Map();
   for (const [key, list] of groups.entries()) {
@@ -38,6 +47,8 @@ export const findDuplicatesAndShells = async () => {
       duplicateGroups.set(key, list);
     }
   }
+
+  console.debug('[cleanup] duplicate groups:', duplicateGroups.size, '| shells:', emptyShells.length);
 
   return { duplicateGroups, emptyShells };
 };

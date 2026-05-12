@@ -17,12 +17,23 @@ export const BlocksTab = () => {
     getAllBlocks().then(setBlocks).catch(console.error);
   }, [refresh]);
 
-  const grouped = useMemo(() => ({
-    active:    blocks.filter(b => b.status === 'active'),
-    paused:    blocks.filter(b => b.status === 'paused'),
-    completed: blocks.filter(b => b.status === 'completed'),
-    archived:  blocks.filter(b => b.status === 'archived'),
-  }), [blocks]);
+  const grouped = useMemo(() => {
+    const result = { active: [], paused: [], completed: [], archived: [] };
+    for (const block of blocks) {
+      if (block.status === 'archived') {
+        result.archived.push(block);
+      } else if (block.status === 'completed' && (block.sessionsLogged || 0) === 0) {
+        result.archived.push(block);
+      } else if (block.status === 'completed') {
+        result.completed.push(block);
+      } else if (block.status === 'paused') {
+        result.paused.push(block);
+      } else if (block.status === 'active') {
+        result.active.push(block);
+      }
+    }
+    return result;
+  }, [blocks]);
 
   const bump = () => setRefresh(r => r + 1);
 

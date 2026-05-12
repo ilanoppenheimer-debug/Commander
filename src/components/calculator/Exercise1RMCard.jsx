@@ -17,8 +17,17 @@ export const Exercise1RMCard = ({ exercise, barUnit, onClick }) => {
         <div className="text-sm font-medium text-slate-100 truncate">
           {exercise.name}
         </div>
-        <div className="text-[10px] text-slate-500 mt-0.5">
-          {exercise.sampleSize} {exercise.sampleSize === 1 ? 'set' : 'sets'} analizados
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[10px] text-slate-500">
+            {exercise.sampleSize} {exercise.sampleSize === 1 ? 'set' : 'sets'}
+          </span>
+          <span className={`text-[10px] font-bold ${
+            exercise.sampleSize < 3 ? 'text-amber-400' :
+            exercise.sampleSize < 6 ? 'text-slate-400' :
+            'text-emerald-400'
+          }`}>
+            · confianza {exercise.sampleSize < 3 ? 'baja' : exercise.sampleSize < 6 ? 'media' : 'alta'}
+          </span>
         </div>
       </div>
 
