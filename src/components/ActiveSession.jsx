@@ -471,12 +471,20 @@ export default function ActiveSession({
         />
       )}
 
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-30 -mx-4 px-4 pt-2 pb-2 mb-4 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800/60">
+        <div className="flex items-center gap-2 min-w-0">
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white uppercase tracking-wider leading-none truncate">
-              {session.name || "Misión"}
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-white uppercase tracking-wider leading-none truncate">
+                {session.name || "Misión"}
+              </h2>
+              {activeBlocks.length > 0 && (
+                <span className="text-[11px] text-slate-500 font-normal normal-case tracking-normal leading-none shrink-0">
+                  · {activeBlocks[0].name} {activeBlocks[0].sessionsLogged}/{activeBlocks[0].sessionsTarget ?? '∞'}
+                  {activeBlocks.length > 1 && <span className="ml-1">+{activeBlocks.length - 1}</span>}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         {/* BRIEFING IA and CALENTAMIENTO buttons hidden — keep functions/state for future use
@@ -565,12 +573,14 @@ export default function ActiveSession({
         )}
       </div>
 
-      <BlockBanner
-        activeBlocks={activeBlocks}
-        onTapBlock={(block) => {
-          if (block === null) setShowCreateBlockModal(true);
-        }}
-      />
+      {activeBlocks.length === 0 && (
+        <button
+          onClick={() => setShowCreateBlockModal(true)}
+          className="w-full mb-3 text-[10px] text-slate-500 hover:text-accent-400 flex items-center justify-center gap-1 transition py-1"
+        >
+          Modo libre · <span className="underline">crear bloque</span>
+        </button>
+      )}
 
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
         {exercisesWithPlaceholders.map((ex, index) => {
@@ -611,20 +621,19 @@ export default function ActiveSession({
 
               <div className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${isInSuperset ? "border-accent-500/30" : "border-slate-700"} mb-4`}>
                 <div className="p-3 bg-slate-900/50 flex items-start justify-between border-b border-slate-700">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center border shrink-0 mt-1 shadow-inner ${details.bg} ${details.border} ${details.color}`}>
-                      {details.icon}
-                      <span className="text-[8px] font-bold uppercase mt-1.5 leading-none tracking-wider">{details.label}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${details.dotBg || 'bg-slate-500'}`} />
+                      <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{details.label}</span>
                     </div>
-                    <div className="flex-1 min-w-0 flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
-                          className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
-                          title="Cambiar Ejercicio"
-                        >
-                          {ex.name || "Ejercicio Desconocido"}
-                        </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
+                        className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
+                        title="Cambiar Ejercicio"
+                      >
+                        {ex.name || "Ejercicio Desconocido"}
+                      </button>
                         {isInSuperset && groupPos > 0 && (
                           <span className="text-[9px] text-accent-400 font-mono shrink-0">{groupPos}/{groupSize}</span>
                         )}
@@ -705,7 +714,6 @@ export default function ActiveSession({
                         )}
                       </div>
                     </div>
-                  </div>
 
                   <div className="flex flex-col items-end gap-1 ml-2">
                     <div className="flex items-center gap-1 mt-1">

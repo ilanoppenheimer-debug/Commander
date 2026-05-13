@@ -169,11 +169,15 @@ export const CleanupRoutinesModal = ({ open, onClose, onCleaned }) => {
           </button>
           <button
             onClick={handleConfirm}
-            disabled={loading || deleting}
-            className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-1.5 transition"
+            disabled={loading || deleting || selectedToDelete.size === 0}
+            className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition"
           >
             <Trash2 size={15} />
-            {deleting ? 'Borrando...' : `Borrar${selectedToDelete.size > 0 ? ` (${selectedToDelete.size})` : ''}`}
+            {deleting
+              ? 'Borrando...'
+              : selectedToDelete.size === 0
+                ? 'Nada que borrar'
+                : `Borrar (${selectedToDelete.size})`}
           </button>
         </div>
       </div>

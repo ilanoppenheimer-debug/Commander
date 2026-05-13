@@ -154,8 +154,8 @@ const FullSettingsModal = ({
               <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mt-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-bold text-white">Vista previa antes de iniciar</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Abre editor al tocar ▶ en una plantilla</div>
+                    <div className="text-sm font-bold text-white">Editor antes de iniciar</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Al tocar ▶ en una plantilla, primero abre editor para revisar/ajustar antes de empezar la sesión</div>
                   </div>
                   <button
                     type="button"
