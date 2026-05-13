@@ -1,5 +1,7 @@
-import { CheckCircle2, Circle, X as XIcon } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, Circle, X as XIcon, StickyNote } from 'lucide-react';
 import { formatNumber } from '../keypad/keypadConfig';
+import { NoteModal } from './NoteModal';
 
 const TYPE_STYLES = {
   top:     'bg-amber-500/20 border-amber-500/50 text-amber-300',
@@ -21,17 +23,20 @@ const hasRealValue = (v) => {
 
 /**
  * SetRow — 56px tall.
- * Grid: [check 36px] [tag 52px] [weight 1fr] [reps 1fr] [rpe 52px] [del 32px]
+ * Grid: [check 36px] [tag 52px] [weight 1fr] [reps 1fr] [rpe 52px] [note 28px] [del 32px]
  *
  * set.placeholder = { weight, reps, rpe } — historical top set, shown in muted italic
  *   when the real value is empty. Stripped by updateSetField on first keystroke.
  */
-export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleType, onDelete, barUnit = 'kg' }) => {
+export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleType, onDelete, onSaveNote, barUnit = 'kg' }) => {
+  const [showNoteModal, setShowNoteModal] = useState(false);
+
   const isDone   = !!set?.completed;
   const type     = set?.type && set.type !== 'normal' ? set.type : null;
   const tagStyle = type ? (TYPE_STYLES[type] || TYPE_STYLES.warmup) : null;
   const tagLabel = type ? (TYPE_LABELS[type] || type.toUpperCase().slice(0, 4)) : null;
   const ph       = !isDone ? (set?.placeholder ?? null) : null;
+  const hasNote  = !!(set?.notes && set.notes.trim().length > 0);
 
   const fieldBtnClass = isDone
     ? 'bg-emerald-950/30 border border-emerald-800/30 cursor-pointer'
@@ -68,7 +73,7 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
   return (
     <div
       className={`relative grid items-center gap-1 px-2 border-b border-slate-900/80 last:border-0 ${isDone ? 'bg-emerald-950/20' : ''}`}
-      style={{ gridTemplateColumns: '36px 52px 1fr 1fr 52px 32px', height: '56px' }}
+      style={{ gridTemplateColumns: '36px 52px 1fr 1fr 52px 28px 32px', height: '56px' }}
     >
       {/* Placeholder hint bar */}
       {showPlaceholderHint && (
@@ -131,6 +136,15 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
         {renderField(set?.rpe, ph?.rpe, '@')}
       </button>
 
+      {/* Note */}
+      <button
+        onClick={() => setShowNoteModal(true)}
+        className={`flex items-center justify-center w-7 h-full rounded-lg active:scale-90 transition-colors ${hasNote ? 'text-amber-400' : 'text-slate-600 hover:text-slate-400'}`}
+        aria-label="Nota del set"
+      >
+        <StickyNote size={13} />
+      </button>
+
       {/* Delete */}
       <button
         onClick={onDelete}
@@ -139,6 +153,16 @@ export const SetRow = ({ set, setIndex, onToggleCompleted, onTapField, onCycleTy
       >
         <XIcon size={15} />
       </button>
+
+      {showNoteModal && (
+        <NoteModal
+          open={showNoteModal}
+          onClose={() => setShowNoteModal(false)}
+          initialText={set?.notes || ''}
+          title={`Nota — Set ${setIndex}`}
+          onSave={(text) => onSaveNote?.(text)}
+        />
+      )}
     </div>
   );
 };

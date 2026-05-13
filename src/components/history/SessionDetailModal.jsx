@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Edit3, Trash2, Save, FileText, TrendingUp, AlertTriangle, Check } from 'lucide-react';
+import { X, Edit3, Trash2, Save, FileText, TrendingUp, AlertTriangle, Check, Share2 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { deleteSession, saveRoutine } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
 import { isSignedIn, performDriveBackup } from '../../services/googleDriveService';
+import { SessionExportModal } from './SessionExportModal';
 
 function formatSet(s, barUnit = 'kg') {
   const type = s.type && s.type !== 'normal' ? s.type.toUpperCase() : '';
@@ -25,6 +26,7 @@ const SET_TYPE_COLORS = {
 export default function SessionDetailModal({ session, barUnit = 'kg', onClose, onEdit, onDeleted, onOpenTrend, onGoToRoutines }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const exercises = Array.isArray(session?.exercises) ? session.exercises : [];
   const totalSets = exercises.reduce((sum, ex) => sum + (Array.isArray(ex?.sets) ? ex.sets.length : 0), 0);
@@ -113,22 +115,29 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
             const vol = sets.reduce((s, set) => s + (set.weight || 0) * (set.reps || 0), 0);
             return (
               <div key={ex?.id || exIdx} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/60">
-                  <div>
-                    <span className="font-bold text-white text-sm">{ex?.name || 'Ejercicio'}</span>
-                    {ex?.equipment && (
-                      <span className="ml-2 text-[9px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                        {ex.equipment}
-                      </span>
+                <div className="px-4 pt-3 pb-2 border-b border-slate-700/60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-white text-sm">{ex?.name || 'Ejercicio'}</span>
+                      {ex?.equipment && (
+                        <span className="ml-2 text-[9px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                          {ex.equipment}
+                        </span>
+                      )}
+                    </div>
+                    {onOpenTrend && (
+                      <button
+                        onClick={() => onOpenTrend(ex.name)}
+                        className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1 transition"
+                      >
+                        <TrendingUp size={12} /> Progreso
+                      </button>
                     )}
                   </div>
-                  {onOpenTrend && (
-                    <button
-                      onClick={() => onOpenTrend(ex.name)}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1 transition"
-                    >
-                      <TrendingUp size={12} /> Progreso
-                    </button>
+                  {ex?.exerciseNotes && ex.exerciseNotes.trim() && (
+                    <div className="mt-2 px-2 py-1.5 bg-slate-900/50 border-l-2 border-amber-500/40 rounded text-xs text-slate-300 italic">
+                      {ex.exerciseNotes.trim()}
+                    </div>
                   )}
                 </div>
 
@@ -163,7 +172,11 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                               <td className="py-2 text-right text-slate-500">
                                 {parseFloat(s.rpe) > 0 ? parseFloat(s.rpe) : '—'}
                               </td>
-                              <td className="pr-4 py-2 text-right text-slate-600 text-[10px] max-w-[80px] truncate">{s.notes || ''}</td>
+                              <td className="pr-4 py-2 text-right text-[10px] max-w-[80px] truncate">
+                                {s.notes?.trim()
+                                  ? <span className="text-amber-400/80" title={s.notes}>{s.notes.length > 28 ? s.notes.slice(0, 28) + '…' : s.notes}</span>
+                                  : <span className="text-slate-700">—</span>}
+                              </td>
                             </tr>
                           );
                         })}
@@ -211,29 +224,44 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
               </div>
             </div>
           ) : (
-            <div className="flex gap-2">
+            <div className="space-y-2">
               <button
-                onClick={() => onEdit?.(session)}
-                className="flex-1 py-2.5 bg-accent-600 hover:bg-accent-500 text-black font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+                onClick={() => setShowExportModal(true)}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
               >
-                <Edit3 size={14} /> Editar
+                <Share2 size={14} /> Compartir con coach
               </button>
-              <button
-                onClick={handleDuplicateAsTemplate}
-                className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
-              >
-                <Save size={14} /> Guardar como rutina
-              </button>
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="py-2.5 px-4 bg-slate-800 hover:bg-red-900/30 text-red-400 font-bold text-sm rounded-xl transition border border-slate-700 hover:border-red-700/50"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onEdit?.(session)}
+                  className="flex-1 py-2.5 bg-accent-600 hover:bg-accent-500 text-black font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+                >
+                  <Edit3 size={14} /> Editar
+                </button>
+                <button
+                  onClick={handleDuplicateAsTemplate}
+                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+                >
+                  <Save size={14} /> Guardar como rutina
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="py-2.5 px-4 bg-slate-800 hover:bg-red-900/30 text-red-400 font-bold text-sm rounded-xl transition border border-slate-700 hover:border-red-700/50"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
+      {showExportModal && (
+        <SessionExportModal
+          open={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          session={session}
+        />
+      )}
     </Modal>
   );
 }
