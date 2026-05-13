@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   Target,
   Loader2,
@@ -16,6 +16,7 @@ import {
   Timer,
   Plus,
   StickyNote,
+  RefreshCw,
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
@@ -48,6 +49,8 @@ import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet } from "../utils/strengthMath";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
+import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
+import { db } from "../db/database";
 
 // Pure function — derives an exercise with placeholder fields computed from history + blocks.
 // Never writes to the Zustand store. Returns same reference if nothing changed.
@@ -252,6 +255,17 @@ export default function ActiveSession({
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
   const [showFinishModal,   setShowFinishModal]   = useState(false);
+  const [showUpdateRoutine, setShowUpdateRoutine] = useState(false);
+  const [originRoutine,     setOriginRoutine]     = useState(null);
+
+  useEffect(() => {
+    if (session?.routineId) {
+      db.routines.where('routineId').equals(session.routineId).first()
+        .then(r => setOriginRoutine(r ?? null)).catch(() => {});
+    } else {
+      setOriginRoutine(null);
+    }
+  }, [session?.routineId]);
 
   // ── Active blocks ──────────────────────────────────────────────────────────
   const [blocksRefresh,  setBlocksRefresh]  = useState(0);
@@ -273,9 +287,21 @@ export default function ActiveSession({
     open: false, exerciseId: null, setIndex: -1, activeField: 'weight',
   });
 
-  const openKeypad = useCallback((exerciseId, setIdx, field) => {
+  const openKeypad = useCallback((exerciseId, setIdx, field, enrichedSet) => {
+    // Auto-populate from placeholder when the field is empty
+    if (enrichedSet?.placeholder) {
+      const ph = enrichedSet.placeholder;
+      const fields = ['weight', 'reps', 'rpe'];
+      for (const f of fields) {
+        const isEmpty = enrichedSet[f] === null || enrichedSet[f] === undefined || enrichedSet[f] === '' || enrichedSet[f] === 0;
+        const suggested = ph[f];
+        if (isEmpty && suggested != null && suggested !== '' && parseFloat(suggested) > 0) {
+          storeUpdateSet(exerciseId, setIdx, f, suggested);
+        }
+      }
+    }
     setKeypadState({ open: true, exerciseId, setIndex: setIdx, activeField: field });
-  }, []);
+  }, [storeUpdateSet]);
 
   const closeKeypad = useCallback(() => {
     setKeypadState(prev => ({ ...prev, open: false }));
@@ -752,7 +778,7 @@ export default function ActiveSession({
                         set={s}
                         setIndex={i + 1}
                         onToggleCompleted={() => handleCompleteSet(ex, i)}
-                        onTapField={(field) => openKeypad(ex.id, i, field)}
+                        onTapField={(field) => openKeypad(ex.id, i, field, s)}
                         onCycleType={() => storeCycleType(ex.id, i)}
                         onDelete={() => storeRemoveSet(ex.id, i)}
                         onSaveNote={(text) => storeUpdateSet(ex.id, i, 'notes', text)}
@@ -786,7 +812,26 @@ export default function ActiveSession({
         >
           Finalizar Misión
         </button>
+        {session.routineId && originRoutine && (
+          <button
+            onClick={() => setShowUpdateRoutine(true)}
+            className="md:col-span-2 w-full py-2.5 bg-slate-800 text-slate-400 rounded-lg font-bold text-xs border border-slate-700 hover:bg-slate-700 hover:text-slate-200 transition flex items-center justify-center gap-1.5"
+          >
+            <RefreshCw size={13} /> Actualizar plantilla
+          </button>
+        )}
       </div>
+
+      {showUpdateRoutine && (
+        <UpdateRoutineModal
+          open={showUpdateRoutine}
+          onClose={() => setShowUpdateRoutine(false)}
+          routine={originRoutine}
+          session={session}
+          onUpdated={() => setShowUpdateRoutine(false)}
+          barUnit={barUnit}
+        />
+      )}
 
       <div className="h-16"></div>
 

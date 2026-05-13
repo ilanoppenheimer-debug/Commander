@@ -30,6 +30,7 @@ export const useSessionStore = create((set, get) => ({
     const session = {
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
+      routineId: routine?.id ?? null,
       exercises: routine?.exercises
         ? JSON.parse(JSON.stringify(routine.exercises)).map(ex => ({
             ...ex,

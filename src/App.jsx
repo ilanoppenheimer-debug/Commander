@@ -470,6 +470,7 @@ function AppMain() {
       name: sessionName || 'Entrenamiento Libre',
       completedAt: new Date().toISOString(),
       exercises: safeFinalExercises,
+      routineId: session?.routineId ?? null,
     };
 
     await saveSession(completedSession);
