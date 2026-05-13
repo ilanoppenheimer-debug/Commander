@@ -15,9 +15,11 @@ import {
   Check,
   Timer,
   Plus,
+  StickyNote,
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
+import { NoteModal } from "./session/NoteModal";
 import { BlockBanner } from "./blocks/BlockBanner";
 import { BlockCreateModal } from "./blocks/BlockCreateModal";
 import { TagPicker } from "./blocks/TagPicker";
@@ -256,6 +258,7 @@ export default function ActiveSession({
   const { blocks: activeBlocks }            = useActiveBlocks(blocksRefresh);
   const [tagPickerExId,       setTagPickerExId]       = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
+  const [exerciseNoteFor,     setExerciseNoteFor]     = useState(null);
 
   // Placeholder-enriched exercises — derived state, never written back to the store.
   const exercisesWithPlaceholders = useMemo(
@@ -718,6 +721,13 @@ export default function ActiveSession({
                   <div className="flex flex-col items-end gap-1 ml-2">
                     <div className="flex items-center gap-1 mt-1">
                       <button
+                        onClick={() => setExerciseNoteFor(ex.id)}
+                        className={`p-1.5 rounded transition ${ex.exerciseNotes?.trim() ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400'}`}
+                        aria-label="Nota del ejercicio"
+                      >
+                        <StickyNote size={14} />
+                      </button>
+                      <button
                         onClick={() => storeToggleSS(index)}
                         className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
                       >
@@ -745,6 +755,7 @@ export default function ActiveSession({
                         onTapField={(field) => openKeypad(ex.id, i, field)}
                         onCycleType={() => storeCycleType(ex.id, i)}
                         onDelete={() => storeRemoveSet(ex.id, i)}
+                        onSaveNote={(text) => storeUpdateSet(ex.id, i, 'notes', text)}
                         barUnit={barUnit}
                       />
                     );
@@ -789,6 +800,23 @@ export default function ActiveSession({
           }}
         />
       )}
+
+      {exerciseNoteFor && (() => {
+        const noteEx = exercises.find(e => e.id === exerciseNoteFor);
+        if (!noteEx) return null;
+        return (
+          <NoteModal
+            open
+            onClose={() => setExerciseNoteFor(null)}
+            initialText={noteEx.exerciseNotes || ''}
+            title={`Nota — ${noteEx.name}`}
+            onSave={(text) => {
+              storeUpdateEx(exerciseNoteFor, { exerciseNotes: text });
+              setExerciseNoteFor(null);
+            }}
+          />
+        );
+      })()}
 
       {/* Custom Keypad */}
       {keypadState.open && (() => {

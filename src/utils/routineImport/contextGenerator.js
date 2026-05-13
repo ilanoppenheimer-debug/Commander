@@ -1,5 +1,6 @@
 import { db } from '../../db/database';
 import { getActiveBlocks } from '../../db/blocks';
+import { formatSetSummary } from '../formatters';
 
 /**
  * Generates a text block of current training context to paste into Claude Project.
@@ -30,7 +31,7 @@ export const generateCoachContext = async () => {
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
           (parseFloat(s.weight) || 0) > (parseFloat(best.weight) || 0) ? s : best, completed[0]);
-        lines.push(`  - ${ex.name}: ${topSet.weight}kg × ${topSet.reps}${topSet.rpe ? ` @RPE${topSet.rpe}` : ''}`);
+        lines.push(`  - ${ex.name}: ${formatSetSummary(topSet)}`);
       }
       lines.push('');
     }
@@ -64,7 +65,7 @@ export const generateCoachContext = async () => {
       if (entries.length > 0) {
         lines.push('## Top sets recientes (últimas 4 semanas)');
         for (const [name, s] of entries) {
-          lines.push(`  - ${name}: ${s.weight}kg × ${s.reps}${s.rpe ? ` @RPE${s.rpe}` : ''}${s.date ? ` (${s.date})` : ''}`);
+          lines.push(`  - ${name}: ${formatSetSummary(s)}${s.date ? ` (${s.date})` : ''}`);
         }
         lines.push('');
       }
