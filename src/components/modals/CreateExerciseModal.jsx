@@ -77,7 +77,23 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const handleSave = () => {
     if (!canSave) return;
     const finalName = isEdit ? existingName : name.trim();
-    const meta = { muscleGroup, equipment, bilateral, movementPattern, stability, cnsLoad, injuryRisk, enjoyment, feelConnection, notes, isCustom: !isEdit, createdAt: isEdit ? undefined : new Date().toISOString() };
+    const meta = {
+      muscleGroup,
+      equipment,
+      bilateral,
+      movementPattern,
+      stability,
+      cnsLoad,
+      injuryRisk,
+      enjoyment,
+      feelConnection,
+      notes,
+      isCustom: !isEdit,
+      createdAt: isEdit ? undefined : new Date().toISOString(),
+      muscleGroupOverride: true,
+      muscleGroupAssignedAt: new Date().toISOString(),
+      muscleGroupAssignedBy: 'user-manual',
+    };
     saveExerciseMeta(finalName, meta);
     onSave(finalName, meta);
   };

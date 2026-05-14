@@ -4,7 +4,7 @@ import { DEFAULT_EXERCISE_DB, EXERCISE_TO_MUSCLE } from "../../constants/gymCons
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
-import { toggleFavorite, isFavorite, saveExerciseMeta } from "../../constants/exerciseMetadata";
+import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta } from "../../constants/exerciseMetadata";
 
 const TABS = [
   { id: 'recent',    label: 'Recientes' },
@@ -122,7 +122,7 @@ const ExerciseSelectorModal = ({
         if (!expected) return allExerciseNames;
         const expectedArr = Array.isArray(expected) ? expected : [expected];
         return allExerciseNames.filter(e => {
-          const m = EXERCISE_TO_MUSCLE[e];
+          const m = EXERCISE_TO_MUSCLE[e] || getExerciseMeta(e)?.muscleGroup;
           return m && expectedArr.includes(m);
         });
       }

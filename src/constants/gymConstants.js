@@ -85,7 +85,6 @@ export const EXERCISE_CATEGORIES = {
     "Fondos en Paralelas",
   ],
   back: [
-    "Peso Muerto",
     "Dominadas",
     "Remo con Barra",
     "Jalón al Pecho",
@@ -97,6 +96,7 @@ export const EXERCISE_CATEGORIES = {
     "Elevaciones Laterales",
     "Pájaros (Elevaciones Posteriores)",
     "Encogimientos de Hombros",
+    "Facepull",
   ],
   arms: [
     "Curl de Bíceps",
@@ -113,6 +113,7 @@ export const EXERCISE_CATEGORIES = {
     "Sentadilla Búlgara",
     "Sentadilla Hack",
     "Elevación de Gemelos",
+    "Peso Muerto",
   ],
   glutes: ["Hip Thrust"],
   hamstrings: ["Peso Muerto Rumano", "Curl Femoral"],
