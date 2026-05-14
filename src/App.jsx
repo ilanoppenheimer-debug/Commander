@@ -44,6 +44,7 @@ import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvali
 import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
 import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
 import { migrateAddNotesFields } from "./db/migrations/migrateAddNotesFields";
+import { migrateMuscleGroups } from "./db/migrations/migrateMuscleGroups";
 import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal";
 import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
@@ -363,6 +364,7 @@ function AppMain() {
       await migrateLegacyModes();
       migrateMainLiftTags();
       await migrateAddNotesFields();
+      await migrateMuscleGroups();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
