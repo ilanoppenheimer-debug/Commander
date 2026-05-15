@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { X, Edit3, Trash2, Save, FileText, TrendingUp, AlertTriangle, Check, Share2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Edit3, Trash2, Save, FileText, TrendingUp, AlertTriangle, Check, Share2, RefreshCw } from 'lucide-react';
 import Modal from '../ui/Modal';
-import { deleteSession, saveRoutine } from '../../db/repository';
+import { deleteSession, saveRoutine, getAllRoutines } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
 import { isSignedIn, performDriveBackup } from '../../services/googleDriveService';
 import { SessionExportModal } from './SessionExportModal';
+import { UpdateRoutineModal } from '../routineUpdate/UpdateRoutineModal';
+import { db } from '../../db/database';
 
 function formatSet(s, barUnit = 'kg') {
   const type = s.type && s.type !== 'normal' ? s.type.toUpperCase() : '';
@@ -24,9 +26,21 @@ const SET_TYPE_COLORS = {
 };
 
 export default function SessionDetailModal({ session, barUnit = 'kg', onClose, onEdit, onDeleted, onOpenTrend, onGoToRoutines }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const [confirmDelete,      setConfirmDelete]      = useState(false);
+  const [deleting,           setDeleting]           = useState(false);
+  const [showExportModal,    setShowExportModal]    = useState(false);
+  const [showUpdateRoutine,  setShowUpdateRoutine]  = useState(false);
+  const [originRoutine,      setOriginRoutine]      = useState(null);
+  const [allRoutines,        setAllRoutines]        = useState([]);
+  const [showRoutinePicker,  setShowRoutinePicker]  = useState(false);
+
+  useEffect(() => {
+    if (session?.routineId) {
+      db.routines.where('routineId').equals(session.routineId).first()
+        .then(r => setOriginRoutine(r ?? null)).catch(() => {});
+    }
+    getAllRoutines().then(setAllRoutines).catch(() => {});
+  }, [session?.routineId]);
 
   const exercises = Array.isArray(session?.exercises) ? session.exercises : [];
   const totalSets = exercises.reduce((sum, ex) => sum + (Array.isArray(ex?.sets) ? ex.sets.length : 0), 0);
@@ -225,12 +239,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
             </div>
           ) : (
             <div className="space-y-2">
-              <button
-                onClick={() => setShowExportModal(true)}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
-              >
-                <Share2 size={14} /> Compartir con coach
-              </button>
+              {/* Primary row: Editar + Compartir + icon buttons */}
               <div className="flex gap-2">
                 <button
                   onClick={() => onEdit?.(session)}
@@ -239,16 +248,33 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                   <Edit3 size={14} /> Editar
                 </button>
                 <button
-                  onClick={handleDuplicateAsTemplate}
-                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+                  onClick={() => setShowExportModal(true)}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
                 >
-                  <Save size={14} /> Guardar como rutina
+                  <Share2 size={14} /> Compartir
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="py-2.5 px-4 bg-slate-800 hover:bg-red-900/30 text-red-400 font-bold text-sm rounded-xl transition border border-slate-700 hover:border-red-700/50"
+                  onClick={handleDuplicateAsTemplate}
+                  title="Guardar como rutina"
+                  className="w-11 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition flex items-center justify-center border border-slate-700"
                 >
-                  <Trash2 size={14} />
+                  <Save size={15} />
+                </button>
+                {(originRoutine || allRoutines.length > 0) && (
+                  <button
+                    onClick={() => originRoutine ? setShowUpdateRoutine(true) : setShowRoutinePicker(true)}
+                    title="Actualizar plantilla origen"
+                    className="w-11 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition flex items-center justify-center border border-slate-700"
+                  >
+                    <RefreshCw size={15} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  title="Borrar sesión"
+                  className="w-11 py-2.5 bg-slate-800 hover:bg-red-900/30 text-red-400 rounded-xl transition flex items-center justify-center border border-slate-700 hover:border-red-700/50"
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             </div>
@@ -261,6 +287,50 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
           onClose={() => setShowExportModal(false)}
           session={session}
         />
+      )}
+
+      {showUpdateRoutine && originRoutine && (
+        <UpdateRoutineModal
+          open={showUpdateRoutine}
+          onClose={() => setShowUpdateRoutine(false)}
+          routine={originRoutine}
+          session={session}
+          onUpdated={() => setShowUpdateRoutine(false)}
+          barUnit={barUnit}
+        />
+      )}
+
+      {showRoutinePicker && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="fixed inset-0 bg-black/70" onClick={() => setShowRoutinePicker(false)} />
+          <div className="relative w-full max-w-sm max-h-[70vh] bg-slate-950 border-t sm:border border-slate-800 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+               style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h2 className="text-base font-bold text-slate-100">Elegir plantilla a actualizar</h2>
+              <button onClick={() => setShowRoutinePicker(false)} className="p-1 text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {allRoutines.map(r => (
+                <button
+                  key={r.id || r._id}
+                  onClick={() => {
+                    setOriginRoutine(r);
+                    setShowRoutinePicker(false);
+                    setShowUpdateRoutine(true);
+                  }}
+                  className="w-full text-left px-3 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 hover:border-slate-600 transition"
+                >
+                  {r.name}
+                </button>
+              ))}
+              {allRoutines.length === 0 && (
+                <p className="text-center text-slate-500 text-sm py-6">No hay plantillas guardadas</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </Modal>
   );

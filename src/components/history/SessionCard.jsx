@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { MoreHorizontal, Trash2, Edit3, Eye, Share2, Copy, Download, X } from 'lucide-react';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { formatSessionAsText, downloadSessionAsJSON, shareSessionNative } from '../../utils/sessionShare';
+import { formatWeight, formatReps, formatRpe } from '../../utils/formatters';
 
 function relativeDate(isoString) {
   if (!isoString) return '—';
@@ -29,17 +30,18 @@ function topSet(sets) {
 
 function formatSet(set, barUnit = 'kg') {
   if (!set) return '—';
-  const w = set.weight > 0 ? `${set.weight}${barUnit}` : 'PC';
-  const r = `${set.reps} rep${set.reps !== 1 ? 's' : ''}`;
-  const rpe = set.rpe > 0 ? ` @RPE${set.rpe}` : '';
+  const w = parseFloat(set.weight) > 0 ? formatWeight(set.weight, barUnit) : 'PC';
+  const r = formatReps(set.reps);
+  const rpe = parseFloat(set.rpe) > 0 ? ` @ RPE ${formatRpe(set.rpe)}` : '';
   return `${w} × ${r}${rpe}`;
 }
 
 export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, onDelete }) {
   const exercises = Array.isArray(session?.exercises) ? session.exercises : [];
-  const visible = exercises.slice(0, 4);
-  const extra = exercises.length - 4;
-  const totalSets = exercises.reduce((sum, ex) => sum + (Array.isArray(ex?.sets) ? ex.sets.length : 0), 0);
+  const totalSets = exercises.reduce((sum, ex) =>
+    sum + (Array.isArray(ex?.sets) ? ex.sets.filter(s => s.completed !== false).length : 0), 0);
+  const totalVolume = exercises.reduce((sum, ex) =>
+    sum + (Array.isArray(ex?.sets) ? ex.sets.reduce((s2, s) => s2 + (s.weight || 0) * (s.reps || 0), 0) : 0), 0);
 
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -61,33 +63,36 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
 
   return (
     <div
-      className="bg-slate-800 rounded-xl border border-slate-700 hover:border-slate-600 transition cursor-pointer group relative"
+      className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 hover:border-slate-700 active:bg-slate-900 transition cursor-pointer relative"
       onClick={() => onClick?.(session)}
     >
-      {/* Header */}
-      <div className="p-4 pb-2 flex items-start justify-between">
-        <div className="flex-1 min-w-0 pr-2">
-          <h3 className="font-bold text-white text-base leading-tight truncate">
-            {session.name || 'Entrenamiento Libre'}
-          </h3>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[11px] text-accent-500 font-mono">
+      <div className="flex items-center gap-2">
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-slate-100 truncate">
+              {session.name || 'Entrenamiento Libre'}
+            </span>
+            <span className="text-[10px] text-slate-500 shrink-0">
               {relativeDate(session.completedAt)}
             </span>
-            <span className="text-[10px] text-slate-600">
-              {session.completedAt ? new Date(session.completedAt).toLocaleDateString('es-AR') : ''}
-            </span>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">
+            {totalSets} series · {totalVolume > 0 ? `${totalVolume.toLocaleString('es-AR')} ${barUnit}·rep` : `${exercises.length} ejercicio${exercises.length !== 1 ? 's' : ''}`}
+            {session.durationSec > 0 && <span className="ml-1">· {Math.round(session.durationSec / 60)} min</span>}
           </div>
         </div>
+
+        {/* ⋮ menu */}
         <div ref={menuRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setMenuOpen(v => !v)}
-            className="p-1.5 text-slate-600 hover:text-white rounded-lg hover:bg-slate-700 transition opacity-0 group-hover:opacity-100"
+            className="w-9 h-9 flex items-center justify-center text-slate-600 hover:text-white rounded-lg hover:bg-slate-700 transition"
           >
             <MoreHorizontal size={16} />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-8 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-10 w-40 py-1 animate-fade-in">
+            <div className="absolute right-0 top-10 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[60] w-40 py-1 animate-fade-in">
               <button
                 onClick={() => { setMenuOpen(false); onClick?.(session); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
@@ -138,36 +143,6 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
           </div>
         </div>
       )}
-
-      {/* Exercise list */}
-      {visible.length > 0 && (
-        <div className="px-4 pb-3 space-y-1">
-          {visible.map((ex, i) => {
-            const ts = topSet(ex?.sets);
-            return (
-              <div key={ex?.id || i} className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 truncate pr-2 font-medium">{ex?.name || 'Ejercicio'}</span>
-                <span className="text-accent-400 font-mono shrink-0 text-[11px]">{formatSet(ts, barUnit)}</span>
-              </div>
-            );
-          })}
-          {extra > 0 && (
-            <p className="text-[10px] text-slate-600 pt-0.5">+{extra} ejercicio{extra > 1 ? 's' : ''} más</p>
-          )}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="px-4 py-2.5 border-t border-slate-700/60 flex items-center justify-between">
-        <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-0.5 rounded-full">
-          {totalSets} series · {exercises.length} ejercicios
-        </span>
-        {session.durationSec > 0 && (
-          <span className="text-[10px] text-slate-600">
-            {Math.round(session.durationSec / 60)} min
-          </span>
-        )}
-      </div>
     </div>
   );
 }
