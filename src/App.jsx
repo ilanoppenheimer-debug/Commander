@@ -58,7 +58,7 @@ import {
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
   X, ChevronLeft, ChevronRight, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
   Timer, Pause, RotateCcw, ChevronUp, ChevronDown, RefreshCw, ClipboardList,
-  Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check
+  Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical
 } from 'lucide-react';
 
 const FullSettingsModal = ({
@@ -79,6 +79,10 @@ const FullSettingsModal = ({
   setGlobalIncrementOverrides,
 }) => {
   const [settingsTab, setSettingsTab] = useState('apariencia');
+  const [plateInventoryExpanded, setPlateInventoryExpanded] = useState(false);
+
+  const totalPlateCount = Object.values(inventory?.kg || {}).reduce((s, v) => s + (v || 0), 0)
+    + Object.values(inventory?.lb || {}).reduce((s, v) => s + (v || 0), 0);
 
   const updateCount = (unit, weight, delta) => {
     setInventory((prev) => {
@@ -191,32 +195,49 @@ const FullSettingsModal = ({
                 </div>
               </section>
               <section>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Inventario de Discos</h3>
-                <div className="space-y-6">
-                  {[{ u: "kg", weights: sortedKg, label: "Kilos" }, { u: "lb", weights: sortedLb, label: "Libras" }].map(({ u, weights, label }) => (
-                    <div key={u} className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                      <h4 className="text-sm font-bold text-white mb-3 uppercase flex justify-between">{label}</h4>
-                      <div className="space-y-2">
-                        {weights.map((w) => {
-                          const count = inventory?.[u] ? inventory[u][w] || 0 : 0;
-                          const cfg = PLATE_CONFIG[u]?.[w];
-                          return (
-                            <div key={w} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-800">
-                              <div className="flex items-center gap-3">
-                                <div style={{ backgroundColor: cfg?.fill || "#334155", borderColor: cfg?.stroke || "#475569", color: cfg?.text || "#ffffff" }} className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm">{w}</div>
-                                <span className="text-slate-400 text-sm font-medium">{w} {u}</span>
-                              </div>
-                              <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700">
-                                <button onClick={() => updateCount(u, w, -2)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-lg">-2</button>
-                                <div className="w-8 text-center font-bold text-white text-sm">{count}</div>
-                                <button onClick={() => updateCount(u, w, 2)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-lg">+2</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                  <button
+                    onClick={() => setPlateInventoryExpanded(v => !v)}
+                    className="w-full flex items-center justify-between p-4"
+                  >
+                    <div className="text-left">
+                      <div className="text-sm font-bold text-white">Inventario de Discos</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{totalPlateCount} discos configurados</div>
                     </div>
-                  ))}
+                    <ChevronDown
+                      size={18}
+                      className={`text-slate-400 transition-transform duration-200 ${plateInventoryExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {plateInventoryExpanded && (
+                    <div className="px-4 pb-4 space-y-4 border-t border-slate-700">
+                      {[{ u: "kg", weights: sortedKg, label: "Kilos" }, { u: "lb", weights: sortedLb, label: "Libras" }].map(({ u, weights, label }) => (
+                        <div key={u} className="pt-4">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{label}</h4>
+                          <div className="space-y-2">
+                            {weights.map((w) => {
+                              const count = inventory?.[u] ? inventory[u][w] || 0 : 0;
+                              const cfg = PLATE_CONFIG[u]?.[w];
+                              return (
+                                <div key={w} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                                  <div className="flex items-center gap-3">
+                                    <div style={{ backgroundColor: cfg?.fill || "#334155", borderColor: cfg?.stroke || "#475569", color: cfg?.text || "#ffffff" }} className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shadow-sm">{w}</div>
+                                    <span className="text-slate-400 text-sm font-medium">{w} {u}</span>
+                                  </div>
+                                  <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700">
+                                    <button onClick={() => updateCount(u, w, -2)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-lg">-2</button>
+                                    <div className="w-8 text-center font-bold text-white text-sm">{count}</div>
+                                    <button onClick={() => updateCount(u, w, 2)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-lg">+2</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
@@ -449,7 +470,7 @@ function AppMain() {
   const createRoutine = async () => {
     const newRoutine = { id: `routine-${Date.now()}`, name: 'Nueva Plantilla', lastPerformed: null, exercises: [] };
     await saveRoutine(newRoutine);
-    showNotify("Plantilla Creada", "success");
+    setPreSessionRoutine(newRoutine);
   };
 
   const startRoutineFromTemplate = (routine) => {
@@ -780,38 +801,88 @@ function AppMain() {
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {safeRoutines.map(routine => (
-                  <div key={routine.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-slate-500 transition relative group">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1 mr-4">
-                        {editingTemplateId === routine.id ? (
-                          <div className="flex items-center gap-2 mb-1">
-                            <input autoFocus value={editingTemplateName} onChange={(e) => setEditingTemplateName(e.target.value)} className="bg-slate-950 border border-accent-500 text-white text-sm font-bold rounded px-2 py-1 w-full" />
-                            <button onClick={(e) => saveTemplateName(e, routine)} className="p-1.5 bg-accent-600 text-black rounded"><Check size={14}/></button>
+              <div className="space-y-2">
+                {safeRoutines.map(routine => {
+                  const exCount = Array.isArray(routine.exercises) ? routine.exercises.length : 0;
+                  const isMenuOpen = editingTemplateId === `menu-${routine.id}`;
+                  return (
+                    <div key={routine.id} className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 relative">
+                      <div className="flex items-center gap-3">
+                        {/* Play button */}
+                        <button
+                          onClick={() => startRoutineFromTemplate(routine)}
+                          className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 active:scale-95 transition shadow-md"
+                          title="Iniciar rutina"
+                        >
+                          <Play fill="currentColor" size={15} className="ml-0.5" />
+                        </button>
+
+                        {/* Name + meta */}
+                        <div className="flex-1 min-w-0">
+                          {editingTemplateId === routine.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                autoFocus
+                                value={editingTemplateName}
+                                onChange={(e) => setEditingTemplateName(e.target.value)}
+                                className="bg-slate-950 border border-accent-500 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
+                              />
+                              <button onClick={(e) => saveTemplateName(e, routine)} className="p-1.5 bg-accent-600 text-black rounded shrink-0"><Check size={13}/></button>
+                            </div>
+                          ) : (
+                            <div
+                              className="text-sm font-bold text-slate-100 truncate cursor-pointer hover:text-accent-400 transition-colors"
+                              onClick={(e) => startEditingTemplateName(e, routine)}
+                            >
+                              {routine.name || 'Plantilla Sin Nombre'}
+                            </div>
+                          )}
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            {exCount} ejercicio{exCount !== 1 ? 's' : ''}
+                            {routine.lastPerformed && <span className="ml-1">· {formatRelativeTime(routine.lastPerformed)}</span>}
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-2 group/edit">
-                            <h4 className="font-bold text-white text-lg cursor-pointer hover:text-accent-500 transition-colors" onClick={(e) => startEditingTemplateName(e, routine)}>{routine.name || 'Plantilla Sin Nombre'}</h4>
-                            <button onClick={(e) => startEditingTemplateName(e, routine)} className="text-slate-500 opacity-0 group-hover/edit:opacity-100 hover:text-white transition-opacity"><Edit3 size={12}/></button>
-                          </div>
-                        )}
-                        <p className="text-xs text-slate-500 font-mono">
-                          {Array.isArray(routine.exercises) ? routine.exercises.length : 0} Ejercicios
-                          {routine.lastPerformed && <span className="ml-2 text-slate-600">· {formatRelativeTime(routine.lastPerformed)}</span>}
-                        </p>
+                        </div>
+
+                        {/* ⋮ menu */}
+                        <div className="relative shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingTemplateId(isMenuOpen ? null : `menu-${routine.id}`); }}
+                            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-200 active:scale-90 transition rounded-lg"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          {isMenuOpen && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setEditingTemplateId(null)} />
+                              <div className="absolute right-0 top-10 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[140px]">
+                                <button
+                                  onClick={(e) => { startEditingTemplateName(e, routine); setEditingTemplateId(null); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+                                >
+                                  <Edit3 size={12} /> Editar nombre
+                                </button>
+                                <button
+                                  onClick={(e) => { duplicateRoutine(e, routine); setEditingTemplateId(null); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+                                >
+                                  <Copy size={12} /> Clonar
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setRoutineToDelete(routine.id); setEditingTemplateId(null); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-slate-800"
+                                >
+                                  <Trash2 size={12} /> Borrar
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <button onClick={() => startRoutineFromTemplate(routine)} className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 shadow-lg shadow-accent-900/20" title="Iniciar esta rutina"><Play fill="currentColor" size={16} className="ml-0.5" /></button>
                     </div>
-                    <div className="flex gap-2 mt-4 pt-3 border-t border-slate-700/50">
-                      <button onClick={(e) => duplicateRoutine(e, routine)} className="px-3 py-1.5 rounded bg-slate-900 text-xs text-slate-400 hover:text-white flex items-center gap-1"><Copy size={12} /> Clonar</button>
-                      <div className="flex-1"></div>
-                      <button onClick={(e) => { e.stopPropagation(); setRoutineToDelete(routine.id); }} className="px-3 py-1.5 rounded bg-slate-900 text-xs text-red-900 hover:text-red-500 flex items-center gap-1 hover:bg-red-900/20 transition cursor-pointer"><Trash2 size={12} /> Borrar</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {safeRoutines.length === 0 && (
-                  <div className="col-span-3 text-center py-12 space-y-4">
+                  <div className="text-center py-12 space-y-4">
                     <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
                       <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar rutina v4</button>
@@ -946,7 +1017,7 @@ function AppMain() {
                       </div>
                     )
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       {filtered.map(h => (
                         <SessionCard
                           key={h.historyId || h._id}

@@ -39,7 +39,7 @@ export const TagPicker = ({ value, onChange, onClose, anchorEl }) => {
   return (
     <div
       ref={popoverRef}
-      className={`absolute left-0 ${positionClass} bg-slate-900 border border-slate-700 rounded-xl p-2 shadow-2xl z-30 min-w-[220px]`}
+      className={`absolute left-0 ${positionClass} bg-slate-900 border border-slate-700 rounded-xl p-2 shadow-2xl z-[60] min-w-[220px]`}
     >
       <div className="flex items-center justify-between mb-1 px-1">
         <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Tipo de ejercicio</div>

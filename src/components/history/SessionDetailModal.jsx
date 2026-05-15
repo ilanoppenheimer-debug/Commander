@@ -239,26 +239,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
             </div>
           ) : (
             <div className="space-y-2">
-              {(originRoutine || allRoutines.length > 0) && (
-                <button
-                  onClick={() => {
-                    if (originRoutine) {
-                      setShowUpdateRoutine(true);
-                    } else {
-                      setShowRoutinePicker(true);
-                    }
-                  }}
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5 border border-slate-700"
-                >
-                  <RefreshCw size={14} /> Actualizar plantilla origen
-                </button>
-              )}
-              <button
-                onClick={() => setShowExportModal(true)}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
-              >
-                <Share2 size={14} /> Compartir con coach
-              </button>
+              {/* Primary row: Editar + Compartir + icon buttons */}
               <div className="flex gap-2">
                 <button
                   onClick={() => onEdit?.(session)}
@@ -267,16 +248,33 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                   <Edit3 size={14} /> Editar
                 </button>
                 <button
-                  onClick={handleDuplicateAsTemplate}
-                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
+                  onClick={() => setShowExportModal(true)}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-1.5"
                 >
-                  <Save size={14} /> Guardar como rutina
+                  <Share2 size={14} /> Compartir
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="py-2.5 px-4 bg-slate-800 hover:bg-red-900/30 text-red-400 font-bold text-sm rounded-xl transition border border-slate-700 hover:border-red-700/50"
+                  onClick={handleDuplicateAsTemplate}
+                  title="Guardar como rutina"
+                  className="w-11 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition flex items-center justify-center border border-slate-700"
                 >
-                  <Trash2 size={14} />
+                  <Save size={15} />
+                </button>
+                {(originRoutine || allRoutines.length > 0) && (
+                  <button
+                    onClick={() => originRoutine ? setShowUpdateRoutine(true) : setShowRoutinePicker(true)}
+                    title="Actualizar plantilla origen"
+                    className="w-11 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition flex items-center justify-center border border-slate-700"
+                  >
+                    <RefreshCw size={15} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  title="Borrar sesión"
+                  className="w-11 py-2.5 bg-slate-800 hover:bg-red-900/30 text-red-400 rounded-xl transition flex items-center justify-center border border-slate-700 hover:border-red-700/50"
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             </div>
