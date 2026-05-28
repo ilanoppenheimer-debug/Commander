@@ -1,3 +1,10 @@
+/**
+ * DORMANT — fuera del path activo desde 2026-05-28.
+ * Motor de reglas heurísticas pre-bloques. Cero imports al momento de mover.
+ * Probablemente reemplazado por blocksMath.js. Se conserva como posible
+ * pieza reutilizable para Fase 1 (AI copiloto). Ver marco teórico P6.
+ * NO reimportar sin pasar por decisión de marco.
+ */
 export function getSessionAdvice({ exercise, sets, history }) {
 
   if (!Array.isArray(sets) || sets.length === 0) {
