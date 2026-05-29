@@ -1,3 +1,10 @@
+/**
+ * DORMANT — fuera del path activo desde 2026-05-28.
+ * Modelo de progresión de carga. Cero imports al momento de mover.
+ * Probablemente reemplazado por el sistema de bloques. Se conserva como
+ * posible pieza reutilizable para Fase 1 (AI copiloto). Ver marco teórico P6.
+ * NO reimportar sin pasar por decisión de marco.
+ */
 const roundToIncrement = (weight, increment = 2.5) => {
   if (!Number.isFinite(weight) || weight <= 0) return 0;
   return Math.round(weight / increment) * increment;
