@@ -1,4 +1,5 @@
 import { formatSetSummary, formatVolume } from './formatters';
+import { computeExercise1RM } from './strengthMath';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -102,6 +103,12 @@ const padType = (type) => {
   return label;
 };
 
+const confianza1RM = (n) => {
+  if (n >= 6) return 'alta';
+  if (n >= 3) return 'media';
+  return 'baja';
+};
+
 /**
  * Generates a text report for a session, ready to paste into Claude Coach.
  */
@@ -171,6 +178,12 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
 
     totalVolume += exVolume;
     if (exVolume > 0) lines.push(`  Volumen: ${formatVolume(exVolume)}`);
+
+    const orm = computeExercise1RM(ex.name, allSessions, { weeksBack: 12 });
+    if (orm.current1RM != null && orm.sampleSize >= 1) {
+      const rounded = Math.round(orm.current1RM * 2) / 2;
+      lines.push(`  1RM est.: ${rounded} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}) — referencia, no máximo del día`);
+    }
 
     if (ex.exerciseNotes?.trim()) {
       lines.push(`  Nota ejercicio: "${ex.exerciseNotes.trim()}"`);
