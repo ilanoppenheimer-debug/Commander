@@ -6,6 +6,7 @@ import {
   Flame,
   Link as LinkIcon,
   ChevronDown,
+  ChevronUp,
   BarChart2,
   Trash2,
   X,
@@ -231,6 +232,7 @@ export default function ActiveSession({
   const storeAddEx       = useSessionStore(s => s.addExercise);
   const storeUpdateEx    = useSessionStore(s => s.updateExercise);
   const storeRemoveEx    = useSessionStore(s => s.removeExercise);
+  const storeMoveEx      = useSessionStore(s => s.moveExercise);
   const storeAddSet      = useSessionStore(s => s.addSet);
   const storeUpdateSet   = useSessionStore(s => s.updateSet);
   const storeRemoveSet         = useSessionStore(s => s.removeSet);
@@ -747,18 +749,37 @@ export default function ActiveSession({
                   <div className="flex flex-col items-end gap-1 ml-2">
                     <div className="flex items-center gap-1 mt-1">
                       <button
+                        onClick={() => storeMoveEx(index, -1)}
+                        disabled={index === 0}
+                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                        aria-label="Subir ejercicio"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => storeMoveEx(index, 1)}
+                        disabled={index === exercises.length - 1}
+                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                        aria-label="Bajar ejercicio"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      <button
                         onClick={() => setExerciseNoteFor(ex.id)}
                         className={`p-1.5 rounded transition ${ex.exerciseNotes?.trim() ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400'}`}
                         aria-label="Nota del ejercicio"
                       >
                         <StickyNote size={14} />
                       </button>
-                      <button
-                        onClick={() => storeToggleSS(index)}
-                        className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
-                      >
-                        <LinkIcon size={14} />
-                      </button>
+                      {index < exercises.length - 1 && (
+                        <button
+                          onClick={() => storeToggleSS(index)}
+                          className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
+                          aria-label="Encadenar con el de abajo (superset)"
+                        >
+                          <LinkIcon size={14} />
+                        </button>
+                      )}
                       <button
                         onClick={() => storeRemoveEx(ex.id)}
                         className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
