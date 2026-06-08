@@ -119,7 +119,16 @@ export const useSessionStore = create((set, get) => ({
     if (target < 0 || target >= s.exercises.length) return;
     const newExs = [...s.exercises];
     [newExs[index], newExs[target]] = [newExs[target], newExs[index]];
-    const next = { ...s, exercises: newExs };
+
+    const cleanedExs = newExs.map((ex, i) => {
+      if (ex.supersetId == null) return ex;
+      const sharesWithPrev = i > 0 && newExs[i - 1]?.supersetId === ex.supersetId;
+      const sharesWithNext = i < newExs.length - 1 && newExs[i + 1]?.supersetId === ex.supersetId;
+      if (!sharesWithPrev && !sharesWithNext) return { ...ex, supersetId: null };
+      return ex;
+    });
+
+    const next = { ...s, exercises: cleanedExs };
     set({ session: next });
     persistToDb(next);
   },
