@@ -112,6 +112,18 @@ export const useSessionStore = create((set, get) => ({
     persistToDb(next);
   },
 
+  moveExercise: (index, direction) => {
+    const s = get().session;
+    if (!s) return;
+    const target = index + direction;
+    if (target < 0 || target >= s.exercises.length) return;
+    const newExs = [...s.exercises];
+    [newExs[index], newExs[target]] = [newExs[target], newExs[index]];
+    const next = { ...s, exercises: newExs };
+    set({ session: next });
+    persistToDb(next);
+  },
+
   addSet: (exId, setData) => {
     const s = get().session;
     if (!s) return;
