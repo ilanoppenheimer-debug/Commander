@@ -34,6 +34,7 @@ const getBlockContext = (exerciseTag, blocks) => {
   return {
     blockName: match.name,
     blockType: match.type,
+    startedAt: match.startedAt || null,
     sessionsLogged: match.sessionsLogged ?? 0,
     sessionsTarget: match.sessionsTarget ?? null,
     repsMin: p.repsRange?.[0],
@@ -69,7 +70,7 @@ const findPrevSet = (exerciseName, setType, allSessions, currentId) => {
     const ex = session.exercises.find(e => e.name === exerciseName);
     if (!ex || !Array.isArray(ex.sets)) continue;
     const match = ex.sets.find(s => s.type === setType && s.completed);
-    if (match) return match;
+    if (match) return { ...match, _sessionDate: session.completedAt || null };
   }
   return null;
 };
@@ -90,7 +91,15 @@ const computeFlags = (set, blockCtx, prevSet) => {
     const wCur = parseFloat(set.weight) || 0;
     const wPrev = parseFloat(prevSet.weight) || 0;
     if (wCur > wPrev) flags.push('progresó');
-    else if (wCur > 0 && wPrev > 0 && wCur < wPrev) flags.push('bajó');
+    else if (wCur > 0 && wPrev > 0 && wCur < wPrev) {
+      // Don't flag "bajó" if the previous set is from before the current block started —
+      // that comparison crosses block boundaries and produces noise.
+      const blockStart = blockCtx?.startedAt ? new Date(blockCtx.startedAt) : null;
+      const prevDate = prevSet._sessionDate ? new Date(prevSet._sessionDate) : null;
+      if (!blockStart || !prevDate || prevDate >= blockStart) {
+        flags.push('bajó');
+      }
+    }
   }
 
   if (hasPainKeyword(set.notes)) flags.push('molestia reportada');
