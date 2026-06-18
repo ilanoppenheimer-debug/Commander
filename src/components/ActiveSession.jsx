@@ -29,7 +29,6 @@ import { BlockColorDot } from "./blocks/BlockColorDot";
 import { useActiveBlocks } from "../hooks/useActiveBlocks";
 import {
   findBlockForExercise,
-  calculateTopSetSuggestion,
   calculateBackoffSuggestion,
   findTopSetInExercise,
 } from "../utils/blocksMath";
@@ -61,9 +60,9 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   const exMeta = getExerciseMeta(ex.name);
   const exerciseForCalc = { ...ex, metadata: exMeta };
   const block = findBlockForExercise(exerciseForCalc, Array.isArray(activeBlocks) ? activeBlocks : []);
+  const topHistorical = getTopHistoricalSet(ex.name, history);
 
   const buildFallback = () => {
-    const topHistorical = getTopHistoricalSet(ex.name, history);
     if (!topHistorical) return ex;
     if (parseFloat(ex.sets[0]?.weight) > 0) return ex;
     const newSets = ex.sets.map((s, i) => i === 0 ? { ...s, placeholder: topHistorical } : s);
@@ -74,9 +73,6 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   };
 
   if (!block) return buildFallback();
-
-  const topSuggestion = calculateTopSetSuggestion(exerciseForCalc, history, block);
-  if (!topSuggestion) return buildFallback();
 
   const topSet = findTopSetInExercise(ex);
   const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
@@ -94,18 +90,15 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
 
     const isTop = set === topSet || (!hasExplicitTop && i === 0);
     if (isTop) {
-      return {
-        ...set,
-        placeholder: {
-          weight:           topSuggestion.weight,
-          reps:             topSuggestion.reps,
-          rpe:              topSuggestion.rpe,
-          sourceBlockColor: topSuggestion.sourceBlockColor,
-        },
-      };
+      // TOP: show historical memory, not a block-generated weight suggestion.
+      // topHistorical is { weight, reps, rpe } — no sourceBlockColor by design.
+      if (!topHistorical) return set;
+      return { ...set, placeholder: topHistorical };
     }
 
-    const backoffSuggestion = calculateBackoffSuggestion(topSet, topSuggestion, block, exerciseForCalc);
+    // Back sets: reactive to the real typed TOP weight only (no block suggestion fallback).
+    // If top hasn't been typed yet, calculateBackoffSuggestion returns null → no placeholder.
+    const backoffSuggestion = calculateBackoffSuggestion(topSet, null, block, exerciseForCalc);
     if (!backoffSuggestion) return set;
     return {
       ...set,
