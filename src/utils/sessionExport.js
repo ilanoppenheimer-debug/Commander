@@ -1,5 +1,6 @@
 import { formatSetSummary, formatVolume } from './formatters';
 import { computeExercise1RM } from './strengthMath';
+import { getExerciseMeta } from '../constants/exerciseMetadata';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -143,7 +144,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
   const allFlagsSeen = new Set();
 
   for (const ex of exercises) {
-    const exMeta = ex.metadata || {};
+    const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
     const tag = exMeta.defaultTag || ex.tag || null;
     const blockCtx = getBlockContext(tag, blocks);
 
