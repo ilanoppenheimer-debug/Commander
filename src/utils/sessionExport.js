@@ -57,54 +57,26 @@ const formatPlanLine = (ctx) => {
   return parts ? `  Plan: ${parts}` : null;
 };
 
-/**
- * Finds the most recent matching set (by setType) from previous sessions of the same exercise.
- */
-const findPrevSet = (exerciseName, setType, allSessions, currentId) => {
-  if (!Array.isArray(allSessions)) return null;
-  const sorted = allSessions
-    .filter(s => (s.historyId || s._id) !== currentId)
-    .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+// DORMANT: comparación histórica (bajó/progresó), apagada por decisión
+// filosófica (v2.0) — la app no evalúa desempeño, eso es rol del Coach.
+// const findPrevSet = (exerciseName, setType, allSessions, currentId) => {
+//   if (!Array.isArray(allSessions)) return null;
+//   const sorted = allSessions
+//     .filter(s => (s.historyId || s._id) !== currentId)
+//     .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+//   for (const session of sorted) {
+//     if (!Array.isArray(session.exercises)) continue;
+//     const ex = session.exercises.find(e => e.name === exerciseName);
+//     if (!ex || !Array.isArray(ex.sets)) continue;
+//     const match = ex.sets.find(s => s.type === setType && s.completed);
+//     if (match) return { ...match, _sessionDate: session.completedAt || null };
+//   }
+//   return null;
+// };
 
-  for (const session of sorted) {
-    if (!Array.isArray(session.exercises)) continue;
-    const ex = session.exercises.find(e => e.name === exerciseName);
-    if (!ex || !Array.isArray(ex.sets)) continue;
-    const match = ex.sets.find(s => s.type === setType && s.completed);
-    if (match) return { ...match, _sessionDate: session.completedAt || null };
-  }
-  return null;
-};
-
-const computeFlags = (set, blockCtx, prevSet) => {
+const computeFlags = (set) => {
   const flags = [];
-
-  if (blockCtx) {
-    if (blockCtx.rpeMax != null && parseFloat(set.rpe) > blockCtx.rpeMax + 0.5) {
-      flags.push('RPE alto');
-    }
-    if (blockCtx.repsMax != null && parseInt(set.reps, 10) < blockCtx.repsMin) {
-      flags.push('reps bajo plan');
-    }
-  }
-
-  if (prevSet) {
-    const wCur = parseFloat(set.weight) || 0;
-    const wPrev = parseFloat(prevSet.weight) || 0;
-    if (wCur > wPrev) flags.push('progresó');
-    else if (wCur > 0 && wPrev > 0 && wCur < wPrev) {
-      // Don't flag "bajó" if the previous set is from before the current block started —
-      // that comparison crosses block boundaries and produces noise.
-      const blockStart = blockCtx?.startedAt ? new Date(blockCtx.startedAt) : null;
-      const prevDate = prevSet._sessionDate ? new Date(prevSet._sessionDate) : null;
-      if (!blockStart || !prevDate || prevDate >= blockStart) {
-        flags.push('bajó');
-      }
-    }
-  }
-
   if (hasPainKeyword(set.notes)) flags.push('molestia reportada');
-
   return flags;
 };
 
@@ -169,8 +141,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
       const s = sets[i];
       if (!s.completed) continue;
 
-      const prev = findPrevSet(ex.name, s.type, allSessions, currentId);
-      const flags = computeFlags(s, blockCtx, prev);
+      const flags = computeFlags(s);
       flags.forEach(f => allFlagsSeen.add(f));
 
       const summary = formatSetSummary(s);
