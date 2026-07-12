@@ -61,43 +61,59 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   const exerciseForCalc = { ...ex, metadata: exMeta };
   const block = findBlockForExercise(exerciseForCalc, Array.isArray(activeBlocks) ? activeBlocks : []);
   const topHistorical = getTopHistoricalSet(ex.name, history);
-
-  const buildFallback = () => {
-    if (!topHistorical) return ex;
-    if (parseFloat(ex.sets[0]?.weight) > 0) return ex;
-    const newSets = ex.sets.map((s, i) => i === 0 ? { ...s, placeholder: topHistorical } : s);
-    const changed = newSets.some((s, i) =>
-      JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
-    );
-    return changed ? { ...ex, sets: newSets } : ex;
-  };
-
-  if (!block) return buildFallback();
-
   const topSet = findTopSetInExercise(ex);
   const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
 
+  // Returns the most recent set before `index` that has an actual typed value.
+  const findLastTypedBefore = (index) => {
+    for (let j = index - 1; j >= 0; j--) {
+      const s = ex.sets[j];
+      if (s && (parseFloat(s.weight) > 0 || parseInt(s.reps, 10) > 0)) return s;
+    }
+    return null;
+  };
+
   const newSets = ex.sets.map((set, i) => {
     if (!set) return set;
+
     const hasTypedValue = parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0;
     if (hasTypedValue) {
-      if (set.placeholder) {
-        const { placeholder: _ph, ...rest } = set;
-        return rest;
+      if (set.placeholder) { const { placeholder: _ph, ...rest } = set; return rest; }
+      return set;
+    }
+
+    const type = (set.type || 'normal').toLowerCase();
+
+    // NORMAL: session memory takes priority. If no previous typed set, fall through.
+    if (type === 'normal') {
+      const lastTyped = findLastTypedBefore(i);
+      if (lastTyped) {
+        return { ...set, placeholder: { weight: lastTyped.weight, reps: lastTyped.reps, rpe: lastTyped.rpe } };
+      }
+    }
+
+    // AMRAP: only inherits weight — reps/rpe are the whole point of the set.
+    if (type === 'amrap') {
+      const lastTyped = findLastTypedBefore(i);
+      if (lastTyped && parseFloat(lastTyped.weight) > 0) {
+        return { ...set, placeholder: { weight: lastTyped.weight } };
       }
       return set;
     }
 
+    // No block: first set gets historical placeholder; others get nothing.
+    if (!block) {
+      if (i === 0 && topHistorical) return { ...set, placeholder: topHistorical };
+      return set;
+    }
+
+    // Block context: TOP sets → historical, back sets → back-off from real typed TOP.
     const isTop = set === topSet || (!hasExplicitTop && i === 0);
     if (isTop) {
-      // TOP: show historical memory, not a block-generated weight suggestion.
-      // topHistorical is { weight, reps, rpe } — no sourceBlockColor by design.
       if (!topHistorical) return set;
       return { ...set, placeholder: topHistorical };
     }
 
-    // Back sets: reactive to the real typed TOP weight only (no block suggestion fallback).
-    // If top hasn't been typed yet, calculateBackoffSuggestion returns null → no placeholder.
     const backoffSuggestion = calculateBackoffSuggestion(topSet, null, block, exerciseForCalc);
     if (!backoffSuggestion) return set;
     return {

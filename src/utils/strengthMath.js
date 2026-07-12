@@ -85,6 +85,7 @@ export const calcWorkWeight = (oneRM, targetReps, targetRpe) => {
  */
 export const isPredictiveSet = (set, exerciseMaxWeight) => {
   if (!set) return false;
+  if (set.type === 'warmup' || set.type === 'drop') return false;
   const w = parseFloat(set.weight);
   const r = parseInt(set.reps, 10);
   const rpe = parseFloat(set.rpe);

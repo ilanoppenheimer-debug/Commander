@@ -148,13 +148,15 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
       const flagsStr = flags.length > 0 ? `   ⚠️ ${flags.join(', ')}` : '';
       lines.push(`    ${i + 1}. ${padType(s.type)} ${summary}${flagsStr}`);
 
+      const isWorkSet = s.type !== 'warmup';
+
       const w = parseFloat(s.weight) || 0;
       const r = parseInt(s.reps, 10) || 0;
-      if (w > 0 && r > 0) exVolume += w * r;
+      if (isWorkSet && w > 0 && r > 0) exVolume += w * r;
 
       const rpe = parseFloat(s.rpe);
       if (!isNaN(rpe) && rpe > 0) { rpeSum += rpe; rpeCount++; }
-      totalSets++;
+      if (isWorkSet) totalSets++;
     }
 
     totalVolume += exVolume;
