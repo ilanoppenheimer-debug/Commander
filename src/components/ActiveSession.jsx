@@ -425,6 +425,10 @@ export default function ActiveSession({
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
     } else {
+      const alreadyPresent = exercises.some(e => e.name === exName);
+      if (alreadyPresent) {
+        showNotify?.(`"${exName}" ya está en la sesión — agregando igualmente`, 'info');
+      }
       storeAddEx(exName);
     }
     setShowExSelector(false);
@@ -451,12 +455,30 @@ export default function ActiveSession({
 
   const handleCompleteSet = useCallback((ex, setIdx) => {
     const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
-    const wasCompleted = safeSets[setIdx]?.completed;
+    const set = safeSets[setIdx];
+    const wasCompleted = set?.completed;
+
+    // When marking complete: commit placeholder values to fields the user left empty.
+    // Placeholder lives only in the display layer (exercisesWithPlaceholders) — this
+    // is the single point where it becomes real store data.
+    // Rule: empty field (null/undefined/''/0) + placeholder has a value → write it.
+    // Already-typed values (e.g. '107.5') are never overwritten.
+    // Bodyweight case: weight placeholder is '' or 0 → skipped; reps/rpe still commit.
+    if (!wasCompleted && set?.placeholder) {
+      const ph = set.placeholder;
+      for (const f of ['weight', 'reps', 'rpe']) {
+        const fieldEmpty = set[f] === null || set[f] === undefined || set[f] === '' || set[f] === 0;
+        const phHasValue = ph[f] !== null && ph[f] !== undefined && ph[f] !== '' && ph[f] !== 0;
+        if (fieldEmpty && phHasValue) {
+          storeUpdateSet(ex.id, setIdx, f, String(ph[f]));
+        }
+      }
+    }
+
     storeToggleCompleted(ex.id, setIdx);
 
     if (!wasCompleted) {
       if (navigator.vibrate) navigator.vibrate(50);
-      // Trigger rest timer if this exercise is last in its superset group
       if (isLastInSupersetGroup(ex, exercises)) {
         const restSecs = ex.restSeconds ?? 90;
         window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
@@ -464,7 +486,7 @@ export default function ActiveSession({
         }));
       }
     }
-  }, [storeToggleCompleted, isLastInSupersetGroup, exercises]);
+  }, [storeToggleCompleted, storeUpdateSet, isLastInSupersetGroup, exercises]);
 
   if (!session) return null;
 
