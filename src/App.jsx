@@ -492,6 +492,7 @@ function AppMain() {
       historyId: `hist-${Date.now()}`,
       name: sessionName || 'Entrenamiento Libre',
       completedAt: new Date().toISOString(),
+      ...(session?.startTime ? { durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000) } : {}),
       exercises: safeFinalExercises,
       routineId: session?.routineId ?? null,
     };

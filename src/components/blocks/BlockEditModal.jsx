@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, FileText } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { TAG_OPTIONS, TAG_LABELS, BLOCK_COLOR_PALETTE } from '../../constants/blockTemplates';
 import { upsertBlock, activateBlock, pauseBlock, resumeBlock, completeBlock, smartDeleteBlock } from '../../db/blocks';
 import { BlockColorDot } from './BlockColorDot';
+import { BlockReportModal } from './BlockReportModal';
 
 export const BlockEditModal = ({ block, onClose, onUpdated }) => {
-  const [name,      setName]      = useState(block?.name || '');
-  const [appliesTo, setAppliesTo] = useState(block?.appliesTo || []);
-  const [color,     setColor]     = useState(block?.color || '#f59e0b');
+  const [name,        setName]        = useState(block?.name || '');
+  const [appliesTo,   setAppliesTo]   = useState(block?.appliesTo || []);
+  const [color,       setColor]       = useState(block?.color || '#f59e0b');
   const [sessionsTarget, setSessionsTarget] = useState(block?.sessionsTarget || '');
-  const [unlimited, setUnlimited] = useState(block?.sessionsTarget === null);
-  const [saving,    setSaving]    = useState(false);
+  const [unlimited,   setUnlimited]   = useState(block?.sessionsTarget === null);
+  const [saving,      setSaving]      = useState(false);
+  const [showReport,  setShowReport]  = useState(false);
 
   useEffect(() => {
     if (block) {
@@ -152,6 +154,19 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
             </div>
           </div>
 
+          {/* Block report */}
+          {(block.sessionsLogged || 0) > 0 && (
+            <div className="border-t border-slate-800 pt-4">
+              <button
+                onClick={() => setShowReport(true)}
+                className="w-full py-2 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm rounded-xl border border-slate-700 transition"
+              >
+                <FileText size={15} />
+                Generar reporte de bloque
+              </button>
+            </div>
+          )}
+
           {/* Status actions */}
           <div className="border-t border-slate-800 pt-4 space-y-2">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Acciones</div>
@@ -182,5 +197,10 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
     </>
   );
 
-  return createPortal(content, document.body);
+  return (
+    <>
+      {createPortal(content, document.body)}
+      {showReport && <BlockReportModal block={block} onClose={() => setShowReport(false)} />}
+    </>
+  );
 };
