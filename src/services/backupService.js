@@ -11,15 +11,16 @@ const sha256 = async (str) => {
 };
 
 export const createBackup = async () => {
-  const [history, routines, customExercises, settings, logs] = await Promise.all([
+  const [history, routines, customExercises, settings, logs, blocks] = await Promise.all([
     db.history.toArray(),
     db.routines.toArray(),
     db.customExercises.toArray(),
     db.settings.toArray(),
     db.logs.orderBy('_id').reverse().limit(200).toArray(),
+    db.blocks.toArray(),
   ]);
 
-  const data = { history, routines, customExercises, settings, logs };
+  const data = { history, routines, customExercises, settings, logs, blocks };
   const dataStr = JSON.stringify(data);
   const checksum = await sha256(dataStr);
 
@@ -32,6 +33,7 @@ export const createBackup = async () => {
       history: history.length,
       routines: routines.length,
       customExercises: customExercises.length,
+      blocks: blocks.length,
     },
     checksum,
     data,
@@ -54,23 +56,28 @@ export const restoreFromBackup = async (backupObj) => {
   const validation = await validateBackup(backupObj);
   if (!validation.valid) throw new Error(validation.error);
 
-  const { history, routines, customExercises, settings } = backupObj.data;
+  const { history, routines, customExercises, settings, blocks } = backupObj.data;
+  const hasBlocks = Array.isArray(blocks);
 
-  await db.transaction('rw', db.history, db.routines, db.customExercises, db.settings, async () => {
+  await db.transaction('rw', db.history, db.routines, db.customExercises, db.settings, db.blocks, async () => {
     await Promise.all([
       db.history.clear(),
       db.routines.clear(),
       db.customExercises.clear(),
       db.settings.clear(),
+      // Old backups (pre-14.2) omit blocks — leave db.blocks intact in that case.
+      ...(hasBlocks ? [db.blocks.clear()] : []),
     ]);
     if (Array.isArray(history)) await db.history.bulkPut(history);
     if (Array.isArray(routines)) await db.routines.bulkPut(routines);
     if (Array.isArray(customExercises)) await db.customExercises.bulkPut(customExercises);
     if (Array.isArray(settings)) await db.settings.bulkPut(settings);
+    if (hasBlocks) await db.blocks.bulkPut(blocks);
   });
 
   logger.info('Backup restored', {
     historySessions: history?.length || 0,
+    blocksRestored: hasBlocks ? blocks.length : 'not in backup — left intact',
     timestamp: backupObj.timestamp,
   });
 };
