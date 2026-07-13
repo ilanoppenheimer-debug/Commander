@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { X, AlertTriangle, Check, ChevronDown, ChevronRight, Loader2, Play, Save, FileText } from 'lucide-react';
+import { X, AlertTriangle, Check, ChevronDown, ChevronRight, Loader2, Play, Save, FileText, Layers } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { parseRoutineMarkdown } from '../../utils/routineImport/parser';
 import { matchRoutineExercises } from '../../utils/routineImport/exerciseMatching';
 import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport } from '../../utils/routineImport/converter';
+import { getAllBlocks, upsertBlockFromCoach } from '../../db/blocks';
 
 // ── Steps: paste → preview → success ─────────────────────────────────────────
 
@@ -17,8 +18,10 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
   const [existing,   setExisting]   = useState(null); // existing template if name clash
   const [saveMode,   setSaveMode]   = useState('new'); // 'new' | 'replace' | 'temporary'
   const [processing, setProcessing] = useState(false);
-  const [expandedEx, setExpandedEx] = useState(null);
-  const [saved,      setSaved]      = useState(null);
+  const [expandedEx,       setExpandedEx]       = useState(null);
+  const [saved,            setSaved]            = useState(null);
+  const [existingBlock,    setExistingBlock]    = useState(null);
+  const [blockImportResult,setBlockImportResult]= useState(null);
 
   const handleParse = useCallback(async () => {
     if (!text.trim()) return;
@@ -36,6 +39,15 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
       const existing = await findExistingTemplate(result.routine);
       setExisting(existing);
       setSaveMode(existing ? 'replace' : 'new');
+
+      // Block preview lookup (read-only)
+      if (result.routine.blockMeta?.coachId) {
+        const allBlocks = await getAllBlocks();
+        setExistingBlock(allBlocks.find(b => b.coachId === result.routine.blockMeta.coachId) || null);
+      } else {
+        setExistingBlock(null);
+      }
+
       setParsed(result.routine);
       setStep('preview');
     } catch (e) {
@@ -63,7 +75,19 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         : parsed;
 
       const routine = await convertImportedToRoutine(routineToSave, mappings, overrides, saveMode);
+
+      // Block import — after routine is saved, best-effort (never reverts routine)
+      let blockResult = null;
+      if (parsed.blockMeta) {
+        try {
+          blockResult = await upsertBlockFromCoach(parsed.blockMeta);
+        } catch (e) {
+          setWarnings(prev => [...prev, `Bloque no procesado: ${e.message}`]);
+        }
+      }
+
       setSaved(routine);
+      setBlockImportResult(blockResult);
       setStep('success');
       if (saveMode !== 'temporary') onSaved?.(routine);
     } catch (e) {
@@ -85,6 +109,12 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         await createExerciseFromImport(ex);
       }
       const routine = await convertImportedToRoutine(parsed, mappings, overrides, 'temporary');
+
+      // Block import — non-blocking: session start takes priority if it fails
+      if (parsed.blockMeta) {
+        upsertBlockFromCoach(parsed.blockMeta).catch(() => {});
+      }
+
       onStartSession?.(routine);
       onClose();
     } catch (e) {
@@ -129,6 +159,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
               existing={existing}
               saveMode={saveMode}
               setSaveMode={setSaveMode}
+              existingBlock={existingBlock}
               expandedEx={expandedEx}
               setExpandedEx={setExpandedEx}
               onBack={() => setStep('paste')}
@@ -141,6 +172,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
             <StepSuccess
               routine={saved}
               saveMode={saveMode}
+              blockImportResult={blockImportResult}
               onStartSession={() => { onStartSession?.(saved); onClose(); }}
               onClose={onClose}
             />
@@ -192,7 +224,7 @@ function StepPaste({ text, setText, onParse, processing, warnings }) {
 
 // ── Step: Preview ─────────────────────────────────────────────────────────────
 
-function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode, expandedEx, setExpandedEx, onBack, onImport, onStartNow, processing }) {
+function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode, existingBlock, expandedEx, setExpandedEx, onBack, onImport, onStartNow, processing }) {
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
 
   const matchBadge = (exName) => {
@@ -224,6 +256,37 @@ function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, exis
           <p className="text-[10px] text-slate-500 italic mt-1 line-clamp-3">{parsed.contextNotes}</p>
         )}
       </div>
+
+      {/* Block import panel */}
+      {parsed.blockMeta && (
+        <div className="bg-sky-900/20 border border-sky-500/30 rounded-xl p-3 space-y-1.5">
+          <div className="text-xs text-sky-300 font-bold flex items-center gap-1.5">
+            <Layers size={12} />
+            Bloque: {parsed.blockMeta.name || parsed.blockMeta.coachId}
+          </div>
+          <div className="text-[11px] text-sky-200">
+            {existingBlock ? (
+              <span>
+                Se va a <span className="font-bold text-amber-300">ACTUALIZAR</span>
+                {parsed.blockMeta.currentWeek != null && ` · semana ${parsed.blockMeta.currentWeek}`}
+                {parsed.blockMeta.fase && ` · ${parsed.blockMeta.fase}`}
+              </span>
+            ) : (
+              <span>Se va a <span className="font-bold text-emerald-300">CREAR</span> (nuevo)</span>
+            )}
+          </div>
+          {parsed.blockMeta.closesCoachId && (
+            <div className="text-[11px] text-slate-400">
+              Cierra el bloque: <span className="text-orange-300 font-bold">{parsed.blockMeta.closesCoachId}</span>
+            </div>
+          )}
+          {existingBlock && (
+            <div className="text-[10px] text-slate-500">
+              sessionsLogged: {existingBlock.sessionsLogged} — no se resetea
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Existing template clash */}
       {existing && (
@@ -402,7 +465,7 @@ function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, exis
 
 // ── Step: Success ─────────────────────────────────────────────────────────────
 
-function StepSuccess({ routine, saveMode, onStartSession, onClose }) {
+function StepSuccess({ routine, saveMode, blockImportResult, onStartSession, onClose }) {
   return (
     <div className="p-6 flex flex-col items-center gap-5 text-center">
       <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
@@ -414,6 +477,20 @@ function StepSuccess({ routine, saveMode, onStartSession, onClose }) {
           {saveMode === 'replace' ? 'Plantilla reemplazada' : saveMode === 'new' ? 'Plantilla guardada' : 'Lista para iniciar'}
         </p>
       </div>
+      {blockImportResult && (
+        <div className="w-full bg-sky-900/20 border border-sky-500/30 rounded-xl p-2.5 text-xs text-left space-y-1">
+          <div className="text-sky-300 font-bold flex items-center gap-1.5">
+            <Layers size={11} />
+            Bloque {blockImportResult.action === 'created' ? 'creado' : 'actualizado'}: {blockImportResult.block?.name}
+          </div>
+          {blockImportResult.closed && (
+            <div className="text-slate-400">Cerrado: {blockImportResult.closed.name}</div>
+          )}
+          {blockImportResult.warnings?.map((w, i) => (
+            <div key={i} className="text-amber-400 flex items-start gap-1"><AlertTriangle size={10} className="mt-0.5 shrink-0" />{w}</div>
+          ))}
+        </div>
+      )}
       <div className="w-full space-y-2">
         <button
           onClick={onStartSession}

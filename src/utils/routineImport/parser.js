@@ -41,6 +41,85 @@ import { TAG_OPTIONS } from '../../constants/blockTemplates';
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
 
+// ── Block YAML helpers ────────────────────────────────────────────────────────
+
+const parseInlineArray = (str) => {
+  const s = str.trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) return null;
+  const inner = s.slice(1, -1).trim();
+  if (!inner) return [];
+  return inner.split(',').map(item => {
+    const t = item.trim();
+    const n = Number(t);
+    return isNaN(n) ? t : n;
+  });
+};
+
+// Parses 2-space-indented subkeys of the `bloque:` block (including the
+// 4-space-indented `params:` sub-object). No defaults — absent keys are absent.
+const parseBlockYaml = (lines) => {
+  const raw = {};
+  let i = 0;
+  while (i < lines.length) {
+    const m = lines[i].match(/^  ([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
+    if (!m) { i++; continue; }
+    const key = m[1];
+    const val = m[2].trim();
+
+    if (val === '') {
+      // sub-object (e.g. params:) — collect 4-space-indented lines
+      const subLines = [];
+      i++;
+      while (i < lines.length && lines[i].startsWith('    ')) {
+        subLines.push(lines[i]);
+        i++;
+      }
+      const sub = {};
+      for (const sl of subLines) {
+        const sm = sl.match(/^    ([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
+        if (!sm) continue;
+        const arr = parseInlineArray(sm[2].trim());
+        if (arr !== null) { sub[sm[1]] = arr; continue; }
+        const n = Number(sm[2].trim());
+        sub[sm[1]] = isNaN(n) ? sm[2].trim() : n;
+      }
+      raw[key] = sub;
+    } else {
+      const arr = parseInlineArray(val);
+      if (arr !== null) { raw[key] = arr; i++; continue; }
+      const n = Number(val);
+      raw[key] = isNaN(n) ? val : n;
+      i++;
+    }
+  }
+  return raw;
+};
+
+// Maps raw YAML field names → app block field names.
+// Only sets fields that are present in raw — never invents defaults.
+const buildBlockMeta = (raw) => {
+  if (!raw || raw.id == null) return null;
+  const meta = { coachId: String(raw.id) };
+  if (raw.nombre    !== undefined) meta.name           = raw.nombre;
+  if (raw.cierra    !== undefined) meta.closesCoachId  = String(raw.cierra);
+  if (raw.tipo      !== undefined) meta.type           = raw.tipo;
+  if (raw.inicio    !== undefined) meta.startedAt      = raw.inicio;
+  if (raw.sesiones_objetivo !== undefined) meta.sessionsTarget = raw.sesiones_objetivo;
+  if (Array.isArray(raw.aplica_a))  meta.appliesTo    = raw.aplica_a;
+  if (raw.fase      !== undefined) meta.fase           = raw.fase;
+  if (raw.semana    !== undefined) meta.currentWeek    = raw.semana;
+
+  if (raw.params && typeof raw.params === 'object') {
+    const p = {};
+    if (Array.isArray(raw.params.reps_rango))       p.repsRange       = raw.params.reps_rango;
+    if (Array.isArray(raw.params.rpe_rango))        p.rpeRange        = raw.params.rpe_rango;
+    if (raw.params.backoff_pct !== undefined)       p.backoffPctOfTop = raw.params.backoff_pct;
+    if (Object.keys(p).length > 0) meta.params = p;
+  }
+
+  return meta;
+};
+
 export const parseRoutineMarkdown = (markdown) => {
   const result = { success: false, routine: null, warnings: [], errors: [] };
 
@@ -83,6 +162,7 @@ export const parseRoutineMarkdown = (markdown) => {
       mesociclo: metadata.mesociclo || null,
       sessionNum: metadata.sesion_num || null,
       sessionTotal: metadata.sesion_total || null,
+      blockMeta: buildBlockMeta(metadata._bloque),
       warmup: calentamiento,
       exercises,
       closingNotes: notasCierre,
@@ -111,6 +191,17 @@ const parseYamlMetadata = (yamlText, warnings) => {
 
     const key = match[1];
     let value = match[2].trim();
+
+    if (key === 'bloque' && value === '') {
+      const subLines = [];
+      i++;
+      while (i < lines.length && lines[i].startsWith('  ')) {
+        subLines.push(lines[i]);
+        i++;
+      }
+      metadata._bloque = parseBlockYaml(subLines);
+      continue;
+    }
 
     if (value === '|') {
       const multilineLines = [];
