@@ -247,6 +247,7 @@ export default function ActiveSession({
   const storeRemoveSet         = useSessionStore(s => s.removeSet);
   const storeToggleCompleted   = useSessionStore(s => s.toggleSetCompleted);
   const storeCycleType         = useSessionStore(s => s.cycleSetType);
+  const storeFinishEx          = useSessionStore(s => s.finishExercise);
   const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
   const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
   const storeSetBriefing = useSessionStore(s => s.setBriefing);
@@ -256,6 +257,27 @@ export default function ActiveSession({
   const warmupPlan       = session?.warmupPlan ?? null;
   const briefing         = session?.briefing ?? null;
   const subjectiveState  = session?.subjectiveState ?? '';
+
+  // ── Session timer ──────────────────────────────────────────────────────────
+  const [elapsedSec, setElapsedSec] = useState(() =>
+    session?.startTime ? Math.floor((Date.now() - new Date(session.startTime).getTime()) / 1000) : 0
+  );
+  useEffect(() => {
+    if (!session?.startTime) return;
+    const id = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - new Date(session.startTime).getTime()) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [session?.startTime]);
+
+  const formatElapsed = (sec) => {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  };
 
   // ── Local UI state (ephemeral, not persisted) ─────────────────────────────
   const [isAnalyzing,       setIsAnalyzing]       = useState(false);
@@ -540,6 +562,11 @@ export default function ActiveSession({
               <h2 className="text-base font-bold text-white uppercase tracking-wider leading-none truncate">
                 {session.name || "Misión"}
               </h2>
+              {session?.startTime && (
+                <span className="text-[11px] text-slate-500 font-mono leading-none shrink-0">
+                  {formatElapsed(elapsedSec)}
+                </span>
+              )}
               {activeBlocks.length > 0 && (
                 <span className="text-[11px] text-slate-500 font-normal normal-case tracking-normal leading-none shrink-0">
                   · {activeBlocks[0].name} {activeBlocks[0].sessionsLogged}/{activeBlocks[0].sessionsTarget ?? '∞'}
@@ -811,6 +838,13 @@ export default function ActiveSession({
                           <LinkIcon size={14} />
                         </button>
                       )}
+                      <button
+                        onClick={() => storeFinishEx(ex.id)}
+                        className={`p-1.5 rounded transition ${ex.finishedAt ? 'text-emerald-400 bg-emerald-900/20' : 'text-slate-600 hover:text-emerald-400 hover:bg-slate-700'}`}
+                        aria-label={ex.finishedAt ? 'Ejercicio finalizado' : 'Marcar ejercicio finalizado'}
+                      >
+                        <Check size={14} />
+                      </button>
                       <button
                         onClick={() => storeRemoveEx(ex.id)}
                         className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
