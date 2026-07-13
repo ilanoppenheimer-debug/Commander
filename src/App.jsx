@@ -488,6 +488,26 @@ function AppMain() {
 
   const handleFinishMission = async (sessionName, finalExercises, saveAsTemplate) => {
     const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
+
+    // Backup before any writes
+    await createAutoBackup('pre-data-sprint').catch(() => {});
+
+    // Compute blockIds at the moment of save — single query, reused for both stamp and increment
+    let blockIds = [];
+    let matchedBlocks = [];
+    try {
+      const activeBlocks = await getActiveBlocks();
+      if (activeBlocks.length > 0) {
+        const sessionTags = new Set(
+          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
+        );
+        matchedBlocks = activeBlocks.filter(b =>
+          (b.appliesTo || []).some(t => sessionTags.has(t))
+        );
+        blockIds = matchedBlocks.map(b => b.id);
+      }
+    } catch { /* non-blocking — blockIds stays [] */ }
+
     const completedSession = {
       historyId: `hist-${Date.now()}`,
       name: sessionName || 'Entrenamiento Libre',
@@ -495,6 +515,7 @@ function AppMain() {
       ...(session?.startTime ? { durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000) } : {}),
       exercises: safeFinalExercises,
       routineId: session?.routineId ?? null,
+      blockIds,
     };
 
     await saveSession(completedSession);
@@ -517,18 +538,11 @@ function AppMain() {
     setShowPostSessionBanner(true);
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
 
-    // Increment sessionsLogged for active blocks that covered this session's exercise tags
+    // Increment sessionsLogged — reuse matchedBlocks from above, no second query
     (async () => {
       try {
-        const activeBlocks = await getActiveBlocks();
-        if (activeBlocks.length === 0) return;
-        const sessionTags = new Set(
-          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
-        );
-        for (const block of activeBlocks) {
-          if ((block.appliesTo || []).some(t => sessionTags.has(t))) {
-            await incrementBlockSessions(block.id);
-          }
+        for (const block of matchedBlocks) {
+          await incrementBlockSessions(block.id);
         }
       } catch { /* non-blocking */ }
     })();

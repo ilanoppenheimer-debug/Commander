@@ -250,6 +250,19 @@ export const useSessionStore = create((set, get) => ({
     persistToDb(next);
   },
 
+  finishExercise: (exId) => {
+    const s = get().session;
+    if (!s) return;
+    const next = {
+      ...s,
+      exercises: s.exercises.map(e =>
+        e.id !== exId ? e : { ...e, finishedAt: e.finishedAt ? null : new Date().toISOString() }
+      ),
+    };
+    set({ session: next });
+    persistToDb(next);
+  },
+
   finishSession: () => {
     set({ session: null });
     persistToDb(null);

@@ -115,7 +115,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
   let rpeCount = 0;
   const allFlagsSeen = new Set();
 
-  for (const ex of exercises) {
+  for (const [i, ex] of exercises.entries()) {
     const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
     const tag = exMeta.defaultTag || ex.tag || null;
     const blockCtx = getBlockContext(tag, blocks);
@@ -176,6 +176,14 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     for (const s of setsWithNotes) {
       const num = sets.indexOf(s) + 1;
       lines.push(`  Nota set ${num}: "${s.notes.trim()}"`);
+    }
+
+    if (ex.finishedAt) {
+      const prevRef = i > 0 ? exercises[i - 1]?.finishedAt : session.startTime;
+      if (prevRef) {
+        const mins = Math.round((new Date(ex.finishedAt) - new Date(prevRef)) / 60000);
+        if (mins > 0) lines.push(`  Tiempo: ${mins} min`);
+      }
     }
   }
 
