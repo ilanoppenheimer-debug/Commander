@@ -115,11 +115,43 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
   let rpeCount = 0;
   const allFlagsSeen = new Set();
 
+  const hasData = (s) => s.completed || parseFloat(s.reps) > 0 || parseFloat(s.weight) > 0;
+
   for (const [i, ex] of exercises.entries()) {
     const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
     const tag = exMeta.defaultTag || ex.tag || null;
     const blockCtx = getBlockContext(tag, blocks);
+    const sets = Array.isArray(ex.sets) ? ex.sets : [];
 
+    // Collect set lines first — skip the exercise entirely if nothing to print (ITEM 4)
+    const setLines = [];
+    let exVolume = 0;
+
+    for (let si = 0; si < sets.length; si++) {
+      const s = sets[si];
+      if (!hasData(s)) continue;  // ITEM 1: completed OR reps>0 OR weight>0
+
+      const flags = computeFlags(s);
+      flags.forEach(f => allFlagsSeen.add(f));
+
+      const summary = formatSetSummary(s);
+      const flagsStr = flags.length > 0 ? `   ⚠️ ${flags.join(', ')}` : '';
+      setLines.push(`    ${si + 1}. ${padType(s.type)} ${summary}${flagsStr}`);
+
+      const isWorkSet = s.type !== 'warmup';
+
+      const w = parseFloat(s.weight) || 0;
+      const r = parseInt(s.reps, 10) || 0;
+      if (isWorkSet && w > 0 && r > 0) exVolume += w * r;
+
+      const rpe = parseFloat(s.rpe);
+      if (!isNaN(rpe) && rpe > 0) { rpeSum += rpe; rpeCount++; }
+      if (isWorkSet) totalSets++;
+    }
+
+    if (setLines.length === 0) continue;  // ITEM 4: skip exercises with no printable sets
+
+    // Exercise header (only pushed once we know there's content)
     lines.push('');
     lines.push(`## ${ex.name}${tag ? ` [${tag}]` : ''}`);
 
@@ -133,31 +165,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     }
 
     lines.push('  Real:');
-
-    let exVolume = 0;
-    const sets = Array.isArray(ex.sets) ? ex.sets : [];
-
-    for (let i = 0; i < sets.length; i++) {
-      const s = sets[i];
-      if (!s.completed) continue;
-
-      const flags = computeFlags(s);
-      flags.forEach(f => allFlagsSeen.add(f));
-
-      const summary = formatSetSummary(s);
-      const flagsStr = flags.length > 0 ? `   ⚠️ ${flags.join(', ')}` : '';
-      lines.push(`    ${i + 1}. ${padType(s.type)} ${summary}${flagsStr}`);
-
-      const isWorkSet = s.type !== 'warmup';
-
-      const w = parseFloat(s.weight) || 0;
-      const r = parseInt(s.reps, 10) || 0;
-      if (isWorkSet && w > 0 && r > 0) exVolume += w * r;
-
-      const rpe = parseFloat(s.rpe);
-      if (!isNaN(rpe) && rpe > 0) { rpeSum += rpe; rpeCount++; }
-      if (isWorkSet) totalSets++;
-    }
+    lines.push(...setLines);
 
     totalVolume += exVolume;
     if (exVolume > 0) lines.push(`  Volumen: ${formatVolume(exVolume)}`);

@@ -840,7 +840,7 @@ export default function ActiveSession({
                       )}
                       <button
                         onClick={() => storeFinishEx(ex.id)}
-                        className={`p-1.5 rounded transition ${ex.finishedAt ? 'text-emerald-400 bg-emerald-900/20' : 'text-slate-600 hover:text-emerald-400 hover:bg-slate-700'}`}
+                        className={`p-1.5 rounded transition ${ex.finishedAt ? 'text-emerald-400 bg-emerald-900/20' : 'text-emerald-600 hover:text-emerald-400 hover:bg-slate-700'}`}
                         aria-label={ex.finishedAt ? 'Ejercicio finalizado' : 'Marcar ejercicio finalizado'}
                       >
                         <Check size={14} />
