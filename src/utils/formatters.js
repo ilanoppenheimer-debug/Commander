@@ -38,10 +38,12 @@ export const formatVolume = (volume) => {
 };
 
 export const formatSetSummary = (set, unit = 'kg') => {
-  const w = formatWeight(set?.weight, unit);
+  const repsNum = parseInt(set?.reps, 10);
+  if (isNaN(repsNum) || repsNum <= 0) return '—';
   const r = formatReps(set?.reps);
+  const rawWeight = parseFloat(set?.weight);
+  const w = (!isNaN(rawWeight) && rawWeight > 0) ? formatWeight(set?.weight, unit) : 'PC';
   const rpe = formatRpe(set?.rpe);
-  if (w === '—' || r === '—') return '—';
   const rpeStr = rpe !== '—' ? ` @ RPE ${rpe}` : '';
   return `${w} × ${r}${rpeStr}`;
 };
