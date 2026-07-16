@@ -40,13 +40,23 @@ export default function Modal({
 }) {
   const contentRef = useRef(null);
 
+  // Latest onClose/closeOnEscape without making the mount effect depend on them —
+  // callers pass inline arrow functions, which get a new reference on every parent
+  // render. If the effect depended on those, any periodic re-render of the parent
+  // (e.g. a 1s timer) would re-run it: re-lock scroll and re-fire the autofocus
+  // setTimeout, stealing focus from whatever the user is typing in.
+  const onCloseRef = useRef(onClose);
+  const closeOnEscapeRef = useRef(closeOnEscape);
+  onCloseRef.current = onClose;
+  closeOnEscapeRef.current = closeOnEscape;
+
   useEffect(() => {
     if (!isOpen) return;
 
     lockScroll();
 
     const onKey = (e) => {
-      if (closeOnEscape && e.key === 'Escape') onClose?.();
+      if (closeOnEscapeRef.current && e.key === 'Escape') onCloseRef.current?.();
     };
     document.addEventListener('keydown', onKey);
 
@@ -63,7 +73,7 @@ export default function Modal({
       clearTimeout(t);
       unlockScroll();
     };
-  }, [isOpen, onClose, closeOnEscape]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
