@@ -314,6 +314,68 @@ const FullSettingsModal = ({
   );
 };
 
+const DURATION_ALARM_THRESHOLD_SEC = 14400; // 4h — well above the longest real session (~90min)
+
+const DurationAlarmModal = ({ durationSec, onKeepAsIs, onDiscardDuration, onCorrect, onCancel }) => {
+  const [correcting, setCorrecting] = useState(false);
+  const [minutes, setMinutes] = useState('');
+
+  const hours = Math.floor(durationSec / 3600);
+  const mins = Math.floor((durationSec % 3600) / 60);
+  const label = hours > 0 ? `${hours}h ${mins}min` : `${mins}min`;
+  const parsedMinutes = parseInt(minutes, 10);
+
+  return (
+    <Modal isOpen onClose={onCancel} size="sm">
+      <div className="bg-slate-900 w-full rounded-xl border border-amber-500/50 shadow-2xl p-6">
+        <div className="flex flex-col items-center text-center gap-4">
+          <div className="p-3 bg-amber-900/20 rounded-full text-amber-500"><AlertTriangle size={32} /></div>
+          <h3 className="text-lg font-bold text-white">Duración inusual</h3>
+          <p className="text-sm text-slate-400">
+            Esta sesión estuvo activa {label}. ¿La duración es correcta?
+          </p>
+
+          {!correcting ? (
+            <div className="flex flex-col gap-2 w-full mt-2">
+              <button onClick={onKeepAsIs} className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-black font-bold text-sm transition">
+                Sí, guardar así
+              </button>
+              <button onClick={onDiscardDuration} className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm transition">
+                No registrar duración
+              </button>
+              <button onClick={() => setCorrecting(true)} className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm transition">
+                Corregir
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 w-full mt-2">
+              <input
+                autoFocus
+                type="number"
+                inputMode="numeric"
+                value={minutes}
+                onChange={(e) => setMinutes(e.target.value)}
+                placeholder="Minutos reales"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm text-center focus:outline-none focus:border-amber-500"
+              />
+              <button
+                onClick={() => { if (parsedMinutes > 0) onCorrect(parsedMinutes); }}
+                disabled={!(parsedMinutes > 0)}
+                className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-black font-bold text-sm transition"
+              >
+                Guardar con esta duración
+              </button>
+              <button onClick={() => setCorrecting(false)} className="w-full py-2 text-slate-500 text-xs font-bold">
+                Volver
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 function AppMain() {
   // ── Dexie live-query data ──────────────────────────────────────────────────
   const dbHistory         = useHistory();
@@ -364,6 +426,7 @@ function AppMain() {
   const [showCoachContext,      setShowCoachContext]      = useState(false);
   const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
   const [showCleanup,           setShowCleanup]           = useState(false);
+  const [pendingDurationSave,   setPendingDurationSave]   = useState(null);
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -486,41 +549,9 @@ function AppMain() {
     storeStart(null);
   };
 
-  const handleFinishMission = async (sessionName, finalExercises, saveAsTemplate) => {
-    const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
-
-    // Backup before any writes
-    await createAutoBackup('pre-data-sprint').catch(() => {});
-
-    // Compute blockIds at the moment of save — single query, reused for both stamp and increment
-    let blockIds = [];
-    let matchedBlocks = [];
-    try {
-      const activeBlocks = await getActiveBlocks();
-      if (activeBlocks.length > 0) {
-        const sessionTags = new Set(
-          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
-        );
-        matchedBlocks = activeBlocks.filter(b =>
-          (b.appliesTo || []).some(t => sessionTags.has(t))
-        );
-        blockIds = matchedBlocks.map(b => b.id);
-      }
-    } catch { /* non-blocking — blockIds stays [] */ }
-
-    const completedSession = {
-      historyId: `hist-${Date.now()}`,
-      name: sessionName || 'Entrenamiento Libre',
-      completedAt: new Date().toISOString(),
-      ...(session?.startTime ? {
-        startTime: session.startTime,
-        durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000),
-      } : {}),
-      exercises: safeFinalExercises,
-      routineId: session?.routineId ?? null,
-      blockIds,
-    };
-
+  // Everything that happens AFTER saveSession — unchanged order/logic from before
+  // the duration-alarm sprint. Shared by the normal path and all 3 dialog branches.
+  const finalizeAndSave = async (completedSession, { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks }) => {
     await saveSession(completedSession);
 
     if (saveAsTemplate) {
@@ -562,6 +593,78 @@ function AppMain() {
         }
       } catch { /* non-blocking */ }
     })();
+  };
+
+  const handleFinishMission = async (sessionName, finalExercises, saveAsTemplate) => {
+    const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
+
+    // Backup before any writes
+    await createAutoBackup('pre-data-sprint').catch(() => {});
+
+    // Compute blockIds at the moment of save — single query, reused for both stamp and increment
+    let blockIds = [];
+    let matchedBlocks = [];
+    try {
+      const activeBlocks = await getActiveBlocks();
+      if (activeBlocks.length > 0) {
+        const sessionTags = new Set(
+          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
+        );
+        matchedBlocks = activeBlocks.filter(b =>
+          (b.appliesTo || []).some(t => sessionTags.has(t))
+        );
+        blockIds = matchedBlocks.map(b => b.id);
+      }
+    } catch { /* non-blocking — blockIds stays [] */ }
+
+    const completedSession = {
+      historyId: `hist-${Date.now()}`,
+      name: sessionName || 'Entrenamiento Libre',
+      completedAt: new Date().toISOString(),
+      ...(session?.startTime ? {
+        startTime: session.startTime,
+        durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000),
+      } : {}),
+      exercises: safeFinalExercises,
+      routineId: session?.routineId ?? null,
+      blockIds,
+    };
+
+    const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks };
+
+    // Edge case: session left open way too long — pause and ask before trusting
+    // durationSec. The session itself is saved in full either way; only this one
+    // field is in question.
+    if (completedSession.durationSec > DURATION_ALARM_THRESHOLD_SEC) {
+      setPendingDurationSave({ completedSession, extras });
+      return;
+    }
+
+    await finalizeAndSave(completedSession, extras);
+  };
+
+  const resolveDurationKeep = async () => {
+    if (!pendingDurationSave) return;
+    const { completedSession, extras } = pendingDurationSave;
+    setPendingDurationSave(null);
+    await finalizeAndSave(completedSession, extras);
+  };
+
+  const resolveDurationDiscard = async () => {
+    if (!pendingDurationSave) return;
+    const { completedSession, extras } = pendingDurationSave;
+    const next = { ...completedSession };
+    delete next.durationSec;
+    setPendingDurationSave(null);
+    await finalizeAndSave(next, extras);
+  };
+
+  const resolveDurationCorrect = async (minutes) => {
+    if (!pendingDurationSave) return;
+    const { completedSession, extras } = pendingDurationSave;
+    const next = { ...completedSession, durationSec: Math.round(minutes * 60) };
+    setPendingDurationSave(null);
+    await finalizeAndSave(next, extras);
   };
 
   const confirmDeleteRoutine = async () => {
@@ -1243,6 +1346,16 @@ function AppMain() {
           open={showCleanup}
           onClose={() => setShowCleanup(false)}
           onCleaned={(deleted) => showNotify(`${deleted} plantilla${deleted !== 1 ? 's' : ''} eliminada${deleted !== 1 ? 's' : ''}`, 'success')}
+        />
+      )}
+
+      {pendingDurationSave && (
+        <DurationAlarmModal
+          durationSec={pendingDurationSave.completedSession.durationSec}
+          onKeepAsIs={resolveDurationKeep}
+          onDiscardDuration={resolveDurationDiscard}
+          onCorrect={resolveDurationCorrect}
+          onCancel={() => setPendingDurationSave(null)}
         />
       )}
 
