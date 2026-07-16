@@ -60,9 +60,12 @@ export default function Modal({
     };
     document.addEventListener('keydown', onKey);
 
-    // Focus first focusable element
+    // Focus first focusable element — but don't steal focus if something inside the
+    // modal already has it (e.g. an input with autoFocus that grabbed it on mount).
     const t = setTimeout(() => {
-      const el = contentRef.current?.querySelector(
+      const root = contentRef.current;
+      if (root && root.contains(document.activeElement)) return;
+      const el = root?.querySelector(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
       el?.focus();
