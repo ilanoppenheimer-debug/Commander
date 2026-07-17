@@ -815,13 +815,6 @@ export default function ActiveSession({
                         </button>
                       )}
                       <button
-                        onClick={() => storeFinishEx(ex.id)}
-                        className={`p-1.5 rounded transition ${ex.finishedAt ? 'text-emerald-400 bg-emerald-900/20' : 'text-emerald-600 hover:text-emerald-400 hover:bg-slate-700'}`}
-                        aria-label={ex.finishedAt ? 'Ejercicio finalizado' : 'Marcar ejercicio finalizado'}
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
                         onClick={() => storeRemoveEx(ex.id)}
                         className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
                       >
@@ -855,6 +848,23 @@ export default function ActiveSession({
                     <Plus size={13} /> Serie
                   </button>
                 </div>
+
+                <button
+                  onClick={() => storeFinishEx(ex.id)}
+                  className={`w-full h-9 flex items-center justify-center gap-1.5 border-t transition-colors text-xs font-bold uppercase tracking-wider ${
+                    ex.finishedAt
+                      ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-400 hover:bg-emerald-900/20'
+                      : 'border-slate-900/80 text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <Check size={13} />
+                  {ex.finishedAt
+                    ? (session?.startTime
+                        ? `${Math.round((new Date(ex.finishedAt) - new Date(session.startTime)) / 60000)} min`
+                        : 'Finalizado')
+                    : 'Finalizar ejercicio'}
+                </button>
+                {ex.finishedAt && <div className="h-0.5 bg-emerald-500" />}
               </div>
             </div>
           );
