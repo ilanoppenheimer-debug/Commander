@@ -4,7 +4,8 @@ import Modal from '../ui/Modal';
 import { parseRoutineMarkdown } from '../../utils/routineImport/parser';
 import { matchRoutineExercises } from '../../utils/routineImport/exerciseMatching';
 import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport } from '../../utils/routineImport/converter';
-import { getAllBlocks, upsertBlockFromCoach } from '../../db/blocks';
+import { getAllBlocks, getSessionCountsByBlock, upsertBlockFromCoach } from '../../db/blocks';
+import { db } from '../../db/database';
 
 // ── Steps: paste → preview → success ─────────────────────────────────────────
 
@@ -21,6 +22,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
   const [expandedEx,       setExpandedEx]       = useState(null);
   const [saved,            setSaved]            = useState(null);
   const [existingBlock,    setExistingBlock]    = useState(null);
+  const [existingBlockSessionCount, setExistingBlockSessionCount] = useState(0);
   const [blockImportResult,setBlockImportResult]= useState(null);
 
   const handleParse = useCallback(async () => {
@@ -33,7 +35,8 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         setParsed(null);
         return;
       }
-      setWarnings(result.warnings || []);
+      const parseWarnings = [...(result.warnings || [])];
+
       const { mappings: m } = await matchRoutineExercises(result.routine);
       setMappings(m);
       const existing = await findExistingTemplate(result.routine);
@@ -41,13 +44,36 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
       setSaveMode(existing ? 'replace' : 'new');
 
       // Block preview lookup (read-only)
+      let matchedBlock = null;
       if (result.routine.blockMeta?.coachId) {
         const allBlocks = await getAllBlocks();
-        setExistingBlock(allBlocks.find(b => b.coachId === result.routine.blockMeta.coachId) || null);
+        matchedBlock = allBlocks.find(b => b.coachId === result.routine.blockMeta.coachId) || null;
+      }
+      setExistingBlock(matchedBlock);
+
+      if (matchedBlock) {
+        const counts = await getSessionCountsByBlock();
+        setExistingBlockSessionCount(counts.get(matchedBlock.id) || 0);
+
+        // Non-blocking alert: this sesion_num was already used by a saved session
+        // of this same block. Aviso, no bloqueo — the user decides.
+        if (result.routine.sessionNum != null) {
+          const priorHistory = await db.history.toArray();
+          const dup = priorHistory.find(s =>
+            Array.isArray(s.blockIds) && s.blockIds.includes(matchedBlock.id) &&
+            s.sessionNum === result.routine.sessionNum
+          );
+          if (dup) {
+            parseWarnings.push(
+              `Ya existe una sesión ${result.routine.sessionNum} de este bloque (${dup.name || 'sin nombre'}, ${(dup.completedAt || '').slice(0, 10)}) — ¿el número es correcto?`
+            );
+          }
+        }
       } else {
-        setExistingBlock(null);
+        setExistingBlockSessionCount(0);
       }
 
+      setWarnings(parseWarnings);
       setParsed(result.routine);
       setStep('preview');
     } catch (e) {
@@ -160,6 +186,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
               saveMode={saveMode}
               setSaveMode={setSaveMode}
               existingBlock={existingBlock}
+              existingBlockSessionCount={existingBlockSessionCount}
               expandedEx={expandedEx}
               setExpandedEx={setExpandedEx}
               onBack={() => setStep('paste')}
@@ -224,7 +251,7 @@ function StepPaste({ text, setText, onParse, processing, warnings }) {
 
 // ── Step: Preview ─────────────────────────────────────────────────────────────
 
-function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode, existingBlock, expandedEx, setExpandedEx, onBack, onImport, onStartNow, processing }) {
+function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode, existingBlock, existingBlockSessionCount, expandedEx, setExpandedEx, onBack, onImport, onStartNow, processing }) {
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
 
   const matchBadge = (exName) => {
@@ -282,7 +309,7 @@ function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, exis
           )}
           {existingBlock && (
             <div className="text-[10px] text-slate-500">
-              sessionsLogged: {existingBlock.sessionsLogged} — no se resetea
+              Sesiones registradas: {existingBlockSessionCount} — no se resetea
             </div>
           )}
         </div>

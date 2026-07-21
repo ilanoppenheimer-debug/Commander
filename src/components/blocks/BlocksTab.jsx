@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
-import { getAllBlocks, cloneBlock } from '../../db/blocks';
+import { getAllBlocks, getSessionCountsByBlock, cloneBlock } from '../../db/blocks';
 import { BlockCard } from './BlockCard';
 import { BlockCreateModal } from './BlockCreateModal';
 import { BlockEditModal } from './BlockEditModal';
 
 export const BlocksTab = () => {
   const [blocks,            setBlocks]            = useState([]);
+  const [sessionCounts,     setSessionCounts]     = useState(new Map());
   const [refresh,           setRefresh]           = useState(0);
   const [showCreate,        setShowCreate]        = useState(false);
   const [editingBlock,      setEditingBlock]      = useState(null);
@@ -14,15 +15,18 @@ export const BlocksTab = () => {
   const [archivedOpen,      setArchivedOpen]      = useState(false);
 
   useEffect(() => {
-    getAllBlocks().then(setBlocks).catch(console.error);
+    Promise.all([getAllBlocks(), getSessionCountsByBlock()])
+      .then(([blocksResult, counts]) => { setBlocks(blocksResult); setSessionCounts(counts); })
+      .catch(console.error);
   }, [refresh]);
 
   const grouped = useMemo(() => {
     const result = { active: [], paused: [], completed: [], archived: [] };
     for (const block of blocks) {
+      const logged = sessionCounts.get(block.id) || 0;
       if (block.status === 'archived') {
         result.archived.push(block);
-      } else if (block.status === 'completed' && (block.sessionsLogged || 0) === 0) {
+      } else if (block.status === 'completed' && logged === 0) {
         result.archived.push(block);
       } else if (block.status === 'completed') {
         result.completed.push(block);
@@ -33,7 +37,7 @@ export const BlocksTab = () => {
       }
     }
     return result;
-  }, [blocks]);
+  }, [blocks, sessionCounts]);
 
   const bump = () => setRefresh(r => r + 1);
 
@@ -47,6 +51,7 @@ export const BlocksTab = () => {
 
   const cardProps = (b) => ({
     block:   b,
+    sessionsLogged: sessionCounts.get(b.id) || 0,
     onTap:   () => setEditingBlock(b),
     onMenu:  () => setEditingBlock(b),
     onClone: handleClone,
@@ -114,6 +119,7 @@ export const BlocksTab = () => {
       {editingBlock && (
         <BlockEditModal
           block={editingBlock}
+          sessionsLogged={sessionCounts.get(editingBlock.id) || 0}
           onClose={() => setEditingBlock(null)}
           onUpdated={() => { bump(); setEditingBlock(null); }}
         />

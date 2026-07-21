@@ -29,7 +29,7 @@ import TargetCalculator, { PlateVisualizer } from "./components/TargetCalculator
 import ReverseCalculator from "./components/ReverseCalculator";
 import StrengthCalculator from "./components/StrengthCalculator";
 import { BlocksTab } from "./components/blocks/BlocksTab";
-import { getActiveBlocks, incrementBlockSessions } from "./db/blocks";
+import { getActiveBlocks } from "./db/blocks";
 import { getExerciseMeta } from "./constants/exerciseMetadata";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
@@ -45,6 +45,7 @@ import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
 import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
 import { migrateAddNotesFields } from "./db/migrations/migrateAddNotesFields";
 import { migrateMuscleGroups } from "./db/migrations/migrateMuscleGroups";
+import { migrateBackfillBlock2A } from "./db/migrations/migrateBackfillBlock2A";
 import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal";
 import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
@@ -449,6 +450,7 @@ function AppMain() {
       migrateMainLiftTags();
       await migrateAddNotesFields();
       await migrateMuscleGroups();
+      await migrateBackfillBlock2A();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
@@ -572,15 +574,6 @@ function AppMain() {
     setShowPostSessionBanner(true);
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
 
-    // Increment sessionsLogged — reuse matchedBlocks from above, no second query
-    (async () => {
-      try {
-        for (const block of matchedBlocks) {
-          await incrementBlockSessions(block.id);
-        }
-      } catch { /* non-blocking */ }
-    })();
-
     // Non-blocking local auto-backup
     createAutoBackup('session-completed').catch(() => {});
 
@@ -628,6 +621,7 @@ function AppMain() {
       exercises: safeFinalExercises,
       routineId: session?.routineId ?? null,
       blockIds,
+      sessionNum: session?.sessionNum ?? null,
     };
 
     const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks };

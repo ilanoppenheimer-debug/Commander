@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Copy, Check, Brain, Clock, ThumbsUp } from 'lucide-react';
 import { generateSessionReport } from '../../utils/sessionExport';
-import { getActiveBlocks } from '../../db/blocks';
+import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { db } from '../../db/database';
 
 const SUB_MODES = [
@@ -41,12 +41,14 @@ export const SessionExportModal = ({ open, onClose, session }) => {
     Promise.all([
       getActiveBlocks().catch(() => []),
       db.history.toArray().catch(() => []),
-    ]).then(([blocks, allSessions]) => {
+      getSessionCountsByBlock().catch(() => new Map()),
+    ]).then(([blocks, allSessions, blockSessionCounts]) => {
       const mode = SUB_MODES.find(m => m.id === selectedMode) || SUB_MODES[1];
       const report = generateSessionReport(session, {
         blocks,
         allSessions,
         pedidoText: mode.pedidoText,
+        blockSessionCounts,
       });
       setEditedText(report);
       setLoading(false);

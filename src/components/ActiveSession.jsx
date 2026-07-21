@@ -282,7 +282,7 @@ export default function ActiveSession({
 
   // ── Active blocks ──────────────────────────────────────────────────────────
   const [blocksRefresh,  setBlocksRefresh]  = useState(0);
-  const { blocks: activeBlocks }            = useActiveBlocks(blocksRefresh);
+  const { blocks: activeBlocks, sessionCounts: blockSessionCounts } = useActiveBlocks(blocksRefresh);
   const [tagPickerExId,       setTagPickerExId]       = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
   const [exerciseNoteFor,     setExerciseNoteFor]     = useState(null);
@@ -545,7 +545,7 @@ export default function ActiveSession({
               <SessionTimer startTime={session?.startTime} />
               {activeBlocks.length > 0 && (
                 <span className="text-[11px] text-slate-500 font-normal normal-case tracking-normal leading-none shrink-0">
-                  · {activeBlocks[0].name} {activeBlocks[0].sessionsLogged}/{activeBlocks[0].sessionsTarget ?? '∞'}
+                  · {activeBlocks[0].name} {blockSessionCounts.get(activeBlocks[0].id) || 0}/{activeBlocks[0].sessionsTarget ?? '∞'}
                   {activeBlocks.length > 1 && <span className="ml-1">+{activeBlocks.length - 1}</span>}
                 </span>
               )}

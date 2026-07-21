@@ -54,7 +54,9 @@ export const archiveBlock = async (id) => {
 export const smartDeleteBlock = async (id) => {
   const block = await getBlock(id);
   if (!block) return { action: 'not-found' };
-  if (block.sessionsLogged > 0 || block.status === 'completed') {
+  const counts = await getSessionCountsByBlock();
+  const logged = counts.get(id) || 0;
+  if (logged > 0 || block.status === 'completed') {
     await archiveBlock(id);
     return { action: 'archived' };
   }
@@ -62,15 +64,32 @@ export const smartDeleteBlock = async (id) => {
   return { action: 'deleted' };
 };
 
-export const incrementBlockSessions = async (blockId) => {
-  const block = await getBlock(blockId);
-  if (!block) return null;
-  await upsertBlock({ ...block, sessionsLogged: (block.sessionsLogged || 0) + 1 });
+// Derives per-block session counts from db.history — replaces the old sessionsLogged
+// accumulator, which drifted (incremented on save, never decremented on delete).
+// Full-table scan: fine at this app's scale (personal log), no index needed on
+// history.blockIds. Returns Map<blockId, count>.
+//
+// IMPORTANT: never attach this onto objects returned by getBlock()/getAllBlocks() —
+// several functions below do `{ ...block, field: x }` then upsertBlock(...) as a
+// read-modify-write; a derived value merged into that object would get persisted
+// back as if it were real stored data, freezing it exactly like the bug this
+// replaces. Compute it separately at each display/logic call site instead.
+export const getSessionCountsByBlock = async () => {
+  const sessions = await db.history.toArray();
+  const counts = new Map();
+  for (const s of sessions) {
+    if (!Array.isArray(s.blockIds)) continue;
+    for (const blockId of s.blockIds) {
+      counts.set(blockId, (counts.get(blockId) || 0) + 1);
+    }
+  }
+  return counts;
 };
 
 // Creates or merges a block from a Coach YAML `bloque:` section.
 // Triggers a backup BEFORE any write — aborts if backup fails.
-// On update: preserves id, sessionsLogged, startedAt, createdAt, status, color.
+// On update: preserves id, sessionsLogged (legacy, unused for display — see
+// getSessionCountsByBlock above), startedAt, createdAt, status, color.
 export const upsertBlockFromCoach = async (blockMeta) => {
   if (!blockMeta?.coachId) throw new Error('blockMeta.coachId es requerido');
 

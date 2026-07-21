@@ -112,7 +112,7 @@ export const generateBlockReport = (block, allHistory) => {
   lines.push('=== REPORTE DE BLOQUE ===');
   lines.push(`Bloque: ${block.name} · ${block.type || 'custom'}`);
   lines.push(`Período: ${block.startedAt.slice(0, 10)} – ${block.completedAt ? block.completedAt.slice(0, 10) : 'hoy'} · ${weeksDiff} semana${weeksDiff !== 1 ? 's' : ''}`);
-  lines.push(`Sesiones: ${block.sessionsLogged} / ${block.sessionsTarget ?? '∞'}`);
+  lines.push(`Sesiones: ${blockSessions.length} / ${block.sessionsTarget ?? '∞'}`);
   lines.push('Nota: atribución de sesiones aproximada (por fecha y tag, sin ID de bloque).');
   lines.push('Puede incluir sesiones de períodos de pausa.');
 

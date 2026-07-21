@@ -24,7 +24,7 @@ const hasPainKeyword = (text) => {
 /**
  * Returns block context for a given exercise tag, using params.repsRange / params.rpeRange.
  */
-const getBlockContext = (exerciseTag, blocks) => {
+const getBlockContext = (exerciseTag, blocks, sessionCounts) => {
   if (!Array.isArray(blocks) || !exerciseTag) return null;
   const match = blocks.find(b =>
     (b.status === 'active' || b.status === 'paused') &&
@@ -36,7 +36,7 @@ const getBlockContext = (exerciseTag, blocks) => {
     blockName: match.name,
     blockType: match.type,
     startedAt: match.startedAt || null,
-    sessionsLogged: match.sessionsLogged ?? 0,
+    sessionsLogged: sessionCounts?.get(match.id) ?? 0,
     sessionsTarget: match.sessionsTarget ?? null,
     repsMin: p.repsRange?.[0],
     repsMax: p.repsRange?.[1],
@@ -94,7 +94,7 @@ const confianza1RM = (n) => {
 /**
  * Generates a text report for a session, ready to paste into Claude Coach.
  */
-export const generateSessionReport = (session, { blocks = [], allSessions = [], pedidoText = 'Análisis libre' } = {}) => {
+export const generateSessionReport = (session, { blocks = [], allSessions = [], pedidoText = 'Análisis libre', blockSessionCounts = new Map() } = {}) => {
   if (!session) return '';
 
   const lines = [];
@@ -120,7 +120,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
   for (const [i, ex] of exercises.entries()) {
     const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
     const tag = exMeta.defaultTag || ex.tag || null;
-    const blockCtx = getBlockContext(tag, blocks);
+    const blockCtx = getBlockContext(tag, blocks, blockSessionCounts);
     const sets = Array.isArray(ex.sets) ? ex.sets : [];
 
     // Collect set lines first — skip the exercise entirely if nothing to print (ITEM 4)
