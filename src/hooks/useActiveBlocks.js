@@ -1,18 +1,24 @@
 import { useState, useEffect } from 'react';
-import { getActiveBlocks } from '../db/blocks';
+import { getActiveBlocks, getSessionCountsByBlock } from '../db/blocks';
 
 export const useActiveBlocks = (refreshKey = 0) => {
   const [blocks, setBlocks]   = useState([]);
+  const [sessionCounts, setSessionCounts] = useState(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getActiveBlocks()
-      .then(result => { if (!cancelled) { setBlocks(Array.isArray(result) ? result : []); setLoading(false); } })
+    Promise.all([getActiveBlocks(), getSessionCountsByBlock()])
+      .then(([result, counts]) => {
+        if (cancelled) return;
+        setBlocks(Array.isArray(result) ? result : []);
+        setSessionCounts(counts);
+        setLoading(false);
+      })
       .catch(e => { console.error('[useActiveBlocks]', e); if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  return { blocks, loading };
+  return { blocks, sessionCounts, loading };
 };

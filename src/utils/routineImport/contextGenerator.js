@@ -1,5 +1,5 @@
 import { db } from '../../db/database';
-import { getActiveBlocks } from '../../db/blocks';
+import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 
 /**
@@ -74,16 +74,15 @@ export const generateCoachContext = async () => {
 
   // ── Bloques activos ────────────────────────────────────────────────────────
   try {
-    const activeBlocks = await getActiveBlocks();
+    const [activeBlocks, sessionCounts] = await Promise.all([getActiveBlocks(), getSessionCountsByBlock()]);
     if (activeBlocks.length > 0) {
       lines.push('## Bloques de entrenamiento activos');
       for (const b of activeBlocks) {
         const p = b.params || {};
         const repsStr = p.repsRange ? `${p.repsRange[0]}-${p.repsRange[1]} reps` : '';
         const rpeStr = p.rpeRange ? `RPE ${p.rpeRange[0]}-${p.rpeRange[1]}` : '';
-        const sessStr = b.sessionsLogged != null
-          ? `${b.sessionsLogged}${b.sessionsTarget ? `/${b.sessionsTarget}` : ''} sesiones`
-          : '';
+        const logged = sessionCounts.get(b.id) || 0;
+        const sessStr = `${logged}${b.sessionsTarget ? `/${b.sessionsTarget}` : ''} sesiones`;
         const parts = [repsStr, rpeStr, sessStr].filter(Boolean).join(', ');
         lines.push(`  - ${b.name} (${b.type})${parts ? `: ${parts}` : ''}`);
         if (Array.isArray(b.appliesTo) && b.appliesTo.length) {

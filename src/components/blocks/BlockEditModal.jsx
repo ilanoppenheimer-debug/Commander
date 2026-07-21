@@ -6,7 +6,7 @@ import { upsertBlock, activateBlock, pauseBlock, resumeBlock, completeBlock, sma
 import { BlockColorDot } from './BlockColorDot';
 import { BlockReportModal } from './BlockReportModal';
 
-export const BlockEditModal = ({ block, onClose, onUpdated }) => {
+export const BlockEditModal = ({ block, sessionsLogged = 0, onClose, onUpdated }) => {
   const [name,        setName]        = useState(block?.name || '');
   const [appliesTo,   setAppliesTo]   = useState(block?.appliesTo || []);
   const [color,       setColor]       = useState(block?.color || '#f59e0b');
@@ -27,7 +27,7 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
 
   if (!block) return null;
 
-  const canEditTags = (block.sessionsLogged || 0) === 0;
+  const canEditTags = sessionsLogged === 0;
   const toggleTag = (tag) => {
     if (!canEditTags) return;
     setAppliesTo(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
@@ -87,7 +87,7 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
               'bg-slate-700 text-slate-400'
             }`}>{block.status}</span>
             <span className="text-[10px] text-slate-500">
-              {block.sessionsLogged}/{block.sessionsTarget ?? '∞'} sesiones
+              {sessionsLogged}/{block.sessionsTarget ?? '∞'} sesiones
             </span>
           </div>
 
@@ -155,7 +155,7 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
           </div>
 
           {/* Block report */}
-          {(block.sessionsLogged || 0) > 0 && (
+          {sessionsLogged > 0 && (
             <div className="border-t border-slate-800 pt-4">
               <button
                 onClick={() => setShowReport(true)}
@@ -180,7 +180,7 @@ export const BlockEditModal = ({ block, onClose, onUpdated }) => {
               onClick={() => { if (window.confirm('¿Eliminar bloque?')) handleStatusAction('delete'); }}
               className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 text-red-300 font-bold text-sm rounded-xl border border-red-700/40 transition"
             >
-              {(block.sessionsLogged || 0) > 0 ? 'Archivar' : 'Eliminar'}
+              {sessionsLogged > 0 ? 'Archivar' : 'Eliminar'}
             </button>
           </div>
         </div>

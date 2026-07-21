@@ -2,11 +2,11 @@ import { MoreVertical, AlertTriangle, Copy } from 'lucide-react';
 import { BlockColorDot } from './BlockColorDot';
 import { TAG_LABELS } from '../../constants/blockTemplates';
 
-export const BlockCard = ({ block, onTap, onMenu, onClone, fatigueWarning }) => {
+export const BlockCard = ({ block, sessionsLogged = 0, onTap, onMenu, onClone, fatigueWarning }) => {
   const progress = block.sessionsTarget
-    ? (block.sessionsLogged / block.sessionsTarget) * 100
+    ? (sessionsLogged / block.sessionsTarget) * 100
     : null;
-  const targetReached = block.sessionsTarget && block.sessionsLogged >= block.sessionsTarget;
+  const targetReached = block.sessionsTarget && sessionsLogged >= block.sessionsTarget;
   const tagsLabel = Array.isArray(block.appliesTo)
     ? block.appliesTo.map(t => TAG_LABELS[t] || t).join(' + ')
     : '—';
@@ -19,7 +19,7 @@ export const BlockCard = ({ block, onTap, onMenu, onClone, fatigueWarning }) => 
           <div className="text-sm font-bold text-slate-100">{block.name}</div>
         </button>
         <span className={`text-xs tabular-nums ${targetReached ? 'text-amber-400' : 'text-slate-400'}`}>
-          {block.sessionsLogged}/{block.sessionsTarget ?? '∞'}
+          {sessionsLogged}/{block.sessionsTarget ?? '∞'}
         </span>
         {onClone && (
           <button
