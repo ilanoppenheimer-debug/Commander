@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { setSetting, deleteSetting } from '../db/repository';
 import { SET_TYPES } from '../constants/gymConstants';
+import { getExerciseMeta } from '../constants/exerciseMetadata';
 
 let _debounceTimer = null;
 
@@ -78,12 +79,16 @@ export const useSessionStore = create((set, get) => ({
     persistToDb(next);
   },
 
-  addExercise: (name, equipment = 'barbell') => {
+  addExercise: (name, equipment) => {
     const s = get().session;
     if (!s) return;
     const newId = Date.now();
+    // Explicit equipment (e.g. from a Coach import) wins. Otherwise fall back to
+    // whatever the user last configured for this exercise — metadata is a default,
+    // not an imposition — before finally defaulting to barbell.
+    const resolvedEquipment = equipment || getExerciseMeta(name)?.equipment || 'barbell';
     const restDefaults = { barbell: 180, smith: 180, dumbbell: 120, kettlebell: 120, machine: 90, cable: 90, bodyweight: 60 };
-    const newEx = { id: newId, name, equipment, restSeconds: restDefaults[equipment] ?? 90, sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
+    const newEx = { id: newId, name, equipment: resolvedEquipment, restSeconds: restDefaults[resolvedEquipment] ?? 90, sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
     const next = {
       ...s,
       exercises: [...s.exercises, newEx],
