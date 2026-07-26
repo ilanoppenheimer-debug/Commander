@@ -288,6 +288,8 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
   const equipment = VALID_EQUIPMENT.includes(metadata.equipo) ? metadata.equipo : 'barbell';
   if (metadata.equipo && !VALID_EQUIPMENT.includes(metadata.equipo)) {
     warnings.push(`Equipo desconocido "${metadata.equipo}" en "${name}", default barbell`);
+  } else if (!metadata.equipo) {
+    warnings.push(`Ejercicio "${name}" sin equipo — se asume barbell`);
   }
 
   const tagValue = metadata.tag;

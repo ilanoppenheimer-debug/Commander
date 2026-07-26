@@ -68,14 +68,24 @@ export const createExerciseFromImport = async (importedEx) => {
     await db.customExercises.put({ name });
   } catch { /* might already exist */ }
 
-  if (importedEx.tagSuggested) {
-    const existing = getExerciseMeta(name);
-    if (!existing?.defaultTag) {
-      saveExerciseMeta(name, {
-        defaultTag: importedEx.tagSuggested,
-        tagAssignedAt: new Date().toISOString(),
-      });
-    }
+  const existing = getExerciseMeta(name);
+
+  if (importedEx.tagSuggested && !existing?.defaultTag) {
+    saveExerciseMeta(name, {
+      defaultTag: importedEx.tagSuggested,
+      tagAssignedAt: new Date().toISOString(),
+    });
+  }
+
+  // Same override pattern as muscleGroup: a manual choice in CreateExerciseModal
+  // (equipmentOverride: true) wins over anything the Coach's YAML says. Otherwise
+  // the import writes freely — later imports correct earlier ones.
+  if (importedEx.equipment && !existing?.equipmentOverride) {
+    saveExerciseMeta(name, {
+      equipment: importedEx.equipment,
+      equipmentAssignedAt: new Date().toISOString(),
+      equipmentAssignedBy: 'coach-import',
+    });
   }
 
   return name;

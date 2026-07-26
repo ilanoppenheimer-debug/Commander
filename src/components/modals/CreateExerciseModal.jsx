@@ -93,6 +93,9 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       muscleGroupOverride: true,
       muscleGroupAssignedAt: new Date().toISOString(),
       muscleGroupAssignedBy: 'user-manual',
+      equipmentOverride: true,
+      equipmentAssignedAt: new Date().toISOString(),
+      equipmentAssignedBy: 'user-manual',
     };
     saveExerciseMeta(finalName, meta);
     onSave(finalName, meta);
