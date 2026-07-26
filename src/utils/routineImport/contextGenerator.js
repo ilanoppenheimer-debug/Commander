@@ -2,6 +2,30 @@ import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 
+const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const formatShortDate = (iso) => {
+  if (!iso) return '?';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}-${MONTHS_ES[d.getMonth()]}`;
+};
+
+// Anchored to the start of the name, validated against 17 real Bloque 2A session
+// names (variants: casing, plural "Piernas", trailing "— BLOQUE 2A · SEM N" suffixes,
+// even a truncated name). Anything that doesn't match falls into "Sin clasificar" —
+// declared and visible, never silently forced into the wrong bucket.
+const SESSION_TYPE_PATTERNS = [
+  { label: 'Pierna A', pattern: /^piernas?\s+a\b/i },
+  { label: 'Pierna B', pattern: /^piernas?\s+b\b/i },
+  { label: 'Torso A',  pattern: /^torsos?\s+a\b/i },
+  { label: 'Torso B',  pattern: /^torsos?\s+b\b/i },
+];
+
+const classifySessionType = (name) => {
+  const trimmed = String(name || '').trim();
+  const match = SESSION_TYPE_PATTERNS.find(p => p.pattern.test(trimmed));
+  return match ? match.label : 'Sin clasificar';
+};
+
 /**
  * Generates a text block of current training context to paste into Claude Project.
  * All data comes from local Dexie — no external calls.
@@ -74,7 +98,11 @@ export const generateCoachContext = async () => {
 
   // ── Bloques activos ────────────────────────────────────────────────────────
   try {
-    const [activeBlocks, sessionCounts] = await Promise.all([getActiveBlocks(), getSessionCountsByBlock()]);
+    const [activeBlocks, sessionCounts, allHistoryForBlocks] = await Promise.all([
+      getActiveBlocks(),
+      getSessionCountsByBlock(),
+      db.history.toArray(),
+    ]);
     if (activeBlocks.length > 0) {
       lines.push('## Bloques de entrenamiento activos');
       for (const b of activeBlocks) {
@@ -90,6 +118,32 @@ export const generateCoachContext = async () => {
         }
       }
       lines.push('');
+
+      // Descriptive only: reports what was done, per session type, within each
+      // active block. Never suggests what's next — that's the Coach's call.
+      for (const b of activeBlocks) {
+        const blockSessions = allHistoryForBlocks.filter(
+          s => Array.isArray(s.blockIds) && s.blockIds.includes(b.id)
+        );
+        if (blockSessions.length === 0) continue;
+
+        const byType = new Map();
+        for (const s of blockSessions) {
+          const label = classifySessionType(s.name);
+          const date = s.completedAt || s.createdAt || null;
+          const entry = byType.get(label) || { count: 0, lastDate: null };
+          entry.count++;
+          if (date && (!entry.lastDate || date > entry.lastDate)) entry.lastDate = date;
+          byType.set(label, entry);
+        }
+        const sortedTypes = [...byType.entries()].sort((a, b2) => b2[1].count - a[1].count);
+
+        lines.push(activeBlocks.length > 1 ? `## Sesiones por tipo — ${b.name}` : '## Sesiones del bloque por tipo');
+        for (const [label, entry] of sortedTypes) {
+          lines.push(`  - ${label}: ${entry.count} (última: ${formatShortDate(entry.lastDate)})`);
+        }
+        lines.push('');
+      }
     }
   } catch { lines.push('(Error leyendo bloques)\n'); }
 
