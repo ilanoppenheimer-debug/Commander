@@ -39,7 +39,7 @@ import SessionCard from "./components/history/SessionCard";
 import SessionDetailModal from "./components/history/SessionDetailModal";
 import SessionEditor from "./components/history/SessionEditor";
 import PreSessionModal from "./components/modals/PreSessionModal";
-import { useHistory, useRoutines, useCustomExercises } from "./db/hooks";
+import { useHistory, useRoutines, useCustomExercises, useActiveBlocksLive } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
 import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
 import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
@@ -50,6 +50,8 @@ import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal"
 import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
 import CoachContextModal from "./components/import/CoachContextModal";
+import { getSessionTypeBreakdown } from "./utils/routineImport/contextGenerator";
+import { BlockColorDot } from "./components/blocks/BlockColorDot";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
@@ -378,11 +380,24 @@ const DurationAlarmModal = ({ durationSec, onKeepAsIs, onDiscardDuration, onCorr
   );
 };
 
+// Counts sets that actually happened (completed, or has real reps/weight typed) —
+// same criterion the session export already uses. Pure, no side effects.
+const countSessionSets = (session) => {
+  let n = 0;
+  for (const ex of (session?.exercises || [])) {
+    for (const s of (ex?.sets || [])) {
+      if (s?.completed || parseFloat(s?.reps) > 0 || parseFloat(s?.weight) > 0) n++;
+    }
+  }
+  return n;
+};
+
 function AppMain() {
   // ── Dexie live-query data ──────────────────────────────────────────────────
   const dbHistory         = useHistory();
   const dbRoutines        = useRoutines();
   const dbCustomExercises = useCustomExercises();
+  const dbActiveBlocks    = useActiveBlocksLive();
 
   // ── Zustand session store ──────────────────────────────────────────────────
   const session    = useSessionStore(s => s.session);
@@ -526,6 +541,7 @@ function AppMain() {
   const archivedRoutines = useMemo(() => safeRoutines.filter(r => r.archived), [safeRoutines]);
   const safeHistory    = useMemo(() => Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [], [dbHistory]);
   const safeCustomExs  = useMemo(() => Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [], [dbCustomExercises]);
+  const safeActiveBlocks = useMemo(() => Array.isArray(dbActiveBlocks)  ? dbActiveBlocks.filter(Boolean)     : [], [dbActiveBlocks]);
   const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   const isTraining      = session !== null;
 
@@ -719,6 +735,10 @@ function AppMain() {
     showNotify("Nombre actualizado.");
   };
 
+  // DORMANT (P6): no UI path reaches this anymore — the trigger was removed.
+  // Generating a routine is prescribing training; the app describes, the Coach
+  // prescribes. Kept, not deleted, in case AI comes back with a different role
+  // (pattern detection, not proposing workouts).
   const generateAIRoutine = async () => {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
@@ -742,6 +762,10 @@ function AppMain() {
     finally { setIsGenerating(false); }
   };
 
+  // DORMANT (P6): already had no UI trigger before this sprint (legacy "paste raw
+  // text, let AI structure it" importer, superseded by RoutineImportWizard). Same
+  // reasoning as generateAIRoutine above — parsing free text into a routine via AI
+  // is still prescribing training. Kept, not deleted.
   const handleSmartImport = async () => {
     if (!importText.trim()) return;
     setIsImporting(true);
@@ -863,12 +887,6 @@ function AppMain() {
           </div>
 
           <div className="flex gap-2 shrink-0">
-            {!isTraining && activeTab === 'routines' && (
-              <div className="relative">
-                <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
-                <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
-              </div>
-            )}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors" title="Configuración"><Settings className="w-5 h-5" /></button>
           </div>
         </div>
@@ -898,6 +916,32 @@ function AppMain() {
         {!isTraining && activeTab === 'routines' && (
           <div className="space-y-5 animate-fade-in">
 
+            {/* Bloque activo — compacto, solo si existe. Sin tarjeta si no hay bloque. */}
+            {safeActiveBlocks.length > 0 && (
+              <div className="space-y-1.5">
+                {safeActiveBlocks.map(block => {
+                  const loggedCount = safeHistory.filter(
+                    s => Array.isArray(s.blockIds) && s.blockIds.includes(block.id)
+                  ).length;
+                  const p = block.params || {};
+                  const faseStr = block.fase ? block.fase.replace(/_/g, ' ') : null;
+                  const paramsStr = (p.repsRange && p.rpeRange)
+                    ? `${p.repsRange[0]}-${p.repsRange[1]} reps @ RPE ${p.rpeRange[0]}-${p.rpeRange[1]}`
+                    : null;
+                  const parts = [faseStr, `sesión ${loggedCount}`, paramsStr].filter(Boolean);
+                  return (
+                    <div key={block.id} className="flex items-center gap-2 bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2.5">
+                      <BlockColorDot color={block.color} size={9} />
+                      <div className="text-xs text-slate-400 truncate">
+                        <span className="font-bold text-white">{block.name}</span>
+                        {parts.length > 0 && <span> · {parts.join(' · ')}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Ciclo con el Coach — pedido → import, como una secuencia */}
             <div className="bg-slate-900/60 border border-slate-700 rounded-2xl overflow-hidden shadow-md">
               <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
@@ -905,15 +949,15 @@ function AppMain() {
               </div>
               <button
                 onClick={() => setShowCoachContext(true)}
-                className="w-full flex items-center gap-3 px-4 py-4 hover:bg-slate-800/60 active:scale-[0.99] transition text-left"
+                className="w-full flex items-center gap-3 px-4 py-5 hover:bg-slate-800/60 active:scale-[0.99] transition text-left"
               >
-                <div className="w-7 h-7 rounded-full bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 font-bold text-xs shrink-0">1</div>
-                <ClipboardList size={22} className="text-sky-400 shrink-0" />
+                <div className="w-8 h-8 rounded-full bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 font-bold text-sm shrink-0">1</div>
+                <ClipboardList size={24} className="text-sky-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold text-white">Contexto para el Coach</div>
-                  <div className="text-[10px] text-slate-500">Generá el pedido de la próxima rutina</div>
+                  <div className="text-[11px] text-slate-500">Generá el pedido de la próxima rutina</div>
                 </div>
-                <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                <ChevronRight size={18} className="text-slate-600 shrink-0" />
               </button>
 
               <div className="flex justify-center border-t border-slate-800/60 py-1 bg-slate-950/30">
@@ -922,15 +966,15 @@ function AppMain() {
 
               <button
                 onClick={() => setShowImportModal(true)}
-                className="w-full flex items-center gap-3 px-4 py-4 hover:bg-slate-800/60 active:scale-[0.99] transition border-t border-slate-800/60 text-left"
+                className="w-full flex items-center gap-3 px-4 py-5 hover:bg-slate-800/60 active:scale-[0.99] transition border-t border-slate-800/60 text-left"
               >
-                <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-xs shrink-0">2</div>
-                <FileText size={22} className="text-emerald-400 shrink-0" />
+                <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-sm shrink-0">2</div>
+                <FileText size={24} className="text-emerald-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold text-white">Importar rutina del Coach</div>
-                  <div className="text-[10px] text-slate-500">Pegá lo que te mandó y arrancá</div>
+                  <div className="text-[11px] text-slate-500">Pegá lo que te mandó y arrancá</div>
                 </div>
-                <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                <ChevronRight size={18} className="text-slate-600 shrink-0" />
               </button>
             </div>
 
@@ -943,6 +987,40 @@ function AppMain() {
               <span className="text-sm font-bold text-white">Entrenamiento Libre</span>
               <ChevronRight size={16} className="text-slate-500 ml-auto shrink-0" />
             </button>
+
+            {/* Última sesión — descriptivo: qué pasó, no qué toca */}
+            {safeHistory.length > 0 && (() => {
+              const last = safeHistory[0];
+              const setsCount = countSessionSets(last);
+              const metaParts = [
+                formatRelativeTime(last.completedAt),
+                last.durationSec > 0 ? `${Math.round(last.durationSec / 60)} min` : null,
+                setsCount > 0 ? `${setsCount} series` : null,
+              ].filter(Boolean);
+              return (
+                <div className="bg-slate-900/40 border border-slate-800 rounded-lg px-4 py-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Última sesión</div>
+                  <div className="text-sm font-bold text-white truncate">{last.name || 'Sin nombre'}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{metaParts.join(' · ')}</div>
+                </div>
+              );
+            })()}
+
+            {/* Sesiones por tipo — derivado, tipos dinámicos, solo si hay bloque activo con sesiones */}
+            {safeActiveBlocks.map(block => {
+              const breakdown = getSessionTypeBreakdown(block.id, safeHistory);
+              if (breakdown.length === 0) return null;
+              return (
+                <div key={block.id} className="bg-slate-900/40 border border-slate-800 rounded-lg px-4 py-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+                    Sesiones por tipo{safeActiveBlocks.length > 1 ? ` — ${block.name}` : ''}
+                  </div>
+                  <div className="text-xs text-slate-300">
+                    {breakdown.map(t => `${t.label} ${t.count}`).join(' · ')}
+                  </div>
+                </div>
+              );
+            })}
 
             {/* Plantillas — acordeón cerrado por defecto */}
             <div className="border border-slate-800 rounded-xl overflow-hidden">
@@ -1077,7 +1155,6 @@ function AppMain() {
                         <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
                         <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
                           <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar rutina v4</button>
-                          <button onClick={() => setShowAIModal(true)} className="flex-1 px-4 py-3 bg-purple-900/30 border border-purple-700/50 text-purple-300 text-xs font-bold rounded-xl hover:bg-purple-900/50 transition flex items-center justify-center gap-2"><BrainCircuit size={14}/> Generar con IA</button>
                           <button onClick={createRoutine} className="flex-1 px-4 py-3 bg-accent-600 text-black text-xs font-bold rounded-xl hover:bg-accent-500 transition flex items-center justify-center gap-2"><Plus size={14}/> Crear manual</button>
                         </div>
                       </div>
@@ -1389,6 +1466,8 @@ function AppMain() {
         </Modal>
       )}
 
+      {/* DORMANT (P6): showAIModal can never become true — trigger removed, see
+          generateAIRoutine above. Kept, not deleted. */}
       {showAIModal && (
         <Modal isOpen onClose={() => !isGenerating && setShowAIModal(false)} closeOnEscape={!isGenerating} size="sm">
           <div className="bg-slate-900 w-full rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative">

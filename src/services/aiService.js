@@ -1,3 +1,8 @@
+// DORMANT (P6): every caller of callGeminiAPI is itself dormant (generateAIRoutine,
+// handleSmartImport in App.jsx; requestSessionBriefing, generateWarmup in
+// ActiveSession.jsx / src/ai/) — all of them prescribe training in some form, which
+// is the Coach's role, not the app's. This file is kept, not deleted, as the shared
+// entry point in case AI returns with a different role.
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 50;
 const responseCache = new Map();

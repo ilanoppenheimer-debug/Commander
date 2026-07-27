@@ -1,3 +1,8 @@
+// DORMANT (P6): no UI path calls requestSessionBriefing — its trigger in
+// ActiveSession.jsx is hidden. Suggesting weight/reps/RPE per exercise is
+// prescribing training; the app describes, the Coach prescribes. Kept, not
+// deleted, in case AI returns with a different role (pattern detection, not
+// proposing workouts).
 import { callGeminiAPI } from "../services/aiService";
 
 const MAX_HISTORY_PER_EXERCISE = 5;

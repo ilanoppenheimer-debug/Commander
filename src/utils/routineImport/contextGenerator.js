@@ -9,21 +9,61 @@ const formatShortDate = (iso) => {
   return `${String(d.getDate()).padStart(2, '0')}-${MONTHS_ES[d.getMonth()]}`;
 };
 
-// Anchored to the start of the name, validated against 17 real Bloque 2A session
-// names (variants: casing, plural "Piernas", trailing "— BLOQUE 2A · SEM N" suffixes,
-// even a truncated name). Anything that doesn't match falls into "Sin clasificar" —
-// declared and visible, never silently forced into the wrong bucket.
-const SESSION_TYPE_PATTERNS = [
-  { label: 'Pierna A', pattern: /^piernas?\s+a\b/i },
-  { label: 'Pierna B', pattern: /^piernas?\s+b\b/i },
-  { label: 'Torso A',  pattern: /^torsos?\s+a\b/i },
-  { label: 'Torso B',  pattern: /^torsos?\s+b\b/i },
-];
+// The type is whatever comes before the first "—" or "·" separator, or the whole
+// name if there's no separator. No vocabulary hardcoded — survives the Coach
+// renaming session types across blocks (2A's "Pierna/Torso" won't necessarily be
+// 2B's or 3's).
+const extractPrefix = (name) => {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  const sepMatch = raw.match(/[—·]/);
+  const prefix = sepMatch ? raw.slice(0, sepMatch.index) : raw;
+  return prefix.trim().replace(/\s+/g, ' ');
+};
 
-const classifySessionType = (name) => {
-  const trimmed = String(name || '').trim();
-  const match = SESSION_TYPE_PATTERNS.find(p => p.pattern.test(trimmed));
-  return match ? match.label : 'Sin clasificar';
+// Naive singular normalization on the first word only, so "Piernas A" and "Pierna A"
+// group together without hardcoding any vocabulary. Guarded by a minimum length so
+// short first words ("Gas", "Vas") aren't mangled. Same plural/singular tolerance the
+// old Pierna/Torso-specific regex had, generalized instead of hardcoded.
+const singularizeFirstWord = (str) => {
+  const words = str.split(' ');
+  const first = words[0] || '';
+  if (first.length > 3 && /s$/i.test(first)) {
+    words[0] = first.slice(0, -1);
+  }
+  return words.join(' ');
+};
+
+const toTitleCase = (str) => str.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
+
+// Case/plural-insensitive by construction: two names that differ only in casing or a
+// trailing "s" on the first word produce the identical output string, so grouping by
+// this value (as a plain Map key) merges them without a separate normalization step.
+export const classifySessionType = (name) => {
+  const prefix = extractPrefix(name);
+  if (!prefix) return 'Sin clasificar';
+  return toTitleCase(singularizeFirstWord(prefix));
+};
+
+// Pure/sync — groups a block's sessions (matched by blockIds, exact) by derived type,
+// sorted by count descending. Shared between generateCoachContext (below) and the
+// home screen (App.jsx), so there's one place that knows how to do this, not two.
+export const getSessionTypeBreakdown = (blockId, allHistory) => {
+  const blockSessions = (Array.isArray(allHistory) ? allHistory : []).filter(
+    s => Array.isArray(s.blockIds) && s.blockIds.includes(blockId)
+  );
+  const byType = new Map();
+  for (const s of blockSessions) {
+    const label = classifySessionType(s.name);
+    const date = s.completedAt || s.createdAt || null;
+    const entry = byType.get(label) || { count: 0, lastDate: null };
+    entry.count++;
+    if (date && (!entry.lastDate || date > entry.lastDate)) entry.lastDate = date;
+    byType.set(label, entry);
+  }
+  return [...byType.entries()]
+    .map(([label, entry]) => ({ label, count: entry.count, lastDate: entry.lastDate }))
+    .sort((a, b) => b.count - a.count);
 };
 
 /**
@@ -122,25 +162,12 @@ export const generateCoachContext = async () => {
       // Descriptive only: reports what was done, per session type, within each
       // active block. Never suggests what's next — that's the Coach's call.
       for (const b of activeBlocks) {
-        const blockSessions = allHistoryForBlocks.filter(
-          s => Array.isArray(s.blockIds) && s.blockIds.includes(b.id)
-        );
-        if (blockSessions.length === 0) continue;
-
-        const byType = new Map();
-        for (const s of blockSessions) {
-          const label = classifySessionType(s.name);
-          const date = s.completedAt || s.createdAt || null;
-          const entry = byType.get(label) || { count: 0, lastDate: null };
-          entry.count++;
-          if (date && (!entry.lastDate || date > entry.lastDate)) entry.lastDate = date;
-          byType.set(label, entry);
-        }
-        const sortedTypes = [...byType.entries()].sort((a, b2) => b2[1].count - a[1].count);
+        const sortedTypes = getSessionTypeBreakdown(b.id, allHistoryForBlocks);
+        if (sortedTypes.length === 0) continue;
 
         lines.push(activeBlocks.length > 1 ? `## Sesiones por tipo — ${b.name}` : '## Sesiones del bloque por tipo');
-        for (const [label, entry] of sortedTypes) {
-          lines.push(`  - ${label}: ${entry.count} (última: ${formatShortDate(entry.lastDate)})`);
+        for (const { label, count, lastDate } of sortedTypes) {
+          lines.push(`  - ${label}: ${count} (última: ${formatShortDate(lastDate)})`);
         }
         lines.push('');
       }

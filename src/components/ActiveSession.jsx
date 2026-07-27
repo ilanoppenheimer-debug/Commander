@@ -552,7 +552,10 @@ export default function ActiveSession({
             </div>
           </div>
         </div>
-        {/* BRIEFING IA and CALENTAMIENTO buttons hidden — keep functions/state for future use
+        {/* DORMANT (P6): BRIEFING IA and CALENTAMIENTO buttons. Both suggest what to
+        do next (weights/reps/RPE, a warmup plan) — prescribing training, which is the
+        Coach's role, not the app's. Kept, not deleted, in case AI returns with a
+        different role (pattern detection, not proposing workouts).
         <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
           <button
             onClick={() => setShowBriefingInput((v) => !v)}
