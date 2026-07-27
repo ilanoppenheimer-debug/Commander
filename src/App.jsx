@@ -59,7 +59,8 @@ import {
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
   X, ChevronLeft, ChevronRight, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
   Timer, Pause, RotateCcw, ChevronUp, ChevronDown, RefreshCw, ClipboardList,
-  Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical
+  Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical,
+  Archive
 } from 'lucide-react';
 
 const FullSettingsModal = ({
@@ -428,6 +429,8 @@ function AppMain() {
   const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
   const [showCleanup,           setShowCleanup]           = useState(false);
   const [pendingDurationSave,   setPendingDurationSave]   = useState(null);
+  const [templatesExpanded,     setTemplatesExpanded]     = useState(false);
+  const [showArchivedTemplates, setShowArchivedTemplates] = useState(false);
 
   // Guard: only persist settings to Dexie after initial load is complete
   const isSettingsLoaded = useRef(false);
@@ -519,6 +522,8 @@ function AppMain() {
 
   // ── Derived safe refs ──────────────────────────────────────────────────────
   const safeRoutines   = useMemo(() => Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)        : [], [dbRoutines]);
+  const activeRoutines   = useMemo(() => safeRoutines.filter(r => !r.archived), [safeRoutines]);
+  const archivedRoutines = useMemo(() => safeRoutines.filter(r => r.archived), [safeRoutines]);
   const safeHistory    = useMemo(() => Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [], [dbHistory]);
   const safeCustomExs  = useMemo(() => Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [], [dbCustomExercises]);
   const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
@@ -533,7 +538,7 @@ function AppMain() {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const createRoutine = async () => {
-    const newRoutine = { id: `routine-${Date.now()}`, name: 'Nueva Plantilla', lastPerformed: null, exercises: [] };
+    const newRoutine = { id: `routine-${Date.now()}`, name: 'Nueva Plantilla', lastPerformed: null, exercises: [], archived: false };
     await saveRoutine(newRoutine);
     setPreSessionRoutine(newRoutine);
   };
@@ -667,6 +672,12 @@ function AppMain() {
       setRoutineToDelete(null);
       showNotify("Plantilla eliminada.");
     }
+  };
+
+  const toggleArchiveRoutine = async (e, routine) => {
+    e.stopPropagation();
+    await saveRoutine({ ...routine, archived: !routine.archived });
+    showNotify(routine.archived ? "Plantilla restaurada." : "Plantilla archivada.");
   };
 
   const duplicateRoutine = async (e, routine) => {
@@ -853,16 +864,10 @@ function AppMain() {
 
           <div className="flex gap-2 shrink-0">
             {!isTraining && activeTab === 'routines' && (
-              <>
-                <div className="relative">
-                  <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
-                  <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
-                </div>
-                <div className="relative">
-                  <button onClick={() => setShowImportModal(true)} className="p-2 text-green-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-green-500/50 transition" title="Importar rutina v4"><FileText size={20} /></button>
-                </div>
-                <button onClick={() => setShowCoachContext(true)} className="p-2 text-sky-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-sky-500/50 transition" title="Contexto para Coach"><ClipboardList size={20} /></button>
-              </>
+              <div className="relative">
+                <button onClick={() => setShowAIModal(true)} className="p-2 text-purple-400 hover:bg-slate-800 rounded-lg border border-slate-800 hover:border-purple-500/50 transition" title="Generar con IA"><BrainCircuit size={20} /></button>
+                <span className="absolute -top-1 -right-1 text-[8px] font-bold uppercase bg-amber-500 text-black px-1 rounded leading-none py-0.5">Beta</span>
+              </div>
             )}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors" title="Configuración"><Settings className="w-5 h-5" /></button>
           </div>
@@ -891,7 +896,45 @@ function AppMain() {
         )}
 
         {!isTraining && activeTab === 'routines' && (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-5 animate-fade-in">
+
+            {/* Ciclo con el Coach — pedido → import, como una secuencia */}
+            <div className="bg-slate-900/60 border border-slate-700 rounded-2xl overflow-hidden shadow-md">
+              <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Ciclo con el Coach
+              </div>
+              <button
+                onClick={() => setShowCoachContext(true)}
+                className="w-full flex items-center gap-3 px-4 py-4 hover:bg-slate-800/60 active:scale-[0.99] transition text-left"
+              >
+                <div className="w-7 h-7 rounded-full bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 font-bold text-xs shrink-0">1</div>
+                <ClipboardList size={22} className="text-sky-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white">Contexto para el Coach</div>
+                  <div className="text-[10px] text-slate-500">Generá el pedido de la próxima rutina</div>
+                </div>
+                <ChevronRight size={16} className="text-slate-600 shrink-0" />
+              </button>
+
+              <div className="flex justify-center border-t border-slate-800/60 py-1 bg-slate-950/30">
+                <ChevronDown size={14} className="text-slate-700" />
+              </div>
+
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="w-full flex items-center gap-3 px-4 py-4 hover:bg-slate-800/60 active:scale-[0.99] transition border-t border-slate-800/60 text-left"
+              >
+                <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-xs shrink-0">2</div>
+                <FileText size={22} className="text-emerald-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white">Importar rutina del Coach</div>
+                  <div className="text-[10px] text-slate-500">Pegá lo que te mandó y arrancá</div>
+                </div>
+                <ChevronRight size={16} className="text-slate-600 shrink-0" />
+              </button>
+            </div>
+
+            {/* Entrenamiento Libre — sigue siendo un tap directo, sin pantalla intermedia */}
             <button
               onClick={startFreestyleSession}
               className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 hover:border-accent-500 transition w-full"
@@ -901,114 +944,153 @@ function AppMain() {
               <ChevronRight size={16} className="text-slate-500 ml-auto shrink-0" />
             </button>
 
-            <div>
-              <div className="flex justify-between items-end mb-3 border-b border-slate-800 pb-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Mis Plantillas</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowCleanup(true)}
-                    className="text-[10px] text-slate-500 hover:text-accent-400 flex items-center gap-1 transition"
-                  >
-                    <Sparkles size={11} /> Limpiar
-                  </button>
-                  <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
-                    <Plus size={12} /> Nueva
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {safeRoutines.map(routine => {
-                  const exCount = Array.isArray(routine.exercises) ? routine.exercises.length : 0;
-                  const isMenuOpen = editingTemplateId === `menu-${routine.id}`;
-                  return (
-                    <div key={routine.id} className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 relative">
-                      <div className="flex items-center gap-3">
-                        {/* Play button */}
-                        <button
-                          onClick={() => startRoutineFromTemplate(routine)}
-                          className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 active:scale-95 transition shadow-md"
-                          title="Iniciar rutina"
-                        >
-                          <Play fill="currentColor" size={15} className="ml-0.5" />
-                        </button>
+            {/* Plantillas — acordeón cerrado por defecto */}
+            <div className="border border-slate-800 rounded-xl overflow-hidden">
+              <button
+                onClick={() => setTemplatesExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-slate-900/40 hover:bg-slate-900/70 transition"
+              >
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  Mis plantillas ({activeRoutines.length})
+                </span>
+                {templatesExpanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+              </button>
 
-                        {/* Name + meta */}
-                        <div className="flex-1 min-w-0">
-                          {editingTemplateId === routine.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                autoFocus
-                                value={editingTemplateName}
-                                onChange={(e) => setEditingTemplateName(e.target.value)}
-                                className="bg-slate-950 border border-accent-500 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
-                              />
-                              <button onClick={(e) => saveTemplateName(e, routine)} className="p-1.5 bg-accent-600 text-black rounded shrink-0"><Check size={13}/></button>
-                            </div>
-                          ) : (
-                            <div
-                              className="text-sm font-bold text-slate-100 truncate cursor-pointer hover:text-accent-400 transition-colors"
-                              onClick={(e) => startEditingTemplateName(e, routine)}
-                            >
-                              {routine.name || 'Plantilla Sin Nombre'}
-                            </div>
-                          )}
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            {exCount} ejercicio{exCount !== 1 ? 's' : ''}
-                            {routine.lastPerformed && <span className="ml-1">· {formatRelativeTime(routine.lastPerformed)}</span>}
-                          </div>
-                        </div>
-
-                        {/* ⋮ menu */}
-                        <div className="relative shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingTemplateId(isMenuOpen ? null : `menu-${routine.id}`); }}
-                            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-200 active:scale-90 transition rounded-lg"
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                          {isMenuOpen && (
-                            <>
-                              <div className="fixed inset-0 z-40" onClick={() => setEditingTemplateId(null)} />
-                              <div className="absolute right-0 top-10 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[140px]">
-                                <button
-                                  onClick={(e) => { startEditingTemplateName(e, routine); setEditingTemplateId(null); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
-                                >
-                                  <Edit3 size={12} /> Editar nombre
-                                </button>
-                                <button
-                                  onClick={(e) => { duplicateRoutine(e, routine); setEditingTemplateId(null); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
-                                >
-                                  <Copy size={12} /> Clonar
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setRoutineToDelete(routine.id); setEditingTemplateId(null); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-slate-800"
-                                >
-                                  <Trash2 size={12} /> Borrar
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
+              {templatesExpanded && (
+                <div className="p-3 space-y-3 border-t border-slate-800">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800">
+                      <button
+                        onClick={() => setShowArchivedTemplates(false)}
+                        className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition ${!showArchivedTemplates ? 'bg-accent-600 text-black' : 'text-slate-500'}`}
+                      >
+                        Activas
+                      </button>
+                      <button
+                        onClick={() => setShowArchivedTemplates(true)}
+                        className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition ${showArchivedTemplates ? 'bg-accent-600 text-black' : 'text-slate-500'}`}
+                      >
+                        Archivadas ({archivedRoutines.length})
+                      </button>
                     </div>
-                  );
-                })}
-                {safeRoutines.length === 0 && (
-                  <div className="text-center py-12 space-y-4">
-                    <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
-                      <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar rutina v4</button>
-                      <button onClick={() => setShowAIModal(true)} className="flex-1 px-4 py-3 bg-purple-900/30 border border-purple-700/50 text-purple-300 text-xs font-bold rounded-xl hover:bg-purple-900/50 transition flex items-center justify-center gap-2"><BrainCircuit size={14}/> Generar con IA</button>
-                      <button onClick={createRoutine} className="flex-1 px-4 py-3 bg-accent-600 text-black text-xs font-bold rounded-xl hover:bg-accent-500 transition flex items-center justify-center gap-2"><Plus size={14}/> Crear manual</button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowCleanup(true)}
+                        className="text-[10px] text-slate-500 hover:text-accent-400 flex items-center gap-1 transition"
+                      >
+                        <Sparkles size={11} /> Limpiar
+                      </button>
+                      <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
+                        <Plus size={12} /> Nueva
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="space-y-2">
+                    {(showArchivedTemplates ? archivedRoutines : activeRoutines).map(routine => {
+                      const exCount = Array.isArray(routine.exercises) ? routine.exercises.length : 0;
+                      const isMenuOpen = editingTemplateId === `menu-${routine.id}`;
+                      return (
+                        <div key={routine.id} className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 relative">
+                          <div className="flex items-center gap-3">
+                            {/* Play button */}
+                            <button
+                              onClick={() => startRoutineFromTemplate(routine)}
+                              className="w-10 h-10 shrink-0 rounded-full bg-accent-600 flex items-center justify-center text-black hover:bg-accent-500 active:scale-95 transition shadow-md"
+                              title="Iniciar rutina"
+                            >
+                              <Play fill="currentColor" size={15} className="ml-0.5" />
+                            </button>
+
+                            {/* Name + meta */}
+                            <div className="flex-1 min-w-0">
+                              {editingTemplateId === routine.id ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    autoFocus
+                                    value={editingTemplateName}
+                                    onChange={(e) => setEditingTemplateName(e.target.value)}
+                                    className="bg-slate-950 border border-accent-500 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
+                                  />
+                                  <button onClick={(e) => saveTemplateName(e, routine)} className="p-1.5 bg-accent-600 text-black rounded shrink-0"><Check size={13}/></button>
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-sm font-bold text-slate-100 truncate cursor-pointer hover:text-accent-400 transition-colors"
+                                  onClick={(e) => startEditingTemplateName(e, routine)}
+                                >
+                                  {routine.name || 'Plantilla Sin Nombre'}
+                                </div>
+                              )}
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                {exCount} ejercicio{exCount !== 1 ? 's' : ''}
+                                {routine.lastPerformed && <span className="ml-1">· {formatRelativeTime(routine.lastPerformed)}</span>}
+                              </div>
+                            </div>
+
+                            {/* ⋮ menu */}
+                            <div className="relative shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingTemplateId(isMenuOpen ? null : `menu-${routine.id}`); }}
+                                className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-200 active:scale-90 transition rounded-lg"
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+                              {isMenuOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setEditingTemplateId(null)} />
+                                  <div className="absolute right-0 top-10 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[140px]">
+                                    <button
+                                      onClick={(e) => { startEditingTemplateName(e, routine); setEditingTemplateId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+                                    >
+                                      <Edit3 size={12} /> Editar nombre
+                                    </button>
+                                    <button
+                                      onClick={(e) => { duplicateRoutine(e, routine); setEditingTemplateId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+                                    >
+                                      <Copy size={12} /> Clonar
+                                    </button>
+                                    <button
+                                      onClick={(e) => { toggleArchiveRoutine(e, routine); setEditingTemplateId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+                                    >
+                                      <Archive size={12} /> {routine.archived ? 'Desarchivar' : 'Archivar'}
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setRoutineToDelete(routine.id); setEditingTemplateId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-slate-800"
+                                    >
+                                      <Trash2 size={12} /> Borrar
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!showArchivedTemplates && activeRoutines.length === 0 && (
+                      <div className="text-center py-12 space-y-4">
+                        <p className="text-slate-500 text-sm font-medium">Sin plantillas guardadas.</p>
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
+                          <button onClick={() => setShowImportModal(true)} className="flex-1 px-4 py-3 bg-slate-800 border border-slate-600 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2"><FileText size={14}/> Importar rutina v4</button>
+                          <button onClick={() => setShowAIModal(true)} className="flex-1 px-4 py-3 bg-purple-900/30 border border-purple-700/50 text-purple-300 text-xs font-bold rounded-xl hover:bg-purple-900/50 transition flex items-center justify-center gap-2"><BrainCircuit size={14}/> Generar con IA</button>
+                          <button onClick={createRoutine} className="flex-1 px-4 py-3 bg-accent-600 text-black text-xs font-bold rounded-xl hover:bg-accent-500 transition flex items-center justify-center gap-2"><Plus size={14}/> Crear manual</button>
+                        </div>
+                      </div>
+                    )}
+                    {showArchivedTemplates && archivedRoutines.length === 0 && (
+                      <div className="text-center py-8 text-slate-500 text-sm">Sin plantillas archivadas.</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-center pt-8">
+
+            <div className="flex justify-center pt-4">
               <button onClick={handleDownload} className="text-xs text-slate-500 flex items-center gap-2 hover:text-white transition"><Download size={14} /> Backup Database (JSON)</button>
             </div>
           </div>
