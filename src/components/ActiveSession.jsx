@@ -766,7 +766,13 @@ export default function ActiveSession({
                                     value={tag || 'accessory'}
                                     onChange={(newTag) => {
                                       const meta = getExerciseMeta(ex.name);
-                                      saveExerciseMeta(ex.name, { ...meta, defaultTag: newTag, tagAssignedAt: new Date().toISOString() });
+                                      saveExerciseMeta(ex.name, {
+                                        ...meta,
+                                        defaultTag: newTag,
+                                        tagAssignedAt: new Date().toISOString(),
+                                        tagOverride: true,
+                                        tagAssignedBy: 'user-manual',
+                                      });
                                       setTagPickerExId(null);
                                       setBlocksRefresh(r => r + 1);
                                     }}

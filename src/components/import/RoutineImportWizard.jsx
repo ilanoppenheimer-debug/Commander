@@ -3,7 +3,7 @@ import { X, AlertTriangle, Check, ChevronDown, ChevronRight, Loader2, Play, Save
 import Modal from '../ui/Modal';
 import { parseRoutineMarkdown } from '../../utils/routineImport/parser';
 import { matchRoutineExercises } from '../../utils/routineImport/exerciseMatching';
-import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport } from '../../utils/routineImport/converter';
+import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport, syncExerciseMetadataFromImport } from '../../utils/routineImport/converter';
 import { getAllBlocks, getSessionCountsByBlock, upsertBlockFromCoach } from '../../db/blocks';
 import { db } from '../../db/database';
 
@@ -96,6 +96,13 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         await createExerciseFromImport(ex);
       }
 
+      // Sync metadata (tag/equipment) for EVERY exercise in the import, matched or
+      // not — a Coach re-declaring a tag for an exercise that already existed must
+      // update it, not just for brand-new ones.
+      for (const ex of parsed.exercises) {
+        syncExerciseMetadataFromImport(ex);
+      }
+
       const routineToSave = saveMode === 'replace' && existing
         ? { ...parsed, _replaceTargetId: existing.id }
         : parsed;
@@ -133,6 +140,9 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
       });
       for (const ex of unmatched) {
         await createExerciseFromImport(ex);
+      }
+      for (const ex of parsed.exercises) {
+        syncExerciseMetadataFromImport(ex);
       }
       const routine = await convertImportedToRoutine(parsed, mappings, overrides, 'temporary');
 
