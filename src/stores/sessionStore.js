@@ -269,6 +269,27 @@ export const useSessionStore = create((set, get) => ({
     persistToDb(next);
   },
 
+  // Toggles finishedAt on every exercise sharing supersetId, in one atomic update —
+  // avoids a flicker where members briefly disagree if this looped finishExercise
+  // per member instead. Same field as finishExercise, no new persisted concept: if
+  // the group is later unlinked, each exercise already has its own real finishedAt.
+  finishSupersetGroup: (supersetId) => {
+    const s = get().session;
+    if (!s || !supersetId) return;
+    const allFinished = s.exercises
+      .filter(e => e.supersetId === supersetId)
+      .every(e => e.finishedAt);
+    const stamp = allFinished ? null : new Date().toISOString();
+    const next = {
+      ...s,
+      exercises: s.exercises.map(e =>
+        e.supersetId === supersetId ? { ...e, finishedAt: stamp } : e
+      ),
+    };
+    set({ session: next });
+    persistToDb(next);
+  },
+
   finishSession: () => {
     set({ session: null });
     persistToDb(null);

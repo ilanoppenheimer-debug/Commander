@@ -19,6 +19,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       notes: impEx.notes || '',
       decisionAdaptativa: impEx.decisionAdaptativa || null,
       unilateral: !!impEx.unilateral,
+      _supersetGroup: impEx.supersetGroup || null, // consumed below, not persisted
       sets: (Array.isArray(impEx.sets) ? impEx.sets : []).map((s, si) => ({
         id: s.id || `set-${Date.now()}-${si}`,
         type: s.type || 'normal',
@@ -31,6 +32,23 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       })),
     };
   });
+
+  // Translate the Coach's superset letter into the app's runtime model
+  // (sessionStore.toggleSuperset): a generated id shared by ADJACENT exercises —
+  // that's the only grouping the UI understands. Non-consecutive same-letter runs
+  // were already flagged as a warning at parse time; here we just group whatever
+  // consecutive runs exist, silently.
+  let supersetRunCounter = 0;
+  for (let i = 0; i < exercises.length; i++) {
+    const g = exercises[i]._supersetGroup;
+    if (g == null) continue;
+    if (i > 0 && exercises[i - 1]._supersetGroup === g) {
+      exercises[i].supersetId = exercises[i - 1].supersetId;
+    } else {
+      exercises[i].supersetId = `ss-imported-${Date.now()}-${supersetRunCounter++}`;
+    }
+  }
+  for (const ex of exercises) delete ex._supersetGroup;
 
   const routineId = (replaceMode === 'replace' && parsedRoutine._replaceTargetId)
     ? parsedRoutine._replaceTargetId

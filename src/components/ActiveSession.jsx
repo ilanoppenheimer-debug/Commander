@@ -249,6 +249,7 @@ export default function ActiveSession({
   const storeToggleCompleted   = useSessionStore(s => s.toggleSetCompleted);
   const storeCycleType         = useSessionStore(s => s.cycleSetType);
   const storeFinishEx          = useSessionStore(s => s.finishExercise);
+  const storeFinishGroup       = useSessionStore(s => s.finishSupersetGroup);
   const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
   const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
   const storeSetBriefing = useSessionStore(s => s.setBriefing);
@@ -661,7 +662,12 @@ export default function ActiveSession({
           const groupSize        = groupExercises.length;
           const groupPos         = ex.supersetId ? groupExercises.findIndex(e => e?.id === ex.id) + 1 : 0;
           const isGroupFirst     = isSupersetTop && !isSupersetBottom;
+          const isGroupLast      = isSupersetBottom && !isSupersetTop;
           const groupBadge       = groupSize === 2 ? 'DUETO' : groupSize === 3 ? 'TRISET' : groupSize >= 4 ? `GIANT SET (${groupSize})` : null;
+          const groupAllFinished = ex.supersetId ? groupExercises.every(e => e.finishedAt) : false;
+          const groupLatestFinishedAt = ex.supersetId
+            ? groupExercises.reduce((max, e) => (e.finishedAt && (!max || e.finishedAt > max)) ? e.finishedAt : max, null)
+            : null;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
           const details  = getExerciseDetails(ex.name);
           const exMeta   = getExerciseMeta(ex.name);
@@ -852,22 +858,43 @@ export default function ActiveSession({
                   </button>
                 </div>
 
-                <button
-                  onClick={() => storeFinishEx(ex.id)}
-                  className={`w-full h-9 flex items-center justify-center gap-1.5 border-t transition-colors text-xs font-bold uppercase tracking-wider ${
-                    ex.finishedAt
-                      ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-400 hover:bg-emerald-900/20'
-                      : 'border-slate-900/80 text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
-                  }`}
-                >
-                  <Check size={13} />
-                  {ex.finishedAt
-                    ? (session?.startTime
-                        ? `${Math.round((new Date(ex.finishedAt) - new Date(session.startTime)) / 60000)} min`
-                        : 'Finalizado')
-                    : 'Finalizar ejercicio'}
-                </button>
-                {ex.finishedAt && <div className="h-0.5 bg-emerald-500" />}
+                {!ex.supersetId && (
+                  <button
+                    onClick={() => storeFinishEx(ex.id)}
+                    className={`w-full h-9 flex items-center justify-center gap-1.5 border-t transition-colors text-xs font-bold uppercase tracking-wider ${
+                      ex.finishedAt
+                        ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-400 hover:bg-emerald-900/20'
+                        : 'border-slate-900/80 text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
+                    }`}
+                  >
+                    <Check size={13} />
+                    {ex.finishedAt
+                      ? (session?.startTime
+                          ? `${Math.round((new Date(ex.finishedAt) - new Date(session.startTime)) / 60000)} min`
+                          : 'Finalizado')
+                      : 'Finalizar ejercicio'}
+                  </button>
+                )}
+                {ex.supersetId && isGroupLast && (
+                  <button
+                    onClick={() => storeFinishGroup(ex.supersetId)}
+                    className={`w-full h-9 flex items-center justify-center gap-1.5 border-t transition-colors text-xs font-bold uppercase tracking-wider ${
+                      groupAllFinished
+                        ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-400 hover:bg-emerald-900/20'
+                        : 'border-slate-900/80 text-slate-500 hover:text-slate-300 hover:bg-slate-900/50'
+                    }`}
+                  >
+                    <Check size={13} />
+                    {groupAllFinished
+                      ? (session?.startTime
+                          ? `${Math.round((new Date(groupLatestFinishedAt) - new Date(session.startTime)) / 60000)} min`
+                          : 'Finalizado')
+                      : 'Finalizar superset'}
+                  </button>
+                )}
+                {((!ex.supersetId && ex.finishedAt) || (ex.supersetId && isGroupLast && groupAllFinished)) && (
+                  <div className="h-0.5 bg-emerald-500" />
+                )}
               </div>
             </div>
           );

@@ -117,6 +117,17 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
 
   const hasData = (s) => s.completed || parseFloat(s.reps) > 0 || parseFloat(s.weight) > 0;
 
+  // Superset letters are regenerated per session, by order of first appearance —
+  // not the Coach's original YAML letter, which isn't persisted (only supersetId,
+  // the app's opaque runtime id, is).
+  const supersetLetters = new Map();
+  let nextSupersetLetterCode = 65; // 'A'
+  for (const ex of exercises) {
+    if (ex.supersetId && !supersetLetters.has(ex.supersetId)) {
+      supersetLetters.set(ex.supersetId, String.fromCharCode(nextSupersetLetterCode++));
+    }
+  }
+
   for (const [i, ex] of exercises.entries()) {
     const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
     const tag = exMeta.defaultTag || ex.tag || null;
@@ -152,8 +163,9 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     if (setLines.length === 0) continue;  // ITEM 4: skip exercises with no printable sets
 
     // Exercise header (only pushed once we know there's content)
+    const supersetTag = ex.supersetId ? ` [superset ${supersetLetters.get(ex.supersetId)}]` : '';
     lines.push('');
-    lines.push(`## ${ex.name}${tag ? ` [${tag}]` : ''}`);
+    lines.push(`## ${ex.name}${tag ? ` [${tag}]` : ''}${supersetTag}`);
 
     const planLine = formatPlanLine(blockCtx);
     if (planLine) lines.push(planLine);
