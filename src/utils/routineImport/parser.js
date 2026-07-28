@@ -152,6 +152,8 @@ export const parseRoutineMarkdown = (markdown) => {
       return result;
     }
 
+    checkNonConsecutiveSupersets(exercises, result.warnings);
+
     result.routine = {
       id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: metadata.nombre,
@@ -237,6 +239,32 @@ const extractCalentamiento = (body) => {
     .filter(l => l.length > 0);
 };
 
+// The app's superset model (sessionStore.toggleSuperset) only ever links ADJACENT
+// exercises. If the Coach's same superset letter appears again after being closed by
+// a different exercise, auto-grouping can't express that — declare it instead of
+// silently grouping wrong (same principle as classifySessionType's "Sin clasificar").
+const checkNonConsecutiveSupersets = (exercises, warnings) => {
+  const closed = new Set();
+  const warned = new Set();
+  let prevGroup = null;
+  for (const ex of exercises) {
+    const g = ex.supersetGroup;
+    if (g == null) {
+      if (prevGroup != null) closed.add(prevGroup);
+      prevGroup = null;
+      continue;
+    }
+    if (g !== prevGroup) {
+      if (closed.has(g) && !warned.has(g)) {
+        warnings.push(`Superset "${g}" no es consecutivo, no se agrupó`);
+        warned.add(g);
+      }
+      if (prevGroup != null) closed.add(prevGroup);
+    }
+    prevGroup = g;
+  }
+};
+
 const extractExercises = (body, warnings) => {
   const blocks = [];
   // Split on exercise headers; keep content between consecutive # EJERCICIO headers
@@ -304,6 +332,7 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     notes: metadata.nota_ejercicio || '',
     decisionAdaptativa: decisionAdaptativa || null,
     unilateral: metadata.unilateral === 'true',
+    supersetGroup: metadata.superset || null,
     sets,
   };
 };
@@ -397,13 +426,15 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
 export const parseRestSeconds = (str) => {
   if (!str) return null;
   const t = str.trim().toLowerCase();
-  const sMatch = t.match(/^(\d+)\s*s$/);
+  // \b instead of $ end-anchors: ignore descriptive text after the value
+  // ("90s post-superset" → 90), not just the bare "90s" case.
+  const sMatch = t.match(/^(\d+)\s*s\b/);
   if (sMatch) return parseInt(sMatch[1], 10);
-  const minMatch = t.match(/^(\d+)\s*min$/);
+  const minMatch = t.match(/^(\d+)\s*min\b/);
   if (minMatch) return parseInt(minMatch[1], 10) * 60;
-  const rangeMin = t.match(/^(\d+)\s*-\s*(\d+)\s*min$/);
+  const rangeMin = t.match(/^(\d+)\s*-\s*(\d+)\s*min\b/);
   if (rangeMin) return parseInt(rangeMin[1], 10) * 60;
-  const num = t.match(/^(\d+)$/);
+  const num = t.match(/^(\d+)\b/);
   if (num) return parseInt(num[1], 10);
   return null;
 };
