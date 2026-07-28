@@ -15,6 +15,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       id: impEx.id || `imp-ex-${Date.now()}-${idx}`,
       name: resolvedName,
       equipment: impEx.equipment || 'barbell',
+      tag: impEx.tagSuggested || null,
       restSeconds: impEx.restSeconds || 90,
       notes: impEx.notes || '',
       decisionAdaptativa: impEx.decisionAdaptativa || null,
@@ -77,27 +78,30 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
   return routine;
 };
 
-/**
- * Creates a custom exercise in Dexie and seeds localStorage metadata.
- */
-export const createExerciseFromImport = async (importedEx) => {
-  const name = importedEx.name;
-  try {
-    await db.customExercises.put({ name });
-  } catch { /* might already exist */ }
-
+// Writes whichever metadata fields the Coach's YAML declared for this exercise onto
+// its GLOBAL metadata entry — respects each field's own manual-override flag
+// (tagOverride / equipmentOverride / muscleGroupOverride), same pattern for all
+// three. Runs for EVERY exercise in an import, matched or not — a Coach
+// re-declaring a tag for an exercise that already existed must actually update it,
+// not just for brand-new ones (this was the bug: only new exercises got synced).
+//
+// muscleGroup has no source here: the Coach's YAML contract doesn't declare it
+// (that's a user-picked field, set only via CreateExerciseModal). Left out on
+// purpose — nothing to sync, not an oversight. Add here if the contract ever grows
+// a field for it.
+export const syncExerciseMetadataFromImport = (importedEx) => {
+  const name = importedEx?.name;
+  if (!name) return;
   const existing = getExerciseMeta(name);
 
-  if (importedEx.tagSuggested && !existing?.defaultTag) {
+  if (importedEx.tagSuggested && !existing?.tagOverride) {
     saveExerciseMeta(name, {
       defaultTag: importedEx.tagSuggested,
       tagAssignedAt: new Date().toISOString(),
+      tagAssignedBy: 'coach-import',
     });
   }
 
-  // Same override pattern as muscleGroup: a manual choice in CreateExerciseModal
-  // (equipmentOverride: true) wins over anything the Coach's YAML says. Otherwise
-  // the import writes freely — later imports correct earlier ones.
   if (importedEx.equipment && !existing?.equipmentOverride) {
     saveExerciseMeta(name, {
       equipment: importedEx.equipment,
@@ -105,6 +109,18 @@ export const createExerciseFromImport = async (importedEx) => {
       equipmentAssignedBy: 'coach-import',
     });
   }
+};
+
+/**
+ * Creates a custom exercise row in Dexie for a brand-new (unmatched) exercise.
+ * Metadata sync (tag/equipment) is a separate step — see syncExerciseMetadataFromImport,
+ * called for ALL exercises in the import, not just new ones.
+ */
+export const createExerciseFromImport = async (importedEx) => {
+  const name = importedEx.name;
+  try {
+    await db.customExercises.put({ name });
+  } catch { /* might already exist */ }
 
   return name;
 };

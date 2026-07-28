@@ -129,8 +129,11 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
   }
 
   for (const [i, ex] of exercises.entries()) {
+    // The exercise's own tag (persisted at save time, self-contained — a later edit
+    // to the exercise's global tag doesn't rewrite old exports) wins. Falls back to
+    // the live global metadata only for old sessions that predate this field.
     const exMeta = ex.metadata || getExerciseMeta(ex.name) || {};
-    const tag = exMeta.defaultTag || ex.tag || null;
+    const tag = ex.tag || exMeta.defaultTag || null;
     const blockCtx = getBlockContext(tag, blocks, blockSessionCounts);
     const sets = Array.isArray(ex.sets) ? ex.sets : [];
 
