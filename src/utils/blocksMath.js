@@ -15,10 +15,16 @@ const clampRpe  = (n) => Math.max(6, Math.min(10, Math.round(n * 2) / 2));
 
 /**
  * Finds the active block that covers the exercise's tag.
+ * No tag → no vote: an untagged exercise matches NO block, rather than assuming
+ * 'accessory' and possibly matching the wrong one (which would derive a backoff
+ * suggestion — a live suggested weight — from a block the exercise has nothing to
+ * do with). Callers already degrade gracefully when this returns null: better no
+ * suggestion than one derived from the wrong block.
  */
 export const findBlockForExercise = (exercise, activeBlocks) => {
   if (!exercise || !Array.isArray(activeBlocks)) return null;
-  const tag = exercise.metadata?.defaultTag || 'accessory';
+  const tag = exercise.metadata?.defaultTag;
+  if (!tag) return null;
   return activeBlocks.find(b =>
     b && Array.isArray(b.appliesTo) && b.appliesTo.includes(tag)
   ) || null;

@@ -323,12 +323,17 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
   const tagValue = metadata.tag;
   const validTag = TAG_OPTIONS.includes(tagValue) ? tagValue : null;
 
+  const restSeconds = parseRestSeconds(metadata.descanso) || 90;
+  if (!metadata.descanso) {
+    warnings.push(`Ejercicio "${name}" sin descanso — se asume 90s`);
+  }
+
   return {
     id: `imp-ex-${Date.now()}-${idx}`,
     name,
     equipment,
     tagSuggested: validTag,
-    restSeconds: parseRestSeconds(metadata.descanso) || 90,
+    restSeconds,
     notes: metadata.nota_ejercicio || '',
     decisionAdaptativa: decisionAdaptativa || null,
     unilateral: metadata.unilateral === 'true',
