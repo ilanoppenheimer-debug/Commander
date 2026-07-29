@@ -121,6 +121,9 @@ export const upsertBlockFromCoach = async (blockMeta) => {
       params:         blockMeta.params || {},
       fase:           blockMeta.fase,
       currentWeek:    blockMeta.currentWeek,
+      // Vestigial: stays zeroed forever, nothing computes or reads it. Evaluating
+      // fatigue is the Coach's role (P6), not the app's — left in place rather than
+      // migrated out of saved blocks for a field that was already inert.
       fatigueSignals: { rpeOverTargetCount: 0, progressStallSessions: 0, lastChecked: null },
     };
     action = 'created';
