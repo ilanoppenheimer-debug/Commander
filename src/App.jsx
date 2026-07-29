@@ -574,7 +574,7 @@ function AppMain() {
 
   // Everything that happens AFTER saveSession — unchanged order/logic from before
   // the duration-alarm sprint. Shared by the normal path and all 3 dialog branches.
-  const finalizeAndSave = async (completedSession, { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks }) => {
+  const finalizeAndSave = async (completedSession, { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount = 0 }) => {
     await saveSession(completedSession);
 
     if (saveAsTemplate) {
@@ -591,7 +591,14 @@ function AppMain() {
     }
 
     storeFinish();
-    showNotify("Misión Finalizada Exitosamente", "success");
+    if (untaggedCount > 0) {
+      showNotify(
+        `Misión finalizada — ${untaggedCount} ejercicio${untaggedCount !== 1 ? 's' : ''} sin tag, no cuentan para la atribución al bloque`,
+        "info"
+      );
+    } else {
+      showNotify("Misión Finalizada Exitosamente", "success");
+    }
     setShowPostSessionBanner(true);
     logger.info('Session finished', { name: sessionName, exercises: safeFinalExercises.length });
 
@@ -618,12 +625,18 @@ function AppMain() {
     // Compute blockIds at the moment of save — single query, reused for both stamp and increment
     let blockIds = [];
     let matchedBlocks = [];
+    let untaggedCount = 0;
     try {
       const activeBlocks = await getActiveBlocks();
       if (activeBlocks.length > 0) {
-        const sessionTags = new Set(
-          safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || 'accessory')
-        );
+        // No tag → no vote. A silent 'accessory' fallback here would let an untagged
+        // exercise both (a) get orphaned from the block it actually belongs to, if
+        // that block doesn't apply to 'accessory', and (b) falsely attribute the
+        // session to an unrelated PARALLEL block that does apply to 'accessory' —
+        // cross-contamination between blocks that have nothing to do with each other.
+        const exerciseTags = safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || null);
+        untaggedCount = exerciseTags.filter(t => !t).length;
+        const sessionTags = new Set(exerciseTags.filter(Boolean));
         matchedBlocks = activeBlocks.filter(b =>
           (b.appliesTo || []).some(t => sessionTags.has(t))
         );
@@ -645,7 +658,7 @@ function AppMain() {
       sessionNum: session?.sessionNum ?? null,
     };
 
-    const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks };
+    const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount };
 
     // Edge case: session left open way too long — pause and ask before trusting
     // durationSec. The session itself is saved in full either way; only this one

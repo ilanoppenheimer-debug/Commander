@@ -15,10 +15,16 @@ const clampRpe  = (n) => Math.max(6, Math.min(10, Math.round(n * 2) / 2));
 
 /**
  * Finds the active block that covers the exercise's tag.
+ * No tag → no vote: an untagged exercise matches NO block, rather than assuming
+ * 'accessory' and possibly matching the wrong one (which would derive a backoff
+ * suggestion — a live suggested weight — from a block the exercise has nothing to
+ * do with). Callers already degrade gracefully when this returns null: better no
+ * suggestion than one derived from the wrong block.
  */
 export const findBlockForExercise = (exercise, activeBlocks) => {
   if (!exercise || !Array.isArray(activeBlocks)) return null;
-  const tag = exercise.metadata?.defaultTag || 'accessory';
+  const tag = exercise.metadata?.defaultTag;
+  if (!tag) return null;
   return activeBlocks.find(b =>
     b && Array.isArray(b.appliesTo) && b.appliesTo.includes(tag)
   ) || null;
@@ -159,76 +165,4 @@ export const isTopSet = (set) => {
 export const isBackSet = (set) => {
   const t = (set?.type || '').toLowerCase();
   return t === 'back' || t === 'backoff';
-};
-
-/**
- * Detects sustained fatigue signals in a block.
- * Returns: { severity, message, reasons } | null
- */
-export const checkFatigueSignals = (block, recentSessions) => {
-  if (!block || !Array.isArray(recentSessions)) return null;
-
-  const tags = block.appliesTo || [];
-  const blockSessions = recentSessions
-    .filter(s => _sessionUsedTags(s, tags))
-    .slice(-4);
-
-  if (blockSessions.length < 3) return null;
-
-  let rpeOverTarget = 0;
-  const rpeUpperTarget = (block.params?.rpeRange?.[1] || 8) + 0.5;
-
-  for (const session of blockSessions) {
-    const rpes = _extractRpes(session, tags);
-    if (!rpes.length) continue;
-    const avg = rpes.reduce((a, b) => a + b, 0) / rpes.length;
-    if (avg > rpeUpperTarget) rpeOverTarget++;
-  }
-
-  const maxWeights = blockSessions.map(s => _extractMaxWeight(s, tags)).filter(w => w > 0);
-  let progressStall = 0;
-  if (maxWeights.length >= 3) {
-    const allEqual   = maxWeights.every(w => w === maxWeights[0]);
-    const decreasing = maxWeights.every((w, i) => i === 0 || w <= maxWeights[i - 1]);
-    if (allEqual || (decreasing && maxWeights[0] > maxWeights[maxWeights.length - 1])) {
-      progressStall = blockSessions.length;
-    }
-  }
-
-  if (rpeOverTarget >= 3 || progressStall >= 4) {
-    const reasons = [];
-    if (rpeOverTarget >= 3)  reasons.push('RPE alto sostenido en últimas sesiones');
-    if (progressStall >= 4)  reasons.push('Sin progreso de carga en 4+ sesiones');
-    return { severity: 'high', message: 'Considerá un deload o cambiar de bloque', reasons };
-  }
-  return null;
-};
-
-const _sessionUsedTags = (session, tags) => {
-  if (!session?.exercises || !tags.length) return false;
-  return session.exercises.some(ex => tags.includes(ex?.metadata?.defaultTag || 'accessory'));
-};
-
-const _extractRpes = (session, tags) => {
-  const rpes = [];
-  for (const ex of (session?.exercises || [])) {
-    if (!tags.includes(ex?.metadata?.defaultTag || 'accessory')) continue;
-    for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
-      const r = parseFloat(s?.rpe);
-      if (!isNaN(r) && r > 0) rpes.push(r);
-    }
-  }
-  return rpes;
-};
-
-const _extractMaxWeight = (session, tags) => {
-  let max = 0;
-  for (const ex of (session?.exercises || [])) {
-    if (!tags.includes(ex?.metadata?.defaultTag || 'accessory')) continue;
-    for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
-      const w = parseFloat(s?.weight);
-      if (!isNaN(w) && w > max) max = w;
-    }
-  }
-  return max;
 };
