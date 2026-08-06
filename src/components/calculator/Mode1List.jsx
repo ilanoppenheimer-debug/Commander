@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
-import { List } from 'lucide-react';
+import { Pencil, Check } from 'lucide-react';
 import { computeAll1RMs } from '../../utils/strengthMath';
-import { getExerciseMeta, getTracked1RM, setTracked1RM, hasAnyTracked1RMSelection } from '../../constants/exerciseMetadata';
+import {
+  getExerciseMeta, getTracked1RM, setTracked1RM, hasAnyTracked1RMSelection,
+  getSort1RMCriterion, setSort1RMCriterion,
+} from '../../constants/exerciseMetadata';
 import { Exercise1RMCard } from './Exercise1RMCard';
 import { Exercise1RMDetail } from './Exercise1RMDetail';
 import { TimeframeSelector } from './TimeframeSelector';
@@ -12,17 +15,32 @@ const TIMEFRAMES = [
   { id: 'all', label: 'Todo',   weeks: null },
 ];
 
+const SORT_CRITERIA = [
+  { id: '1rm',    label: '1RM' },
+  { id: 'az',     label: 'A-Z' },
+  { id: 'recent', label: 'Recientes' },
+];
+
 // Same criterion as the export: only barbell/dumbbell load is comparable session to
 // session. Used ONLY as a display-time default before the user has picked anything —
 // never written to metadata, so it costs nothing to change later.
 const isComparableEquipment = (eq) => eq === 'barbell' || eq === 'dumbbell';
+
+const sortByCriterion = (list, criterion) => {
+  const copy = [...list];
+  if (criterion === 'az') copy.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  else if (criterion === 'recent') copy.sort((a, b) => new Date(b.newestDate || 0) - new Date(a.newestDate || 0));
+  else copy.sort((a, b) => b.current1RM - a.current1RM); // '1rm', default
+  return copy;
+};
 
 export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
   const [timeframe, setTimeframe]           = useState('12w');
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectionVersion, setSelectionVersion] = useState(0);
-  const [showAll, setShowAll]               = useState(false);
+  const [editMode, setEditMode]             = useState(false);
+  const [sortCriterion, setSortCriterionState] = useState(() => getSort1RMCriterion());
 
   const tf = TIMEFRAMES.find(t => t.id === timeframe);
 
@@ -63,21 +81,32 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
     return isComparableEquipment(resolveEquipment(name));
   };
 
-  const principalList = useMemo(
-    () => all1RMs.filter(e => isEffectivelyTracked(e.name)),
-    [all1RMs, hasSelection] // eslint-disable-line react-hooks/exhaustive-deps
+  const trackedList   = useMemo(
+    () => sortByCriterion(all1RMs.filter(e => isEffectivelyTracked(e.name)), sortCriterion),
+    [all1RMs, hasSelection, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const untrackedList = useMemo(
+    () => sortByCriterion(all1RMs.filter(e => !isEffectivelyTracked(e.name)), sortCriterion),
+    [all1RMs, hasSelection, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const filtered = useMemo(() => {
-    const source = showAll ? all1RMs : principalList;
+  const applySearch = (list) => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return source;
-    return source.filter(e => e.name.toLowerCase().includes(q));
-  }, [all1RMs, principalList, showAll, searchQuery]);
+    if (!q) return list;
+    return list.filter(e => e.name.toLowerCase().includes(q));
+  };
 
-  const handleLongPress = (exerciseName) => {
+  const visibleTracked   = applySearch(trackedList);
+  const visibleUntracked = applySearch(untrackedList);
+
+  const handleToggle = (exerciseName) => {
     setTracked1RM(exerciseName, !isEffectivelyTracked(exerciseName));
     setSelectionVersion(v => v + 1);
+  };
+
+  const handleSortChange = (criterion) => {
+    setSortCriterionState(criterion);
+    setSort1RMCriterion(criterion);
   };
 
   if (selectedExercise) {
@@ -101,51 +130,113 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
         onChange={setTimeframe}
       />
 
-      <input
-        type="search"
-        placeholder="Buscar ejercicio..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-accent-500 focus:outline-none"
-      />
-
-      {all1RMs.length > principalList.length && (
+      <div className="flex gap-2">
+        <input
+          type="search"
+          placeholder="Buscar ejercicio..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-accent-500 focus:outline-none"
+        />
         <button
-          onClick={() => setShowAll(v => !v)}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
+          onClick={() => setEditMode(v => !v)}
+          className={`shrink-0 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+            editMode ? 'bg-accent-600 text-black' : 'bg-slate-900 border border-slate-700 text-slate-300 hover:text-white'
+          }`}
         >
-          <List size={12} />
-          {showAll ? 'Ver seleccionados' : `Todos (${all1RMs.length})`}
+          {editMode ? <Check size={14} /> : <Pencil size={14} />}
+          {editMode ? 'Listo' : 'Editar'}
         </button>
+      </div>
+
+      {editMode && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1 px-1">
+            Ordenar por
+          </div>
+          <TimeframeSelector
+            options={SORT_CRITERIA}
+            value={sortCriterion}
+            onChange={handleSortChange}
+          />
+        </div>
       )}
 
-      {filtered.length === 0 ? (
+      {editMode ? (
+        <>
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 px-1">
+              Tu lista ({trackedList.length})
+            </div>
+            {visibleTracked.length === 0 ? (
+              <div className="text-center py-6 text-slate-500 text-sm">
+                Nada seleccionado todavía — sumá desde "Agregar" abajo.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {visibleTracked.map(ex => (
+                  <Exercise1RMCard
+                    key={ex.name}
+                    exercise={ex}
+                    barUnit={barUnit}
+                    editMode
+                    selected
+                    onToggle={() => handleToggle(ex.name)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 px-1 pt-2">
+              Agregar ({untrackedList.length})
+            </div>
+            {visibleUntracked.length === 0 ? (
+              <div className="text-center py-6 text-slate-500 text-sm">
+                No hay más ejercicios con 1RM calculado para sumar.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {visibleUntracked.map(ex => (
+                  <Exercise1RMCard
+                    key={ex.name}
+                    exercise={ex}
+                    barUnit={barUnit}
+                    editMode
+                    selected={false}
+                    onToggle={() => handleToggle(ex.name)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="text-[10px] text-slate-600 text-center pt-2 pb-2">
+            "−" saca de esta lista, "+" suma. No borra el ejercicio, ni su historial, ni afecta el export.
+          </div>
+        </>
+      ) : visibleTracked.length === 0 ? (
         <div className="text-center py-12 text-slate-500 text-sm">
           {!Array.isArray(history) || history.length === 0
             ? 'Aún no tenés sesiones registradas. Hacé al menos una para ver tus 1RM estimados.'
-            : showAll
-              ? 'No hay ejercicios con suficiente data para estimar 1RM en este período.'
-              : 'Ningún ejercicio seleccionado todavía. Tocá "Todos" y mantené presionado el que quieras seguir.'}
+            : 'Ningún ejercicio seleccionado todavía. Tocá "Editar" para sumar.'}
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(ex => (
+          {visibleTracked.map(ex => (
             <Exercise1RMCard
               key={ex.name}
               exercise={ex}
               barUnit={barUnit}
               onClick={() => setSelectedExercise(ex)}
-              onLongPress={() => handleLongPress(ex.name)}
             />
           ))}
         </div>
       )}
 
       <div className="text-[10px] text-slate-600 text-center pt-4 pb-2">
-        {showAll
-          ? 'Mantené presionado un ejercicio para sumarlo o sacarlo de tu lista.'
-          : 'Mantené presionado un ejercicio para sacarlo de tu lista — no afecta tu historial ni el export.'}
-        {' '}Estimaciones basadas en tabla RPE (RTS/Tuchscherer) o Epley si no hay RPE.
+        Estimaciones basadas en tabla RPE (RTS/Tuchscherer) o Epley si no hay RPE.
         Excluye sets &lt; 50% del peso máximo, RPE &lt; 6 y reps &gt; 12.
       </div>
     </div>

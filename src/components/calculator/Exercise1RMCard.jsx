@@ -1,16 +1,23 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Minus, Plus } from 'lucide-react';
 import { getExerciseDetails } from '../../features/exerciseMeta';
-import { useLongPress } from '../../hooks/useLongPress';
 
-export const Exercise1RMCard = ({ exercise, barUnit, onClick, onLongPress }) => {
+// Two modes, one row: browsing (tap navigates to detail) and editing (tap toggles
+// selection — the trailing chevron becomes the −/+ that shows what the tap will do).
+// A single <button> for the whole row, not a nested button around the trailing icon:
+// nesting interactive elements is invalid HTML and would make the click target
+// ambiguous. The row IS the target either way; the icon is just the affordance.
+export const Exercise1RMCard = ({ exercise, barUnit, editMode = false, selected = false, onClick, onToggle }) => {
   const details = getExerciseDetails(exercise.name);
-  const longPress = useLongPress(onLongPress, 500);
+
+  const handleClick = () => {
+    if (editMode) { onToggle?.(); return; }
+    onClick?.();
+  };
 
   return (
     <button
-      onClick={() => { if (longPress.wasTriggered()) return; onClick(); }}
-      {...longPress}
-      className="w-full bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition-colors text-left select-none"
+      onClick={handleClick}
+      className="w-full bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition-colors text-left"
     >
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${details?.bg || 'bg-slate-800'} ${details?.color || 'text-slate-400'}`}>
         {details?.icon}
@@ -43,7 +50,17 @@ export const Exercise1RMCard = ({ exercise, barUnit, onClick, onLongPress }) => 
         </div>
       </div>
 
-      <ChevronRight size={16} className="text-slate-600 shrink-0" />
+      {editMode ? (
+        <div
+          className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${
+            selected ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
+          }`}
+        >
+          {selected ? <Minus size={18} /> : <Plus size={18} />}
+        </div>
+      ) : (
+        <ChevronRight size={16} className="text-slate-600 shrink-0" />
+      )}
     </button>
   );
 };
