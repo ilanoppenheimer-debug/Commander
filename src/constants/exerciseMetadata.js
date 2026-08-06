@@ -75,3 +75,15 @@ export function hasAnyTracked1RMSelection() {
   const all = loadExerciseMeta();
   return Object.values(all).some(m => typeof m?.tracked1RM === 'boolean');
 }
+
+// Sort criterion for the "Mis 1RM" list — a display setting, not per-exercise data, so
+// it lives under its own key rather than inside the per-name metadata object.
+const SORT_1RM_KEY = 'ironCmdrExMeta1RMSort';
+
+export function getSort1RMCriterion() {
+  try { return localStorage.getItem(SORT_1RM_KEY) || '1rm'; } catch { return '1rm'; }
+}
+
+export function setSort1RMCriterion(criterion) {
+  try { localStorage.setItem(SORT_1RM_KEY, criterion); } catch { /* non-blocking */ }
+}
