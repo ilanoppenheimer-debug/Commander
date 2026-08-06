@@ -185,10 +185,19 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     totalVolume += exVolume;
     if (exVolume > 0) lines.push(`  Volumen: ${formatVolume(exVolume)}`);
 
-    const orm = computeExercise1RM(ex.name, allSessions, { weeksBack: 12 });
-    if (orm.current1RM != null && orm.sampleSize >= 1) {
-      const rounded = Math.round(orm.current1RM * 2) / 2;
-      lines.push(`  1RM est.: ${rounded} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}) — referencia, no máximo del día`);
+    // 1RM only where load is external and comparable across sessions. barbell/dumbbell:
+    // real external load. machine/cable: not transferable between machines (pulleys,
+    // angles, base weight differ). bodyweight: isPredictiveSet excludes weight <= 0, so
+    // the estimate would be computed off the added load alone, ignoring bodyweight —
+    // actively misleading, not just uncomparable. Unknown equipment: no data beats
+    // guessed data. No equipment → no line; the Coach asked for silence, not a caveat.
+    const equipment = ex.equipment || exMeta.equipment || null;
+    if (equipment === 'barbell' || equipment === 'dumbbell') {
+      const orm = computeExercise1RM(ex.name, allSessions, { weeksBack: 12 });
+      if (orm.current1RM != null && orm.sampleSize >= 1) {
+        const rounded = Math.round(orm.current1RM * 2) / 2;
+        lines.push(`  1RM est.: ${rounded} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}) — referencia, no máximo del día`);
+      }
     }
 
     if (ex.exerciseNotes?.trim()) {
