@@ -1,35 +1,16 @@
 import { useState, useEffect } from 'react';
-import { X, Copy, Check, Brain, Clock, ThumbsUp } from 'lucide-react';
+import { X, Copy, Check } from 'lucide-react';
 import { generateSessionReport } from '../../utils/sessionExport';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { db } from '../../db/database';
 
-const SUB_MODES = [
-  {
-    id: 'C1',
-    icon: Brain,
-    label: 'Análisis profundo',
-    description: 'Qué subió, qué bajó, qué duele, qué ajustar',
-    pedidoText: 'Análisis profundo de esta sesión: progresión por ejercicio, flags de RPE, y recomendaciones para la próxima sesión.',
-  },
-  {
-    id: 'C2',
-    icon: Clock,
-    label: 'Check-in corto',
-    description: 'Esto pasó, qué toca después',
-    pedidoText: 'Check-in corto: confirma si la sesión estuvo acorde al plan y qué toca en la próxima.',
-  },
-  {
-    id: 'C3',
-    icon: ThumbsUp,
-    label: 'Validación rápida',
-    description: '¿Estuvo bien o flojo?',
-    pedidoText: 'Validación rápida: ¿la sesión estuvo bien ejecutada o fue floja? Una línea.',
-  },
-];
+// The coach confirmed the sub-mode only changed the shape of their reply, never the
+// analysis content, and that "análisis profundo" is a safe default — so the selector
+// (Análisis profundo / Check-in corto / Validación rápida) was removed; one step less
+// in the most frequent flow.
+const PEDIDO_TEXT = 'Análisis profundo de esta sesión: progresión por ejercicio, flags de RPE, y recomendaciones para la próxima sesión.';
 
 export const SessionExportModal = ({ open, onClose, session }) => {
-  const [selectedMode, setSelectedMode] = useState('C2');
   const [editedText, setEditedText] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,17 +24,16 @@ export const SessionExportModal = ({ open, onClose, session }) => {
       db.history.toArray().catch(() => []),
       getSessionCountsByBlock().catch(() => new Map()),
     ]).then(([blocks, allSessions, blockSessionCounts]) => {
-      const mode = SUB_MODES.find(m => m.id === selectedMode) || SUB_MODES[1];
       const report = generateSessionReport(session, {
         blocks,
         allSessions,
-        pedidoText: mode.pedidoText,
+        pedidoText: PEDIDO_TEXT,
         blockSessionCounts,
       });
       setEditedText(report);
       setLoading(false);
     });
-  }, [open, session, selectedMode]);
+  }, [open, session]);
 
   const handleCopy = async () => {
     try {
@@ -90,38 +70,6 @@ export const SessionExportModal = ({ open, onClose, session }) => {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Sub-mode selector */}
-          <div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">
-              ¿Qué querés del coach?
-            </div>
-            <div className="space-y-2">
-              {SUB_MODES.map(mode => {
-                const Icon = mode.icon;
-                const isSelected = selectedMode === mode.id;
-                return (
-                  <button
-                    key={mode.id}
-                    onClick={() => setSelectedMode(mode.id)}
-                    className={`w-full flex items-start gap-3 p-3 rounded-lg border transition-colors ${
-                      isSelected
-                        ? 'bg-blue-500/10 border-blue-500/50'
-                        : 'bg-slate-900 border-slate-800 hover:border-slate-600'
-                    }`}
-                  >
-                    <Icon size={18} className={isSelected ? 'text-blue-400 shrink-0 mt-0.5' : 'text-slate-500 shrink-0 mt-0.5'} />
-                    <div className="flex-1 text-left">
-                      <div className={`text-sm font-bold ${isSelected ? 'text-slate-100' : 'text-slate-300'}`}>
-                        {mode.label}
-                      </div>
-                      <div className="text-[11px] text-slate-500">{mode.description}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Editable report */}
           <div>
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">
