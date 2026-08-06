@@ -55,3 +55,23 @@ export function toggleFavorite(name) {
 export function isFavorite(name) {
   return !!getExerciseMeta(name).favorite;
 }
+
+// Whitelist for the "Mis 1RM" list only — what's shown there, not the exercise itself.
+// Not read by sessionExport.js, blocksMath.js, or computeExercise1RM: the export,
+// history, and block matching stay untouched by this selection.
+//
+// tracked1RM is explicit tri-state: true (shown), false (explicitly hidden), or absent
+// (never touched — the caller falls back to a display-only default). Absent must stay
+// distinguishable from false, so callers can tell "never chose" from "chose to hide".
+export function setTracked1RM(name, value) {
+  saveExerciseMeta(name, { tracked1RM: value });
+}
+
+export function getTracked1RM(name) {
+  return getExerciseMeta(name).tracked1RM; // undefined | true | false
+}
+
+export function hasAnyTracked1RMSelection() {
+  const all = loadExerciseMeta();
+  return Object.values(all).some(m => typeof m?.tracked1RM === 'boolean');
+}

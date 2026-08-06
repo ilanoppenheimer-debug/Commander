@@ -1,13 +1,16 @@
 import { ChevronRight } from 'lucide-react';
 import { getExerciseDetails } from '../../features/exerciseMeta';
+import { useLongPress } from '../../hooks/useLongPress';
 
-export const Exercise1RMCard = ({ exercise, barUnit, onClick }) => {
+export const Exercise1RMCard = ({ exercise, barUnit, onClick, onLongPress }) => {
   const details = getExerciseDetails(exercise.name);
+  const longPress = useLongPress(onLongPress, 500);
 
   return (
     <button
-      onClick={onClick}
-      className="w-full bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition-colors text-left"
+      onClick={() => { if (longPress.wasTriggered()) return; onClick(); }}
+      {...longPress}
+      className="w-full bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition-colors text-left select-none"
     >
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${details?.bg || 'bg-slate-800'} ${details?.color || 'text-slate-400'}`}>
         {details?.icon}
