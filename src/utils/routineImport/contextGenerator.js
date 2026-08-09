@@ -45,6 +45,16 @@ export const classifySessionType = (name) => {
   return toTitleCase(singularizeFirstWord(prefix));
 };
 
+// Most recent session attributed to this block, regardless of whether it carries
+// sessionNum — old sessions predate that field, and reaching further back for a stale
+// one that happens to have it would misreport which cycle the Coach is actually in.
+const getLastSessionNum = (blockId, allHistory) => {
+  const matches = (Array.isArray(allHistory) ? allHistory : [])
+    .filter(s => Array.isArray(s.blockIds) && s.blockIds.includes(blockId))
+    .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+  return matches[0]?.sessionNum ?? null;
+};
+
 // Pure/sync — groups a block's sessions (matched by blockIds, exact) by derived type,
 // sorted by count descending. Shared between generateCoachContext (below) and the
 // home screen (App.jsx), so there's one place that knows how to do this, not two.
@@ -151,7 +161,10 @@ export const generateCoachContext = async () => {
         const rpeStr = p.rpeRange ? `RPE ${p.rpeRange[0]}-${p.rpeRange[1]}` : '';
         const logged = sessionCounts.get(b.id) || 0;
         const sessStr = `${logged}${b.sessionsTarget ? `/${b.sessionsTarget}` : ''} sesiones`;
-        const parts = [repsStr, rpeStr, sessStr].filter(Boolean).join(', ');
+        const faseStr = b.fase ? `fase ${b.fase}` : '';
+        const lastSessionNum = getLastSessionNum(b.id, allHistoryForBlocks);
+        const sessionNumStr = lastSessionNum != null ? `última sesión: #${lastSessionNum}` : '';
+        const parts = [repsStr, rpeStr, sessStr, faseStr, sessionNumStr].filter(Boolean).join(', ');
         lines.push(`  - ${b.name} (${b.type})${parts ? `: ${parts}` : ''}`);
         if (Array.isArray(b.appliesTo) && b.appliesTo.length) {
           lines.push(`    Tags: ${b.appliesTo.join(', ')}`);
