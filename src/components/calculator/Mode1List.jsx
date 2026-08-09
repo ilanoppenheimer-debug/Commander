@@ -81,13 +81,20 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
     return isComparableEquipment(resolveEquipment(name));
   };
 
+  // tracked1RM lives in localStorage, not React state — writing it doesn't trigger a
+  // re-render or invalidate a memo by itself. selectionVersion is the counter that
+  // does (same pattern as ActiveSession's blocksRefresh for the TagPicker): it MUST be
+  // a direct dependency here, not just via hasSelection. hasSelection only changes
+  // value on the very first toggle (false -> true) — every toggle after that leaves it
+  // at true, so a memo keyed on hasSelection alone would recompute once and then go
+  // stale for every subsequent add/remove.
   const trackedList   = useMemo(
     () => sortByCriterion(all1RMs.filter(e => isEffectivelyTracked(e.name)), sortCriterion),
-    [all1RMs, hasSelection, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
+    [all1RMs, hasSelection, selectionVersion, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const untrackedList = useMemo(
     () => sortByCriterion(all1RMs.filter(e => !isEffectivelyTracked(e.name)), sortCriterion),
-    [all1RMs, hasSelection, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
+    [all1RMs, hasSelection, selectionVersion, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const applySearch = (list) => {
