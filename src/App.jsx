@@ -46,6 +46,7 @@ import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
 import { migrateAddNotesFields } from "./db/migrations/migrateAddNotesFields";
 import { migrateMuscleGroups } from "./db/migrations/migrateMuscleGroups";
 import { migrateBackfillBlock2A } from "./db/migrations/migrateBackfillBlock2A";
+import { migrateCleanupResidualBlocks } from "./db/migrations/migrateCleanupResidualBlocks";
 import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal";
 import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
@@ -469,6 +470,7 @@ function AppMain() {
       await migrateAddNotesFields();
       await migrateMuscleGroups();
       await migrateBackfillBlock2A();
+      await migrateCleanupResidualBlocks();
 
       // Load settings from Dexie
       const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
