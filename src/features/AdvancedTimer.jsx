@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Timer, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert } from '../services/audioService';
+import { useSessionStore } from '../stores/sessionStore';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = 'ironcmdr_active_timer';
@@ -32,6 +33,11 @@ function snapToCorner(x, y) {
 }
 
 const AdvancedTimer = () => {
+  // Single definition of "training in progress" shared with the rest of the app
+  // (isTraining in App.jsx is the same session !== null check) — the timer follows
+  // it rather than inventing a second notion of "active" that could drift from it.
+  const hasActiveSession = useSessionStore(state => state.session !== null);
+
   const [mode,               setMode]               = useState('stopwatch');
   const [initialTimerSeconds,setInitialTimerSeconds] = useState(60);
   const [isActive,           setIsActive]           = useState(false);
@@ -309,6 +315,10 @@ const AdvancedTimer = () => {
   const displaySecs = getDisplaySeconds();
   const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
 
+  // No active session -> the rest timer has nothing to time. Hooks above still ran
+  // (Rules of Hooks), only the render is skipped.
+  if (!hasActiveSession) return null;
+
   return (
     <>
       {isExpanded && (
@@ -401,7 +411,11 @@ const AdvancedTimer = () => {
 
       <div
         ref={timerRef}
-        className={`fixed top-0 left-0 z-[98] transition-opacity duration-150 ${keypadOpen && !isExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+        className={`fixed top-0 left-0 z-[98] transition-opacity duration-150 ${
+          keypadOpen && !isExpanded
+            ? 'opacity-0 pointer-events-none'
+            : isActive ? 'opacity-100' : 'opacity-60'
+        }`}
         style={{ touchAction: 'none' }}
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}
