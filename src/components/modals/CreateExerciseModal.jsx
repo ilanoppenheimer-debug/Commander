@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Star, AlertTriangle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
+import { TAG_LABELS } from '../../constants/blockTemplates';
 import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta } from '../../constants/exerciseMetadata';
+import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
 
 const DEBOUNCE_MS = 300;
 
@@ -21,8 +23,14 @@ function StarRating({ value, onChange }) {
   );
 }
 
-export default function CreateExerciseModal({ existingName, allExerciseNames = [], onSave, onClose }) {
+export default function CreateExerciseModal({ existingName, allExerciseNames = [], customExerciseNames = [], onSave, onClose }) {
   const isEdit = !!existingName;
+  const isCustomExercise = isEdit && customExerciseNames.includes(existingName);
+  // Catalogue exercises (DEFAULT_EXERCISE_DB) are hardcoded arrays, not data — renaming
+  // one would drop it out of muscle-group/tab classification with no way to fix that at
+  // runtime. Renaming is scoped to custom exercises until that's addressed separately.
+  const canRename = isEdit && isCustomExercise;
+
   const [name, setName] = useState(existingName || '');
   const [muscleGroup, setMuscleGroup] = useState('');
   const [equipment, setEquipment] = useState('barbell');
@@ -36,6 +44,12 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const [feelConnection, setFeelConnection] = useState(null);
   const [notes, setNotes] = useState('');
   const [duplicate, setDuplicate] = useState({ exact: null, similar: [] });
+
+  // Rename confirmation sub-flow: null = normal form; an object = showing the preview
+  // screen (sessions/plantillas affected, merge details) awaiting explicit confirm.
+  const [renamePreview, setRenamePreview] = useState(null);
+  const [renameError, setRenameError] = useState(null);
+  const [renameBusy, setRenameBusy] = useState(false);
 
   const debounceRef = useRef(null);
 
@@ -56,11 +70,15 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     }
   }, [isEdit, existingName]);
 
-  // Duplicate detection
+  // Duplicate detection. In create mode an exact match blocks saving (offers "usar
+  // este" instead). In rename mode an exact match is expected and welcome — it's the
+  // fusion case — so it's surfaced as information on the confirm screen, not here.
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit && !canRename) return;
     clearTimeout(debounceRef.current);
     const trimmed = name.trim().toLowerCase();
+    const isRenameAttempt = isEdit && trimmed !== existingName.toLowerCase();
+    if (isEdit && !isRenameAttempt) { setDuplicate({ exact: null, similar: [] }); return; }
     if (!trimmed) { setDuplicate({ exact: null, similar: [] }); return; }
     debounceRef.current = setTimeout(() => {
       const exact = allExerciseNames.find(e => e.toLowerCase() === trimmed) || null;
@@ -70,36 +88,135 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       }).slice(0, 3);
       setDuplicate({ exact, similar });
     }, DEBOUNCE_MS);
-  }, [name, allExerciseNames, isEdit]);
+  }, [name, allExerciseNames, isEdit, canRename, existingName]);
 
-  const canSave = (isEdit || (!duplicate.exact && name.trim())) && muscleGroup && equipment;
+  const isRenameAttempt = canRename && name.trim() && name.trim() !== existingName;
+  const canSave = isEdit
+    ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup && equipment
+    : !duplicate.exact && name.trim() && muscleGroup && equipment;
 
-  const handleSave = () => {
+  const buildMeta = () => ({
+    muscleGroup,
+    equipment,
+    bilateral,
+    movementPattern,
+    stability,
+    cnsLoad,
+    injuryRisk,
+    enjoyment,
+    feelConnection,
+    notes,
+    isCustom: !isEdit,
+    createdAt: isEdit ? undefined : new Date().toISOString(),
+    muscleGroupOverride: true,
+    muscleGroupAssignedAt: new Date().toISOString(),
+    muscleGroupAssignedBy: 'user-manual',
+    equipmentOverride: true,
+    equipmentAssignedAt: new Date().toISOString(),
+    equipmentAssignedBy: 'user-manual',
+  });
+
+  const handleSave = async () => {
     if (!canSave) return;
+    setRenameError(null);
+
+    if (isRenameAttempt) {
+      // Persist metadata edits under the OLD name first, so the rename's merge picks
+      // up the freshest values as the "source" side, not whatever was there on open.
+      saveExerciseMeta(existingName, buildMeta());
+      const preview = await previewRenameExercise(existingName, name.trim());
+      if (!preview.ok) { setRenameError(preview.reason); return; }
+      setRenamePreview(preview);
+      return;
+    }
+
     const finalName = isEdit ? existingName : name.trim();
-    const meta = {
-      muscleGroup,
-      equipment,
-      bilateral,
-      movementPattern,
-      stability,
-      cnsLoad,
-      injuryRisk,
-      enjoyment,
-      feelConnection,
-      notes,
-      isCustom: !isEdit,
-      createdAt: isEdit ? undefined : new Date().toISOString(),
-      muscleGroupOverride: true,
-      muscleGroupAssignedAt: new Date().toISOString(),
-      muscleGroupAssignedBy: 'user-manual',
-      equipmentOverride: true,
-      equipmentAssignedAt: new Date().toISOString(),
-      equipmentAssignedBy: 'user-manual',
-    };
+    const meta = buildMeta();
     saveExerciseMeta(finalName, meta);
     onSave(finalName, meta);
   };
+
+  const handleConfirmRename = async () => {
+    if (!renamePreview) return;
+    setRenameBusy(true);
+    setRenameError(null);
+    const result = await renameExercise(renamePreview.oldName, renamePreview.newName);
+    setRenameBusy(false);
+    if (!result.ok) {
+      setRenamePreview(null);
+      setRenameError(result.reason);
+      return;
+    }
+    onSave(result.to, null);
+  };
+
+  const RENAME_ERROR_MESSAGES = {
+    'not-custom': 'Este ejercicio es del catálogo — todavía no se puede renombrar.',
+    'active-session-conflict': 'Hay una sesión activa que usa este ejercicio. Terminala o descartala antes de renombrar.',
+    'backup-failed': 'El backup previo falló, así que no se tocó nada. Probá de nuevo.',
+    'empty-name': 'El nombre no puede quedar vacío.',
+    'same-name': null,
+  };
+
+  if (renamePreview) {
+    return (
+      <Modal isOpen onClose={onClose} size="md" align="center">
+        <div className="bg-slate-900 w-full max-h-[90vh] rounded-2xl border border-slate-700 shadow-2xl flex flex-col">
+          <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+            <h2 className="font-bold text-white text-base">Confirmar renombrado</h2>
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition"><X size={18} /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 text-sm">
+            <div className="text-slate-300">
+              <span className="text-white font-bold">"{renamePreview.oldName}"</span> pasa a llamarse{' '}
+              <span className="text-white font-bold">"{renamePreview.newName}"</span>.
+            </div>
+
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 space-y-1 text-slate-300 text-xs">
+              <div>Sesiones del historial a actualizar: <span className="text-white font-bold">{renamePreview.sessionsAffected}</span></div>
+              <div>Plantillas a actualizar: <span className="text-white font-bold">{renamePreview.routinesAffected}</span></div>
+            </div>
+
+            {renamePreview.willMerge ? (
+              <div className="bg-amber-950/30 border border-amber-600/40 rounded-lg px-3 py-2 text-amber-200 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold"><AlertTriangle size={12} /> Se fusiona con un ejercicio existente</div>
+                <div>"{renamePreview.newName}" ya existe — su historial se une al de "{renamePreview.oldName}" bajo un solo nombre.</div>
+                {renamePreview.mergedMetaPreview && (
+                  <div className="pt-1 text-amber-300/90">
+                    Tag: {renamePreview.mergedMetaPreview.defaultTag ? TAG_LABELS[renamePreview.mergedMetaPreview.defaultTag] : '—'}
+                    {' · '}Equipo: {renamePreview.mergedMetaPreview.equipment || '—'}
+                    {' · '}Favorito: {renamePreview.mergedMetaPreview.favorite ? 'sí' : 'no'}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-xs">
+                "{renamePreview.newName}" es un nombre nuevo — no hay fusión, solo se actualiza la etiqueta.
+              </div>
+            )}
+
+            {renameError && (
+              <div className="bg-red-950/30 border border-red-600/40 rounded-lg px-3 py-2 text-red-300 text-xs">
+                {RENAME_ERROR_MESSAGES[renameError] || 'No se pudo renombrar.'}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-slate-800 flex gap-2 shrink-0">
+            <button onClick={() => setRenamePreview(null)} disabled={renameBusy} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white font-bold text-sm rounded-xl transition">Cancelar</button>
+            <button
+              onClick={handleConfirmRename}
+              disabled={renameBusy}
+              className="flex-1 py-2.5 bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-black font-bold text-sm rounded-xl transition"
+            >
+              {renameBusy ? 'Renombrando...' : 'Confirmar renombrado'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen onClose={onClose} size="md" align="center">
@@ -110,29 +227,47 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+          {renameError && (
+            <div className="bg-red-950/30 border border-red-600/40 rounded-lg px-3 py-2 text-red-300 text-xs">
+              {RENAME_ERROR_MESSAGES[renameError] || 'No se pudo renombrar.'}
+            </div>
+          )}
+
+          {isEdit && !isCustomExercise && (
+            <div className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-xs">
+              <AlertTriangle size={14} className="shrink-0" />
+              Ejercicio de catálogo — renombrar todavía no está disponible para estos.
+            </div>
+          )}
+
           {/* Name */}
-          {!isEdit && (
+          {(!isEdit || canRename) && (
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Nombre *</label>
               <input
-                autoFocus
+                autoFocus={!isEdit}
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Ej: Remo con Cable Bajo"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:border-accent-500 focus:outline-none"
               />
-              {duplicate.exact && (
+              {!isEdit && duplicate.exact && (
                 <div className="mt-2 flex items-center gap-2 bg-amber-950/30 border border-amber-600/40 rounded-lg px-3 py-2 text-amber-300 text-xs">
                   <span>Ya existe "{duplicate.exact}"</span>
                   <button onClick={() => { onSave(duplicate.exact, null); }} className="ml-auto underline text-accent-400">Usar este</button>
                 </div>
               )}
-              {!duplicate.exact && duplicate.similar.length > 0 && (
+              {!isEdit && !duplicate.exact && duplicate.similar.length > 0 && (
                 <div className="mt-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-400">
                   ¿Te referís a: {duplicate.similar.map(s => (
                     <button key={s} onClick={() => { onSave(s, null); }} className="text-accent-400 underline ml-1">{s}</button>
                   ))}?
+                </div>
+              )}
+              {isEdit && isRenameAttempt && duplicate.exact && (
+                <div className="mt-2 bg-amber-950/30 border border-amber-600/40 rounded-lg px-3 py-2 text-amber-300 text-xs">
+                  Ya existe "{duplicate.exact}" — al guardar se van a fusionar.
                 </div>
               )}
             </div>
@@ -241,10 +376,10 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
           <button onClick={onClose} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition">Cancelar</button>
           <button
             onClick={handleSave}
-            disabled={!canSave || !!duplicate.exact}
+            disabled={!canSave || (!isEdit && !!duplicate.exact)}
             className="flex-1 py-2.5 bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-black font-bold text-sm rounded-xl transition"
           >
-            {isEdit ? 'Guardar' : 'Crear'}
+            {isRenameAttempt ? 'Continuar' : isEdit ? 'Guardar' : 'Crear'}
           </button>
         </div>
       </div>
