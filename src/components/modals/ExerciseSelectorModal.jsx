@@ -256,6 +256,7 @@ const ExerciseSelectorModal = ({
         <CreateExerciseModal
           existingName={editingExName}
           allExerciseNames={allExerciseNames}
+          customExerciseNames={Array.isArray(customExercises) ? customExercises : []}
           onSave={editingExName ? handleEditSave : handleCreateSave}
           onClose={() => { setShowCreateModal(false); setEditingExName(null); }}
         />

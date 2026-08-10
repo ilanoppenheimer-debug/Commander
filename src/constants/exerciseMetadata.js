@@ -46,6 +46,43 @@ export function getExerciseMeta(name) {
   return loadExerciseMeta()[name] || {};
 }
 
+export function deleteExerciseMeta(name) {
+  const all = loadExerciseMeta();
+  delete all[name];
+  localStorage.setItem(META_KEY, JSON.stringify(all));
+}
+
+// Merge policy for renaming into an already-existing name — same "override wins"
+// convention already used by every field below (tagOverride, equipmentOverride,
+// muscleGroupOverride): a manually-confirmed value beats an absent or auto-assigned
+// one. sourceMeta is the exercise being renamed AWAY from, targetMeta is the name being
+// renamed INTO (already existing). Target wins by default (it's the identity that
+// survives); source only wins a field where target has no override but source does.
+// favorite is OR'd — silently losing a favorite mark on merge would be a regression.
+// tracked1RM has no override flag of its own; the plain "target wins if present" default
+// already gives the right tri-state behavior (true/false both count as explicit; only
+// truly absent falls through to source).
+export function mergeExerciseMeta(sourceMeta = {}, targetMeta = {}) {
+  const merged = { ...sourceMeta, ...targetMeta };
+  const overrideFields = [
+    ['defaultTag',  'tagOverride',         'tagAssignedAt',         'tagAssignedBy'],
+    ['equipment',   'equipmentOverride',   'equipmentAssignedAt',   'equipmentAssignedBy'],
+    ['muscleGroup', 'muscleGroupOverride', 'muscleGroupAssignedAt', 'muscleGroupAssignedBy'],
+  ];
+  for (const [valueKey, overrideKey, atKey, byKey] of overrideFields) {
+    const targetHasOverride = targetMeta?.[overrideKey] === true;
+    const sourceHasOverride = sourceMeta?.[overrideKey] === true;
+    if (!targetHasOverride && sourceHasOverride) {
+      merged[valueKey] = sourceMeta[valueKey];
+      merged[overrideKey] = sourceMeta[overrideKey];
+      if (sourceMeta[atKey] != null) merged[atKey] = sourceMeta[atKey];
+      if (sourceMeta[byKey] != null) merged[byKey] = sourceMeta[byKey];
+    }
+  }
+  merged.favorite = !!(sourceMeta?.favorite || targetMeta?.favorite);
+  return merged;
+}
+
 export function toggleFavorite(name) {
   const meta = getExerciseMeta(name);
   saveExerciseMeta(name, { favorite: !meta.favorite });
