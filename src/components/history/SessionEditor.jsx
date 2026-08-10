@@ -1,5 +1,5 @@
 import React, { useState, useReducer, useRef, useCallback } from 'react';
-import { AlertTriangle, X, Plus, Trash2, ChevronDown, ChevronUp, Check, Save } from 'lucide-react';
+import { AlertTriangle, X, Plus, Trash2, Repeat, ChevronDown, ChevronUp, Check, Save } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { saveSession } from '../../db/repository';
 import { createBackup, downloadBackupAsFile } from '../../services/backupService';
@@ -7,23 +7,49 @@ import { isSignedIn, performDriveBackup } from '../../services/googleDriveServic
 import ExerciseSelectorModal from '../modals/ExerciseSelectorModal';
 import InputGroup from '../ui/InputGroup';
 import { SET_TYPES } from '../../constants/gymConstants';
+import { getExerciseMeta } from '../../constants/exerciseMetadata';
 
 function sessReducer(state, action) {
   switch (action.type) {
     case 'SET_NAME':
       return { ...state, name: action.value };
-    case 'ADD_EXERCISE':
+    case 'ADD_EXERCISE': {
+      // getExerciseMeta first, 'other'/no tag only as fallback when nothing is known —
+      // not the first thing tried. Same silent-default pattern already closed for
+      // equipment ('barbell'), accessory, and the 90s rest default.
+      const meta = getExerciseMeta(action.name);
       return {
         ...state,
         exercises: [...state.exercises, {
           id: `edit-ex-${Date.now()}-${Math.random()}`,
           name: action.name,
-          equipment: action.equipment || 'other',
+          equipment: meta.equipment || 'other',
+          tag: meta.defaultTag || null,
           sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', notes: '' }],
         }],
       };
+    }
     case 'REMOVE_EXERCISE':
       return { ...state, exercises: state.exercises.filter(ex => ex.id !== action.exId) };
+    case 'SWAP_EXERCISE': {
+      // Identity change, not a data edit: name/equipment/tag come from the exercise
+      // being swapped IN (they're properties of the real movement, not the logged
+      // record). Everything else — sets, id, finishedAt, supersetId, exerciseNotes —
+      // survives untouched via spread. No fusion if this creates a same-name
+      // duplicate elsewhere in the session: two entries is what actually happened.
+      const meta = getExerciseMeta(action.newName);
+      return {
+        ...state,
+        exercises: state.exercises.map(ex =>
+          ex.id !== action.exId ? ex : {
+            ...ex,
+            name: action.newName,
+            equipment: meta.equipment || 'other',
+            tag: meta.defaultTag || null,
+          }
+        ),
+      };
+    }
     case 'UPDATE_SET': {
       return {
         ...state,
@@ -73,6 +99,7 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
   const [saving, setSaving] = useState(false);
   const [showExSelector, setShowExSelector] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [swappingExId, setSwappingExId] = useState(null); // non-null while the selector is open in "replace" mode
 
   const isDirty = JSON.stringify(state) !== JSON.stringify(session);
 
@@ -104,8 +131,13 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
   };
 
   const handleSelectExercise = (name) => {
-    dispatch({ type: 'ADD_EXERCISE', name });
-    setShowExSelector(false);
+    if (swappingExId) {
+      dispatch({ type: 'SWAP_EXERCISE', exId: swappingExId, newName: name });
+      setSwappingExId(null);
+    } else {
+      dispatch({ type: 'ADD_EXERCISE', name });
+      setShowExSelector(false);
+    }
   };
 
   return (
@@ -136,12 +168,21 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
             <div key={ex.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2.5 bg-slate-800 border-b border-slate-700/60">
                 <span className="font-bold text-white text-sm">{ex.name}</span>
-                <button
-                  onClick={() => dispatch({ type: 'REMOVE_EXERCISE', exId: ex.id })}
-                  className="p-1 text-slate-600 hover:text-red-400 transition"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setSwappingExId(ex.id)}
+                    title="Cambiar ejercicio"
+                    className="p-1 text-slate-600 hover:text-accent-400 transition"
+                  >
+                    <Repeat size={14} />
+                  </button>
+                  <button
+                    onClick={() => dispatch({ type: 'REMOVE_EXERCISE', exId: ex.id })}
+                    className="p-1 text-slate-600 hover:text-red-400 transition"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-3 space-y-2">
@@ -221,9 +262,9 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
       </div>
     </Modal>
 
-      {showExSelector && (
+      {(showExSelector || swappingExId) && (
         <ExerciseSelectorModal
-          onClose={() => setShowExSelector(false)}
+          onClose={() => { setShowExSelector(false); setSwappingExId(null); }}
           onSelect={handleSelectExercise}
           customExercises={customExercises}
           addCustomExercise={addCustomExercise}
