@@ -3,6 +3,7 @@ import { MoreHorizontal, Trash2, Edit3, Eye, Share2, Copy, Download, X } from 'l
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { formatSessionAsText, downloadSessionAsJSON, shareSessionNative } from '../../utils/sessionShare';
 import { formatWeight, formatReps, formatRpe } from '../../utils/formatters';
+import Modal from '../ui/Modal';
 
 function relativeDate(isoString) {
   if (!isoString) return '—';
@@ -122,27 +123,25 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
         </div>
       </div>
 
-      {shareOpen && (
-        <div className="fixed inset-0 z-[210] bg-black/60 flex items-end justify-center p-4 animate-fade-in" onClick={() => setShareOpen(false)}>
-          <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 shadow-2xl p-4 space-y-2 animate-fade-in" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-bold text-white text-sm">Compartir sesión</span>
-              <button onClick={() => setShareOpen(false)} className="p-1 text-slate-500 hover:text-white"><X size={16} /></button>
-            </div>
-            <button onClick={handleCopy} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
-              <Copy size={16} className="text-slate-400" /> {copied ? '✓ Copiado!' : 'Copiar como texto'}
-            </button>
-            {navigator.share && (
-              <button onClick={handleNativeShare} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
-                <Share2 size={16} className="text-slate-400" /> Compartir…
-              </button>
-            )}
-            <button onClick={() => { downloadSessionAsJSON(session); setShareOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
-              <Download size={16} className="text-slate-400" /> Descargar JSON
-            </button>
+      <Modal isOpen={shareOpen} onClose={() => setShareOpen(false)} size="sm" align="bottom">
+        <div className="bg-slate-900 w-full rounded-2xl border border-slate-700 shadow-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-bold text-white text-sm">Compartir sesión</span>
+            <button onClick={() => setShareOpen(false)} className="p-1 text-slate-500 hover:text-white"><X size={16} /></button>
           </div>
+          <button onClick={handleCopy} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
+            <Copy size={16} className="text-slate-400" /> {copied ? '✓ Copiado!' : 'Copiar como texto'}
+          </button>
+          {navigator.share && (
+            <button onClick={handleNativeShare} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
+              <Share2 size={16} className="text-slate-400" /> Compartir…
+            </button>
+          )}
+          <button onClick={() => { downloadSessionAsJSON(session); setShareOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-white font-medium transition">
+            <Download size={16} className="text-slate-400" /> Descargar JSON
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
