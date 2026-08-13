@@ -12,9 +12,9 @@ export const BlockReportModal = ({ block, onClose }) => {
   useEffect(() => {
     if (!block) return;
     setLoading(true);
-    db.history.toArray()
-      .then(allHistory => {
-        setEditedText(generateBlockReport(block, allHistory));
+    Promise.all([db.history.toArray(), db.blocks.toArray()])
+      .then(([allHistory, allBlocks]) => {
+        setEditedText(generateBlockReport(block, allHistory, allBlocks));
         setLoading(false);
       })
       .catch(() => {
