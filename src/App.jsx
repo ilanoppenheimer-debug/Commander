@@ -31,6 +31,7 @@ import StrengthCalculator from "./components/StrengthCalculator";
 import { BlocksTab } from "./components/blocks/BlocksTab";
 import { getActiveBlocks } from "./db/blocks";
 import { getExerciseMeta } from "./constants/exerciseMetadata";
+import { BlockReportModal } from "./components/blocks/BlockReportModal";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
 import DataBackupTab from "./components/DataBackupTab";
@@ -442,6 +443,7 @@ function AppMain() {
   const [globalIncrementOverrides, setGlobalIncrementOverrides] = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
   const [showCoachContext,      setShowCoachContext]      = useState(false);
+  const [reportBlock,           setReportBlock]           = useState(null);
   const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
   const [showCleanup,           setShowCleanup]           = useState(false);
   const [pendingDurationSave,   setPendingDurationSave]   = useState(null);
@@ -931,7 +933,10 @@ function AppMain() {
         {!isTraining && activeTab === 'routines' && (
           <div className="space-y-5 animate-fade-in">
 
-            {/* Bloque activo — compacto, solo si existe. Sin tarjeta si no hay bloque. */}
+            {/* Bloque activo — compacto, solo si existe. Sin tarjeta si no hay bloque.
+                Dos líneas a propósito: el conteo de sesiones (el dato más mirado) va en
+                su propia línea, sin truncate, para que un nombre de bloque largo no se
+                lo coma. Tocable → abre el mismo reporte de bloque de la pestaña Bloques. */}
             {safeActiveBlocks.length > 0 && (
               <div className="space-y-1.5">
                 {safeActiveBlocks.map(block => {
@@ -943,15 +948,21 @@ function AppMain() {
                   const paramsStr = (p.repsRange && p.rpeRange)
                     ? `${p.repsRange[0]}-${p.repsRange[1]} reps @ RPE ${p.rpeRange[0]}-${p.rpeRange[1]}`
                     : null;
-                  const parts = [faseStr, `sesión ${loggedCount}`, paramsStr].filter(Boolean);
+                  const sessionStr = `Sesión ${loggedCount}${block.sessionsTarget ? `/${block.sessionsTarget}` : ''}`;
+                  const parts = [sessionStr, faseStr, paramsStr].filter(Boolean);
                   return (
-                    <div key={block.id} className="flex items-center gap-2 bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2.5">
-                      <BlockColorDot color={block.color} size={9} />
-                      <div className="text-xs text-slate-400 truncate">
-                        <span className="font-bold text-white">{block.name}</span>
-                        {parts.length > 0 && <span> · {parts.join(' · ')}</span>}
+                    <button
+                      key={block.id}
+                      onClick={() => setReportBlock(block)}
+                      className="w-full flex items-center gap-2 bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2.5 hover:bg-slate-900/70 active:scale-[0.99] transition text-left"
+                    >
+                      <BlockColorDot color={block.color} size={9} className="shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">{block.name}</div>
+                        <div className="text-[11px] text-slate-400">{parts.join(' · ')}</div>
                       </div>
-                    </div>
+                      <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                    </button>
                   );
                 })}
               </div>
@@ -1509,6 +1520,10 @@ function AppMain() {
 
       {showCoachContext && (
         <CoachContextModal onClose={() => setShowCoachContext(false)} />
+      )}
+
+      {reportBlock && (
+        <BlockReportModal block={reportBlock} onClose={() => setReportBlock(null)} />
       )}
 
       {showCleanup && (
