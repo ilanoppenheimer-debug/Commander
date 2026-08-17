@@ -1,11 +1,20 @@
 import { useState, useCallback } from 'react';
-import { X, AlertTriangle, Check, ChevronDown, ChevronRight, Loader2, Play, Save, FileText, Layers } from 'lucide-react';
+import { X, AlertTriangle, Info, Check, ChevronDown, ChevronRight, Loader2, Play, Save, FileText, Layers } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { parseRoutineMarkdown } from '../../utils/routineImport/parser';
 import { matchRoutineExercises } from '../../utils/routineImport/exerciseMatching';
-import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport, syncExerciseMetadataFromImport } from '../../utils/routineImport/converter';
+import { convertImportedToRoutine, findExistingTemplate, createExerciseFromImport, syncExerciseMetadataFromImport, detectMeasurementSignals } from '../../utils/routineImport/converter';
+import { setMeasurement } from '../../constants/exerciseMetadata';
+import { TagPicker } from '../blocks/TagPicker';
 import { getAllBlocks, getSessionCountsByBlock, upsertBlockFromCoach } from '../../db/blocks';
 import { db } from '../../db/database';
+
+const MEASUREMENT_OPTIONS = ['reps', 'time'];
+const MEASUREMENT_LABELS = { reps: 'Reps', time: 'Tiempo' };
+const MEASUREMENT_DESCRIPTIONS = {
+  reps: 'Se cuentan repeticiones',
+  time: 'Se cronometra la duración del set',
+};
 
 // ── Steps: paste → preview → success ─────────────────────────────────────────
 
@@ -24,10 +33,14 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
   const [existingBlock,    setExistingBlock]    = useState(null);
   const [existingBlockSessionCount, setExistingBlockSessionCount] = useState(0);
   const [blockImportResult,setBlockImportResult]= useState(null);
+  const [measurementNotices,   setMeasurementNotices]   = useState([]); // [{exerciseName, type: 'auto'|'conflict', measurementDetected, currentMeasurement?, rawSample}]
+  const [measurementOverrides, setMeasurementOverrides] = useState({}); // exerciseName → 'reps' | 'time', athlete's picker choice
+  const [measurementPickerFor, setMeasurementPickerFor] = useState(null); // exerciseName whose TagPicker is open, or null
 
   const handleParse = useCallback(async () => {
     if (!text.trim()) return;
     setProcessing(true);
+    setMeasurementOverrides({}); // fresh parse (or a re-parse after "← Editar texto") starts clean
     try {
       const result = parseRoutineMarkdown(text);
       if (!result.success) {
@@ -36,6 +49,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         return;
       }
       const parseWarnings = [...(result.warnings || [])];
+      setMeasurementNotices(detectMeasurementSignals(result.routine.exercises));
 
       const { mappings: m } = await matchRoutineExercises(result.routine);
       setMappings(m);
@@ -103,6 +117,18 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
         syncExerciseMetadataFromImport(ex);
       }
 
+      // Apply measurement resolutions — the athlete's "Cambiar" pick wins if present;
+      // otherwise an 'auto' notice applies its detected default. A 'conflict' notice
+      // with no override is left untouched on purpose (no autoconfigure on conflict).
+      for (const notice of measurementNotices) {
+        const resolved = measurementOverrides[notice.exerciseName];
+        if (resolved) {
+          setMeasurement(notice.exerciseName, resolved);
+        } else if (notice.type === 'auto') {
+          setMeasurement(notice.exerciseName, notice.measurementDetected);
+        }
+      }
+
       const routineToSave = saveMode === 'replace' && existing
         ? { ...parsed, _replaceTargetId: existing.id }
         : parsed;
@@ -128,7 +154,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
     } finally {
       setProcessing(false);
     }
-  }, [parsed, mappings, overrides, saveMode, existing, onSaved]);
+  }, [parsed, mappings, overrides, saveMode, existing, onSaved, measurementNotices, measurementOverrides]);
 
   const handleStartNow = useCallback(async () => {
     if (!parsed) return;
@@ -144,6 +170,14 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
       for (const ex of parsed.exercises) {
         syncExerciseMetadataFromImport(ex);
       }
+      for (const notice of measurementNotices) {
+        const resolved = measurementOverrides[notice.exerciseName];
+        if (resolved) {
+          setMeasurement(notice.exerciseName, resolved);
+        } else if (notice.type === 'auto') {
+          setMeasurement(notice.exerciseName, notice.measurementDetected);
+        }
+      }
       const routine = await convertImportedToRoutine(parsed, mappings, overrides, 'temporary');
 
       // Block import — non-blocking: session start takes priority if it fails
@@ -158,7 +192,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
     } finally {
       setProcessing(false);
     }
-  }, [parsed, mappings, overrides, onStartSession, onClose]);
+  }, [parsed, mappings, overrides, onStartSession, onClose, measurementNotices, measurementOverrides]);
 
   return (
     <Modal isOpen onClose={onClose} size="lg" align="center">
@@ -199,6 +233,11 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
               existingBlockSessionCount={existingBlockSessionCount}
               expandedEx={expandedEx}
               setExpandedEx={setExpandedEx}
+              measurementNotices={measurementNotices}
+              measurementOverrides={measurementOverrides}
+              setMeasurementOverrides={setMeasurementOverrides}
+              measurementPickerFor={measurementPickerFor}
+              setMeasurementPickerFor={setMeasurementPickerFor}
               onBack={() => setStep('paste')}
               onImport={handleImport}
               onStartNow={handleStartNow}
@@ -261,7 +300,12 @@ function StepPaste({ text, setText, onParse, processing, warnings }) {
 
 // ── Step: Preview ─────────────────────────────────────────────────────────────
 
-function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode, existingBlock, existingBlockSessionCount, expandedEx, setExpandedEx, onBack, onImport, onStartNow, processing }) {
+function StepPreview({
+  parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode,
+  existingBlock, existingBlockSessionCount, expandedEx, setExpandedEx,
+  measurementNotices, measurementOverrides, setMeasurementOverrides, measurementPickerFor, setMeasurementPickerFor,
+  onBack, onImport, onStartNow, processing,
+}) {
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
 
   const matchBadge = (exName) => {
@@ -350,6 +394,52 @@ function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, exis
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Measurement notices/conflicts — separate channel from `warnings` (plain
+          strings): each entry here is structured ({exerciseName, type, ...}) and
+          carries its own "Cambiar" action, so it can't be flattened into that array
+          without losing the ability to act on it before import. */}
+      {measurementNotices.length > 0 && (
+        <div className="space-y-2">
+          {measurementNotices.map(notice => {
+            const isConflict = notice.type === 'conflict';
+            const resolved = measurementOverrides[notice.exerciseName];
+            const detectedLabel = MEASUREMENT_LABELS[notice.measurementDetected];
+            const currentLabel = notice.currentMeasurement ? MEASUREMENT_LABELS[notice.currentMeasurement] : null;
+            return (
+              <div
+                key={notice.exerciseName}
+                className={`rounded-xl p-3 space-y-1.5 border ${
+                  isConflict ? 'bg-amber-900/20 border-amber-500/30' : 'bg-sky-900/20 border-sky-500/30'
+                }`}
+              >
+                <div className={`text-xs font-bold flex items-center gap-1.5 ${isConflict ? 'text-amber-300' : 'text-sky-300'}`}>
+                  {isConflict ? <AlertTriangle size={12} /> : <Info size={12} />}
+                  {notice.exerciseName}
+                </div>
+                <div className={`text-[11px] ${isConflict ? 'text-amber-200' : 'text-sky-200'}`}>
+                  {isConflict
+                    ? `Ya configurado como "${currentLabel}", pero esta rutina trae "${notice.rawSample}" (${detectedLabel}). No se autoconfigura — elegí abajo.`
+                    : `Detectamos "${notice.rawSample}" — se va a configurar como medición por ${detectedLabel}.`}
+                </div>
+                {resolved && (
+                  <div className="text-[11px] font-bold text-emerald-300">
+                    → Se va a guardar: {MEASUREMENT_LABELS[resolved]}
+                  </div>
+                )}
+                <button
+                  onClick={() => setMeasurementPickerFor(notice.exerciseName)}
+                  className={`text-[10px] font-bold underline decoration-dotted underline-offset-2 ${
+                    isConflict ? 'text-amber-300 hover:text-amber-200' : 'text-sky-300 hover:text-sky-200'
+                  }`}
+                >
+                  Cambiar
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -496,6 +586,25 @@ function StepPreview({ parsed, warnings, mappings, overrides, setOverrides, exis
           ← Editar texto
         </button>
       </div>
+
+      {measurementPickerFor && (
+        <TagPicker
+          value={
+            measurementOverrides[measurementPickerFor]
+            || measurementNotices.find(n => n.exerciseName === measurementPickerFor)?.measurementDetected
+            || 'reps'
+          }
+          onChange={(v) => {
+            setMeasurementOverrides(prev => ({ ...prev, [measurementPickerFor]: v }));
+            setMeasurementPickerFor(null);
+          }}
+          onClose={() => setMeasurementPickerFor(null)}
+          options={MEASUREMENT_OPTIONS}
+          labels={MEASUREMENT_LABELS}
+          descriptions={MEASUREMENT_DESCRIPTIONS}
+          title="Medición"
+        />
+      )}
     </div>
   );
 }

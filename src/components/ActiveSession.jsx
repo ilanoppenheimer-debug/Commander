@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
+import { TimedSetRow } from "./session/TimedSetRow";
 import { NoteModal } from "./session/NoteModal";
 import { SessionTimer } from "./session/SessionTimer";
 import { BlockBanner } from "./blocks/BlockBanner";
@@ -33,7 +34,7 @@ import {
   calculateBackoffSuggestion,
   findTopSetInExercise,
 } from "../utils/blocksMath";
-import { getExerciseMeta, saveExerciseMeta } from "../constants/exerciseMetadata";
+import { getExerciseMeta, saveExerciseMeta, getMeasurement, getCompanion } from "../constants/exerciseMetadata";
 import { TAG_LABELS } from "../constants/blockTemplates";
 
 import InputGroup from "./ui/InputGroup";
@@ -442,11 +443,11 @@ export default function ActiveSession({
     const ex = exercises.find(e => e.id === exId);
     const safeSets = Array.isArray(ex?.sets) ? ex.sets : [];
     const lastSet = safeSets.length > 0 ? safeSets[safeSets.length - 1] : null;
-    storeAddSet(exId, {
-      weight: '', reps: '', rpe: '',
-      type: lastSet?.type || 'normal',
-      completed: false,
-    });
+    const isTimed = getMeasurement(ex?.name) === 'time';
+    storeAddSet(exId, isTimed
+      ? { seconds: '', companionValue: '', type: lastSet?.type || 'normal', completed: false }
+      : { weight: '', reps: '', rpe: '', type: lastSet?.type || 'normal', completed: false }
+    );
   };
 
   const isLastInSupersetGroup = useCallback((exercise, allExercises) => {
@@ -490,6 +491,29 @@ export default function ActiveSession({
       }
     }
   }, [storeToggleCompleted, storeUpdateSet, isLastInSupersetGroup, exercises]);
+
+  // Timed-set counterpart of handleCompleteSet — same completion + rest-timer trigger,
+  // but skips the placeholder-commit block above: that block is hardcoded to
+  // ['weight', 'reps', 'rpe'] (the historical-top-set placeholder system), which doesn't
+  // apply to a timed set's own seconds/companionValue fields. TimedSetRow confirms its
+  // own timer placeholder internally before ever calling onUpdateField, so by the time
+  // this fires there's nothing left to commit.
+  const handleCompleteTimedSet = useCallback((ex, setIdx) => {
+    const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
+    const wasCompleted = safeSets[setIdx]?.completed;
+
+    storeToggleCompleted(ex.id, setIdx);
+
+    if (!wasCompleted) {
+      if (navigator.vibrate) navigator.vibrate(50);
+      if (isLastInSupersetGroup(ex, exercises)) {
+        const restSecs = ex.restSeconds ?? 90;
+        window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
+          detail: { seconds: restSecs, exerciseName: ex.name }
+        }));
+      }
+    }
+  }, [storeToggleCompleted, isLastInSupersetGroup, exercises]);
 
   if (!session) return null;
 
@@ -842,6 +866,23 @@ export default function ActiveSession({
                 <div className="pt-1">
                   {safeSets.map((s, i) => {
                     if (!s) return null;
+                    const isTimed = getMeasurement(ex.name) === 'time';
+                    if (isTimed) {
+                      return (
+                        <TimedSetRow
+                          key={i}
+                          set={s}
+                          setIndex={i + 1}
+                          exerciseId={ex.id}
+                          companion={getCompanion(ex.name)}
+                          onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
+                          onUpdateField={(field, value) => storeUpdateSet(ex.id, i, field, value)}
+                          onCycleType={() => storeCycleType(ex.id, i)}
+                          onDelete={() => storeRemoveSet(ex.id, i)}
+                          onSaveNote={(text) => storeUpdateSet(ex.id, i, 'notes', text)}
+                        />
+                      );
+                    }
                     return (
                       <SetRow
                         key={i}

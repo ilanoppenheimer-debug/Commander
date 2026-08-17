@@ -41,6 +41,11 @@ import { TAG_OPTIONS } from '../../constants/blockTemplates';
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
 
+// Narrow shape guard for the "reps no parseable" branch below — deliberately stricter
+// than parseRestSeconds' bare-number fallback (which would wrongly accept a plain
+// number here). Only a value with an explicit s/seg/sec/min unit counts as duration-shaped.
+const TIME_SHAPE_PATTERN = /^\d+\s*(s|seg|sec|min)\b/i;
+
 // ── Block YAML helpers ────────────────────────────────────────────────────────
 
 const parseInlineArray = (str) => {
@@ -403,6 +408,16 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
       notesParts.push(`Reps planeadas: ${repsTrimmed}`);
     } else {
       warnings.push(`Reps no parseables: "${reps}"`);
+      // Preserve the raw value only when it's duration-shaped ("25s", "10min") — the
+      // warning text carries no exercise reference, but parseExerciseBlock already
+      // attaches this returned set to the right ex.name/ex.sets, so stashing it here
+      // (instead of trying to correlate it back out of `warnings` later) is the only
+      // non-fragile path. `_` marks it parser-internal: convertImportedToRoutine builds
+      // the persisted set from an explicit field whitelist, so this never leaks into
+      // saved data on its own.
+      if (TIME_SHAPE_PATTERN.test(repsTrimmed)) {
+        set._rawReps = repsTrimmed;
+      }
     }
   }
 

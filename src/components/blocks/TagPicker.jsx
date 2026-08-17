@@ -3,7 +3,13 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { TAG_OPTIONS, TAG_LABELS, TAG_DESCRIPTIONS } from '../../constants/blockTemplates';
 
-export const TagPicker = ({ value, onChange, onClose }) => {
+export const TagPicker = ({
+  value, onChange, onClose,
+  // Defaults are the exact values this component always used — callers that don't pass
+  // these (every existing call site) get byte-identical behavior to before this change.
+  options = TAG_OPTIONS, labels = TAG_LABELS, descriptions = TAG_DESCRIPTIONS,
+  title = 'Tipo de ejercicio',
+}) => {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     document.addEventListener('keydown', onKey);
@@ -35,7 +41,7 @@ export const TagPicker = ({ value, onChange, onClose }) => {
         {/* Header */}
         <div className="px-4 pb-3 flex items-center justify-between shrink-0 border-b border-slate-800">
           <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
-            Tipo de ejercicio
+            {title}
           </h3>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white">
             <X size={18} />
@@ -44,21 +50,21 @@ export const TagPicker = ({ value, onChange, onClose }) => {
 
         {/* Options */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 min-h-0">
-          {TAG_OPTIONS.map(tag => {
-            const isSelected = value === tag;
+          {options.map(opt => {
+            const isSelected = value === opt;
             return (
               <button
-                key={tag}
-                onClick={() => { onChange(tag); onClose?.(); }}
+                key={opt}
+                onClick={() => { onChange(opt); onClose?.(); }}
                 className={`w-full px-3 py-3 text-left rounded-xl transition-colors active:scale-[0.98] ${
                   isSelected
                     ? 'bg-accent-500/20 text-accent-300 border border-accent-500/40'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                 }`}
               >
-                <div className="text-sm font-bold">{TAG_LABELS[tag]}</div>
+                <div className="text-sm font-bold">{labels[opt]}</div>
                 <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
-                  {TAG_DESCRIPTIONS[tag]}
+                  {descriptions[opt]}
                 </div>
               </button>
             );
