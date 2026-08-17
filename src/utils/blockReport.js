@@ -1,4 +1,4 @@
-import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
 import { formatSetSummary, formatVolume } from './formatters';
 import { getSessionTypeBreakdown } from './routineImport/contextGenerator';
 
@@ -40,8 +40,17 @@ const bestSetForExercise = (name, sessions) => {
         if (!hasData(set) || !isWorkSet(set)) continue;
         const w = parseFloat(set.weight) || 0;
         const r = parseInt(set.reps, 10) || 0;
-        if (r <= 0) continue;
-        const score = setScore(w, r);
+        const secs = parseInt(set.seconds, 10) || 0;
+        // No reps AND no time — nothing to rank (e.g. completed:true with everything
+        // else blank). A timed set (r<=0, secs>0) still qualifies here, unlike before.
+        if (r <= 0 && secs <= 0) continue;
+        // Timed sets don't share a scale with the loaded/bodyweight score below — rank
+        // by raw seconds instead. An exercise is either reps- or time-measured per its
+        // exerciseMetadata, so in practice these two branches don't compete against
+        // each other for the same exercise name; a transitional mixed-history exercise
+        // (reconfigured mid-stream) is the one case where this comparison is not
+        // apples-to-apples — accepted, not solved here.
+        const score = r > 0 ? setScore(w, r) : secs;
         if (score > bestScoreVal) { bestScoreVal = score; best = set; bestDate = (s.completedAt || '').slice(0, 10); }
       }
     }
@@ -164,6 +173,7 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
 
   for (const name of exerciseNames) {
     const best = bestSetForExercise(name, blockSessions);
+    const companion = getCompanion(name);
 
     let exSets = 0, exVolume = 0;
     blockSessions.forEach(s => {
@@ -186,10 +196,10 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
     lines.push(`## ${name}`);
 
     if (best) {
-      let bestLine = `  Mejor set: ${formatSetSummary(best.set)} (${best.date})`;
+      let bestLine = `  Mejor set: ${formatSetSummary(best.set, 'kg', companion)} (${best.date})`;
       const prevBest = previousBlock ? bestSetForExercise(name, previousSessions) : null;
       if (prevBest) {
-        bestLine += ` [bloque anterior: ${formatSetSummary(prevBest.set)}, ${prevBest.date}]`;
+        bestLine += ` [bloque anterior: ${formatSetSummary(prevBest.set, 'kg', companion)}, ${prevBest.date}]`;
       }
       lines.push(bestLine);
     }

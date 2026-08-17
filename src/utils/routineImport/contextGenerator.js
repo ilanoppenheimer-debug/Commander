@@ -1,6 +1,19 @@
 import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
+import { getCompanion } from '../../constants/exerciseMetadata';
+
+// The "how big was this set" axis for topSet selection below — weight for loaded/
+// bodyweight sets, seconds for time-measured sets (which never carry a real weight).
+// A single exercise is one measurement type per its exerciseMetadata, so in practice
+// this never has to compare weight against seconds within the same exercise's sets —
+// same accepted caveat as blockReport.js's bestSetForExercise for a mid-stream
+// reconfigured exercise.
+const bestAxisValue = (s) => {
+  const w = parseFloat(s?.weight) || 0;
+  if (w > 0) return w;
+  return parseFloat(s?.seconds) || 0;
+};
 
 const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const formatShortDate = (iso) => {
@@ -101,11 +114,11 @@ export const generateCoachContext = async () => {
 
       for (const ex of exes.slice(0, 6)) {
         if (!ex?.name || !Array.isArray(ex.sets)) continue;
-        const completed = ex.sets.filter(s => s?.completed && parseFloat(s?.weight) > 0);
+        const completed = ex.sets.filter(s => s?.completed && bestAxisValue(s) > 0);
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
-          (parseFloat(s.weight) || 0) > (parseFloat(best.weight) || 0) ? s : best, completed[0]);
-        lines.push(`  - ${ex.name}: ${formatSetSummary(topSet)}`);
+          bestAxisValue(s) > bestAxisValue(best) ? s : best, completed[0]);
+        lines.push(`  - ${ex.name}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
       }
       lines.push('');
     }
@@ -123,23 +136,30 @@ export const generateCoachContext = async () => {
         for (const ex of (Array.isArray(session.exercises) ? session.exercises : [])) {
           if (!ex?.name) continue;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
-            const w = parseFloat(s?.weight);
-            if (!w || w <= 0) continue;
-            if (!topByEx[ex.name] || w > topByEx[ex.name].weight) {
-              topByEx[ex.name] = { weight: w, reps: s.reps, rpe: s.rpe, date: (session.completedAt || '').slice(0, 10) };
+            const value = bestAxisValue(s);
+            if (value <= 0) continue;
+            if (!topByEx[ex.name] || value > topByEx[ex.name].value) {
+              topByEx[ex.name] = {
+                value, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
+                date: (session.completedAt || '').slice(0, 10),
+              };
             }
           }
         }
       }
 
+      // Cross-exercise, ranked by raw magnitude on whichever axis each entry used —
+      // same simplification the weight-only version already had (a 140kg squat and a
+      // 12kg curl were never on a comparable scale either); a seconds value now sits
+      // in that same list on equal footing, not normalized against loaded work.
       const entries = Object.entries(topByEx)
-        .sort((a, b) => b[1].weight - a[1].weight)
+        .sort((a, b) => b[1].value - a[1].value)
         .slice(0, 10);
 
       if (entries.length > 0) {
         lines.push('## Top sets recientes (últimas 4 semanas)');
         for (const [name, s] of entries) {
-          lines.push(`  - ${name}: ${formatSetSummary(s)}${s.date ? ` (${s.date})` : ''}`);
+          lines.push(`  - ${name}: ${formatSetSummary(s, 'kg', getCompanion(name))}${s.date ? ` (${s.date})` : ''}`);
         }
         lines.push('');
       }
