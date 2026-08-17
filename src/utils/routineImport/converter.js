@@ -1,6 +1,6 @@
 import { saveRoutine } from '../../db/repository';
 import { db } from '../../db/database';
-import { saveExerciseMeta, getExerciseMeta } from '../../constants/exerciseMetadata';
+import { saveExerciseMeta, getExerciseMeta, getMeasurement } from '../../constants/exerciseMetadata';
 
 /**
  * Converts a parsed routine + name resolutions into an app-storable routine.
@@ -123,6 +123,66 @@ export const createExerciseFromImport = async (importedEx) => {
   } catch { /* might already exist */ }
 
   return name;
+};
+
+const isRealNumericReps = (v) => /^\d+$/.test(String(v || '').trim());
+
+/**
+ * Detects a mismatch (or a first-time-configurable case) between an exercise's already
+ * -configured measurement and what this import's sets actually contain. Pure — reads
+ * exerciseMetadata via getMeasurement, never writes it. The wizard shows these notices
+ * and lets the athlete confirm or correct (via TagPicker) before anything is applied in
+ * handleImport/handleStartNow — detecting and applying are deliberately separate steps.
+ *
+ * - measurement undefined + a set carries parser.js's `_rawReps` (a duration-shaped
+ *   value like "25s" that failed to parse as reps) -> type 'auto', detected 'time'.
+ * - measurement already 'time', but a set parsed a real numeric reps value (parsing
+ *   succeeded, no `_rawReps` involved) -> type 'conflict', detected 'reps'.
+ * - measurement already 'reps', but a set carries `_rawReps` -> type 'conflict'
+ *   (inverse direction), detected 'time'.
+ * Anything else (measurement 'reps' + normal numeric reps, or no signal at all) — no
+ * notice, today's behavior is untouched.
+ */
+export const detectMeasurementSignals = (parsedExercises) => {
+  if (!Array.isArray(parsedExercises)) return [];
+  const notices = [];
+
+  for (const ex of parsedExercises) {
+    const name = ex?.name;
+    if (!name) continue;
+    const sets = Array.isArray(ex.sets) ? ex.sets : [];
+
+    const rawRepsSet = sets.find(s => s?._rawReps);
+    const numericRepsSet = sets.find(s => isRealNumericReps(s?.reps));
+    const current = getMeasurement(name);
+
+    if (current == null && rawRepsSet) {
+      notices.push({
+        exerciseName: name,
+        type: 'auto',
+        measurementDetected: 'time',
+        rawSample: rawRepsSet._rawReps,
+      });
+    } else if (current === 'time' && numericRepsSet) {
+      notices.push({
+        exerciseName: name,
+        type: 'conflict',
+        measurementDetected: 'reps',
+        currentMeasurement: 'time',
+        rawSample: numericRepsSet.reps,
+      });
+    } else if (current === 'reps' && rawRepsSet) {
+      notices.push({
+        exerciseName: name,
+        type: 'conflict',
+        measurementDetected: 'time',
+        currentMeasurement: 'reps',
+        rawSample: rawRepsSet._rawReps,
+      });
+    }
+  }
+
+  return notices;
 };
 
 /**

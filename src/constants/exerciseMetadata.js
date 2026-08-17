@@ -113,6 +113,29 @@ export function hasAnyTracked1RMSelection() {
   return Object.values(all).some(m => typeof m?.tracked1RM === 'boolean');
 }
 
+// Measurement type — tri-state: undefined (never configured — every exercise logged
+// before this field existed, and any new one until someone touches it), 'reps' (explicit),
+// or 'time' (isometric holds, cardio duration, etc). Absent must stay distinguishable from
+// 'reps' so callers can fall back to today's default behavior (assume reps) without a
+// migration ever having to backfill 'reps' onto existing data.
+export function setMeasurement(name, value) {
+  saveExerciseMeta(name, { measurement: value });
+}
+
+export function getMeasurement(name) {
+  return getExerciseMeta(name).measurement; // undefined | 'reps' | 'time'
+}
+
+// Companion metric — only meaningful when measurement === 'time'. Tri-state: undefined
+// (not configured), 'difficulty' (perceived effort) or 'hr' (heart rate).
+export function setCompanion(name, value) {
+  saveExerciseMeta(name, { companion: value });
+}
+
+export function getCompanion(name) {
+  return getExerciseMeta(name).companion; // undefined | 'difficulty' | 'hr'
+}
+
 // Sort criterion for the "Mis 1RM" list — a display setting, not per-exercise data, so
 // it lives under its own key rather than inside the per-name metadata object.
 const SORT_1RM_KEY = 'ironCmdrExMeta1RMSort';
