@@ -34,7 +34,7 @@ import {
   calculateBackoffSuggestion,
   findTopSetInExercise,
 } from "../utils/blocksMath";
-import { getExerciseMeta, saveExerciseMeta, getMeasurement, getCompanion } from "../constants/exerciseMetadata";
+import { getExerciseMeta, saveExerciseMeta, getMeasurement, getCompanion, setMeasurement, setCompanion } from "../constants/exerciseMetadata";
 import { TAG_LABELS } from "../constants/blockTemplates";
 
 import InputGroup from "./ui/InputGroup";
@@ -53,6 +53,21 @@ import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
 import { db } from "../db/database";
+
+// Same small local const pattern TimedSetRow.jsx already uses for its own TAG_*
+// duplication — kept local rather than a new shared module for two three-entry maps.
+const MEASUREMENT_OPTIONS = ['reps', 'time'];
+const MEASUREMENT_LABELS = { reps: 'Reps', time: 'Tiempo' };
+const MEASUREMENT_DESCRIPTIONS = {
+  reps: 'Se cuentan repeticiones',
+  time: 'Se cronometra la duración del set',
+};
+const COMPANION_OPTIONS = ['difficulty', 'hr'];
+const COMPANION_LABELS = { difficulty: 'Dificultad', hr: 'Frecuencia cardíaca' };
+const COMPANION_DESCRIPTIONS = {
+  difficulty: 'Semáforo de 3 niveles',
+  hr: 'Pulsaciones por minuto',
+};
 
 // Pure function — derives an exercise with placeholder fields computed from history + blocks.
 // Never writes to the Zustand store. Returns same reference if nothing changed.
@@ -286,6 +301,8 @@ export default function ActiveSession({
   const [blocksRefresh,  setBlocksRefresh]  = useState(0);
   const { blocks: activeBlocks, sessionCounts: blockSessionCounts } = useActiveBlocks(blocksRefresh);
   const [tagPickerExId,       setTagPickerExId]       = useState(null);
+  const [measurementPickerExId, setMeasurementPickerExId] = useState(null);
+  const [companionPickerExId,   setCompanionPickerExId]   = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
   const [exerciseNoteFor,     setExerciseNoteFor]     = useState(null);
 
@@ -801,6 +818,61 @@ export default function ActiveSession({
                                       setBlocksRefresh(r => r + 1);
                                     }}
                                     onClose={() => setTagPickerExId(null)}
+                                  />
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Measurement button — reps/time, and companion once time is chosen.
+                            Manual-entry counterpart of the wizard's auto-detect notices: an
+                            exercise added by hand in a free session has no _rawReps signal to
+                            detect from, so this is the only path to configure it there. */}
+                        <div className="relative">
+                          {(() => {
+                            const measurement = getMeasurement(ex.name);
+                            return (
+                              <>
+                                <button
+                                  onClick={() => setMeasurementPickerExId(measurementPickerExId === ex.id ? null : ex.id)}
+                                  className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-slate-700/50 hover:border-slate-600 transition"
+                                >
+                                  <span className={!measurement ? 'text-slate-600 italic' : 'text-slate-500'}>
+                                    {measurement ? MEASUREMENT_LABELS[measurement] : 'medición?'}
+                                  </span>
+                                </button>
+                                {measurementPickerExId === ex.id && (
+                                  <TagPicker
+                                    value={measurement || 'reps'}
+                                    onChange={(newMeasurement) => {
+                                      setMeasurement(ex.name, newMeasurement);
+                                      setMeasurementPickerExId(null);
+                                      if (newMeasurement === 'time') {
+                                        setCompanionPickerExId(ex.id);
+                                      }
+                                      setBlocksRefresh(r => r + 1);
+                                    }}
+                                    onClose={() => setMeasurementPickerExId(null)}
+                                    options={MEASUREMENT_OPTIONS}
+                                    labels={MEASUREMENT_LABELS}
+                                    descriptions={MEASUREMENT_DESCRIPTIONS}
+                                    title="Medición"
+                                  />
+                                )}
+                                {companionPickerExId === ex.id && (
+                                  <TagPicker
+                                    value={getCompanion(ex.name) || 'difficulty'}
+                                    onChange={(newCompanion) => {
+                                      setCompanion(ex.name, newCompanion);
+                                      setCompanionPickerExId(null);
+                                      setBlocksRefresh(r => r + 1);
+                                    }}
+                                    onClose={() => setCompanionPickerExId(null)}
+                                    options={COMPANION_OPTIONS}
+                                    labels={COMPANION_LABELS}
+                                    descriptions={COMPANION_DESCRIPTIONS}
+                                    title="Compañero"
                                   />
                                 )}
                               </>
