@@ -1,6 +1,6 @@
 import { formatSetSummary, formatVolume } from './formatters';
 import { computeExercise1RM } from './strengthMath';
-import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -136,6 +136,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     const tag = ex.tag || exMeta.defaultTag || null;
     const blockCtx = getBlockContext(tag, blocks, blockSessionCounts);
     const sets = Array.isArray(ex.sets) ? ex.sets : [];
+    const companion = getCompanion(ex.name);
 
     // Collect set lines first — skip the exercise entirely if nothing to print (ITEM 4)
     const setLines = [];
@@ -148,7 +149,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
       const flags = computeFlags(s);
       flags.forEach(f => allFlagsSeen.add(f));
 
-      const summary = formatSetSummary(s);
+      const summary = formatSetSummary(s, 'kg', companion);
       const flagsStr = flags.length > 0 ? `   ⚠️ ${flags.join(', ')}` : '';
       setLines.push(`    ${si + 1}. ${padType(s.type)} ${summary}${flagsStr}`);
 
