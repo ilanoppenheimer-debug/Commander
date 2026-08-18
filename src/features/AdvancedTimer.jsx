@@ -126,6 +126,7 @@ const AdvancedTimer = () => {
       const n = new Notification('Descanso terminado', {
         body: 'Volvé a la siguiente serie',
         icon: '/icon-192.png',
+        requireInteraction: true,
       });
       n.onclick = () => { window.focus(); };
     } catch {}
