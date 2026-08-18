@@ -8,6 +8,8 @@ const TIMER_STORAGE_KEY = 'ironcmdr_active_timer';
 const MARGIN = 16;
 const TIMER_SIZE = 56;
 const BOTTOM_NAV_HEIGHT = 80;
+const ALARM_REPEAT_MS = 10000;
+const ALARM_MAX_REPEATS = 6;
 
 function getCornerPos(corner) {
   const w = window.innerWidth;
@@ -53,6 +55,12 @@ const AdvancedTimer = () => {
   const completedRef      = useRef(false);
   const preAlertFiredRef  = useRef(false);
 
+  // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
+  // "the timer has finished" for the rest of the component regardless of whether the
+  // alarm is still repeating or already silenced.
+  const alarmIntervalRef  = useRef(null);
+  const alarmRepeatsRef   = useRef(0);
+
   // Draggable button ref
   const timerRef     = useRef(null);
   const draggingRef  = useRef(false);
@@ -77,6 +85,52 @@ const AdvancedTimer = () => {
 
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+  // ── Alarm repeat loop ────────────────────────────────────────────────────────
+  // Only started when the timer completes while the tab isn't visible (see the
+  // completion effect below) — playTacticalAlarm() every 10s, up to 6 total plays
+  // (spans the 0-50s mark, well inside the 60s cap) — cut short by real interaction
+  // (handleToggleActive, resetTimer, handleClick) or by returning to foreground.
+
+  const stopAlarmLoop = () => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+    alarmRepeatsRef.current = 0;
+  };
+
+  const startAlarmLoop = () => {
+    alarmRepeatsRef.current = 1;
+    playTacticalAlarm();
+    alarmIntervalRef.current = setInterval(() => {
+      alarmRepeatsRef.current += 1;
+      playTacticalAlarm();
+      if (alarmRepeatsRef.current >= ALARM_MAX_REPEATS) stopAlarmLoop();
+    }, ALARM_REPEAT_MS);
+  };
+
+  // ── Notification permission + firing ────────────────────────────────────────
+  // Requested on start/resume (a real user gesture), never at completion time —
+  // by then it's too late to ask. No-ops silently on unsupported browsers or once
+  // the user has already answered (granted or denied), so it's never re-prompted.
+  const maybeRequestNotificationPermission = () => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  };
+
+  const fireRestNotification = () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try {
+      const n = new Notification('Descanso terminado', {
+        body: 'Volvé a la siguiente serie',
+        icon: '/icon-192.png',
+      });
+      n.onclick = () => { window.focus(); };
+    } catch {}
+  };
+
   // ── Interval — ticks every 250ms while active ──────────────────────────────
 
   useEffect(() => {
@@ -84,6 +138,9 @@ const AdvancedTimer = () => {
     const interval = setInterval(() => setTick(t => t + 1), 250);
     return () => clearInterval(interval);
   }, [isActive]);
+
+  // Safety net — clears a mid-loop alarm interval if the component ever unmounts.
+  useEffect(() => () => stopAlarmLoop(), []);
 
   // ── Completion detection and pre-alert (runs after every tick) ────────────
 
@@ -98,7 +155,14 @@ const AdvancedTimer = () => {
       completedRef.current = true;
       setIsActive(false);
       persistTimerState(null); // clear storage
-      playTacticalAlarm();
+      if (document.visibilityState === 'visible') {
+        // Same single-shot behavior as before this change — the repeat loop and
+        // notification only matter when the athlete isn't looking at the screen.
+        playTacticalAlarm();
+      } else {
+        startAlarmLoop();
+        fireRestNotification();
+      }
     }
   }); // runs on every render; fine since it checks refs before acting
 
@@ -106,7 +170,10 @@ const AdvancedTimer = () => {
 
   useEffect(() => {
     const handler = () => {
-      if (document.visibilityState === 'visible') setTick(t => t + 1);
+      if (document.visibilityState === 'visible') {
+        setTick(t => t + 1);
+        stopAlarmLoop();
+      }
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
@@ -150,6 +217,8 @@ const AdvancedTimer = () => {
   // ── Controls ───────────────────────────────────────────────────────────────
 
   const startOrResume = () => {
+    stopAlarmLoop();
+    maybeRequestNotificationPermission();
     startedAtRef.current = Date.now();
     completedRef.current     = false;
     preAlertFiredRef.current = false;
@@ -174,6 +243,7 @@ const AdvancedTimer = () => {
   };
 
   const resetTimer = () => {
+    stopAlarmLoop();
     startedAtRef.current     = null;
     accumulatedMsRef.current = 0;
     adjustSecsRef.current    = 0;
@@ -185,6 +255,7 @@ const AdvancedTimer = () => {
   };
 
   const handleToggleActive = () => {
+    stopAlarmLoop();
     if (isActive) pause();
     else startOrResume();
   };
@@ -208,6 +279,8 @@ const AdvancedTimer = () => {
   };
 
   const setTimerPreset = (secs) => {
+    stopAlarmLoop();
+    maybeRequestNotificationPermission();
     startedAtRef.current     = Date.now();
     accumulatedMsRef.current = 0;
     adjustSecsRef.current    = 0;
@@ -306,6 +379,7 @@ const AdvancedTimer = () => {
   };
 
   const handleClick = () => {
+    stopAlarmLoop();
     if (!draggingRef.current) setIsExpanded(v => !v);
     draggingRef.current = false;
   };
