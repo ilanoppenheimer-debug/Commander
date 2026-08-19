@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, Check as CheckIcon, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle } from 'lucide-react';
 import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
 
@@ -43,9 +43,17 @@ const hasRealValue = (v) => {
  * cálculo de tiempo transcurrido se hace por diferencia contra Date.now() al leer,
  * nunca contando ticks de setInterval (que se pausan solos en background). Al
  * detener, el valor no se escribe solo: queda como placeholder gris (mismo
- * renderField real→placeholder→— que SetRow) hasta que el atleta lo confirma con
- * un tap dedicado — igual que AdvancedTimer, ese estado "detenido sin confirmar"
- * no persiste (se limpia de localStorage al tocar stop), solo countdown/running.
+ * renderField real→placeholder→— que SetRow) hasta que el atleta lo confirma —
+ * igual que AdvancedTimer, ese estado "detenido sin confirmar" no persiste (se
+ * limpia de localStorage al tocar stop), solo countdown/running.
+ *
+ * Confirmar vs. descartar: tocar la celda grande de segundos (donde se ve el
+ * placeholder) CONFIRMA — es el target más grande y obvio de la fila, así que es
+ * el que tiene que coincidir con la intención de "aceptar lo que estoy viendo".
+ * El botón de control chico, en este mismo estado, hace lo opuesto: descarta y
+ * vuelve a idle para reintentar. Antes era al revés (control confirmaba, la celda
+ * descartaba) — eso causaba que se guardara companionValue sin seconds cuando el
+ * atleta tocaba la celda grande creyendo que confirmaba.
  *
  * Clave de persistencia = exerciseId + setIndex (no hay id estable por set en el
  * modelo de datos actual). Si el set se borra o se reordena mientras el timer está
@@ -149,14 +157,20 @@ export const TimedSetRow = ({
       return;
     }
     if (phase === 'pending') {
-      onUpdateField('seconds', String(pendingSeconds));
+      // Descarta — el control chico ya no confirma, ver handleDisplayTap.
       setPendingSeconds(null);
       setPhase('idle');
     }
   };
 
   const handleDisplayTap = () => {
-    if (phase === 'pending') { setPendingSeconds(null); setPhase('idle'); return; } // discard, redo
+    if (phase === 'pending') {
+      // Confirma — la celda grande es el target obvio para "aceptar lo que veo".
+      onUpdateField('seconds', String(pendingSeconds));
+      setPendingSeconds(null);
+      setPhase('idle');
+      return;
+    }
     if (phase === 'idle' && !hasRealValue(set?.seconds)) { startTimer(); return; } // bigger hit area
     if (phase === 'idle' && hasRealValue(set?.seconds)) {
       setManualDraft(String(set.seconds));
@@ -208,11 +222,24 @@ export const TimedSetRow = ({
   }
 
   // ── Control icon (advances the timer state machine) ─────────────────────────
+  // 'pending' shows a discard icon now, not a confirm check — confirming moved to
+  // the seconds display cell (handleDisplayTap). Reuses the same X icon/style as
+  // "Eliminar serie" below, per the fix design — distinguished by position (this
+  // one only appears transiently in 'pending') rather than a different icon.
   let controlIcon = null;
-  if (phase === 'idle') controlIcon = <Play size={14} className="text-slate-500" />;
-  else if (phase === 'countdown') controlIcon = <XCircle size={14} className="text-slate-500" />;
-  else if (phase === 'running') controlIcon = <Square size={13} className="text-red-400" fill="currentColor" />;
-  else if (phase === 'pending') controlIcon = <CheckIcon size={16} className="text-emerald-400" />;
+  let controlAriaLabel = 'Iniciar timer';
+  if (phase === 'idle') {
+    controlIcon = <Play size={14} className="text-slate-500" />;
+  } else if (phase === 'countdown') {
+    controlIcon = <XCircle size={14} className="text-slate-500" />;
+    controlAriaLabel = 'Cancelar timer';
+  } else if (phase === 'running') {
+    controlIcon = <Square size={13} className="text-red-400" fill="currentColor" />;
+    controlAriaLabel = 'Detener timer';
+  } else if (phase === 'pending') {
+    controlIcon = <XIcon size={15} className="text-slate-500" />;
+    controlAriaLabel = 'Descartar tiempo y reintentar';
+  }
 
   // ── Companion cell content ───────────────────────────────────────────────────
   let companionContent = <span className="text-slate-700 font-normal">—</span>;
@@ -287,7 +314,7 @@ export const TimedSetRow = ({
       <button
         onClick={handleDisplayTap}
         className={`h-10 rounded-lg text-sm font-bold tabular-nums flex items-center justify-center transition-colors ${fieldBtnClass}`}
-        aria-label="Tiempo del set"
+        aria-label={phase === 'pending' ? 'Confirmar tiempo' : 'Tiempo del set'}
       >
         {secondsContent}
       </button>
@@ -308,7 +335,7 @@ export const TimedSetRow = ({
       <button
         onClick={handleControlTap}
         className="flex items-center justify-center h-10 rounded-lg bg-slate-900/60 border border-slate-800 hover:bg-slate-900 active:bg-slate-800 transition-colors"
-        aria-label="Iniciar / detener / confirmar timer"
+        aria-label={controlAriaLabel}
       >
         {controlIcon}
       </button>
