@@ -60,6 +60,25 @@ const parseInlineArray = (str) => {
   });
 };
 
+// Joins the lines following a `key: |` YAML block-scalar indicator into one string —
+// shared by parseYamlMetadata (frontmatter, e.g. `contexto: |`) and parseExerciseBlock
+// (per-exercise `- campo: |` bullets, e.g. `nota_ejercicio: |`), which both let the
+// Coach write a field as a multiline block instead of a single-line value. `lines` is
+// the full line array, `startIndex` points at the first line after the `key: |` line,
+// and `isBlockEnd(line)` decides where the block stops — the two callers have
+// different surrounding grammars (YAML `key:` lines vs. markdown bullets/headings/
+// tables), so the stop condition is the only thing that varies between them; the
+// accumulation/indent-stripping/join/trim logic itself is written once, here.
+const parseYamlBlockScalar = (lines, startIndex, isBlockEnd) => {
+  const collected = [];
+  let i = startIndex;
+  while (i < lines.length && !isBlockEnd(lines[i])) {
+    collected.push(lines[i].replace(/^  /, ''));
+    i++;
+  }
+  return { value: collected.join('\n').trim(), nextIndex: i };
+};
+
 // Parses 2-space-indented subkeys of the `bloque:` block (including the
 // 4-space-indented `params:` sub-object). No defaults — absent keys are absent.
 const parseBlockYaml = (lines) => {
@@ -211,15 +230,10 @@ const parseYamlMetadata = (yamlText, warnings) => {
     }
 
     if (value === '|') {
-      const multilineLines = [];
-      i++;
-      while (i < lines.length) {
-        const nextLine = lines[i];
-        if (/^[a-zA-Z_][a-zA-Z0-9_]*\s*:/.test(nextLine) && !nextLine.startsWith(' ')) break;
-        multilineLines.push(nextLine.replace(/^  /, ''));
-        i++;
-      }
-      value = multilineLines.join('\n').trim();
+      const isYamlBlockEnd = (l) => /^[a-zA-Z_][a-zA-Z0-9_]*\s*:/.test(l) && !l.startsWith(' ');
+      const { value: blockValue, nextIndex } = parseYamlBlockScalar(lines, i + 1, isYamlBlockEnd);
+      value = blockValue;
+      i = nextIndex;
     } else {
       i++;
     }
@@ -290,13 +304,32 @@ const extractExercises = (body, warnings) => {
     .filter(Boolean);
 };
 
+// Any `- campo: |` bullet (nota_ejercicio today, potentially others later — this isn't
+// special-cased per field) can carry a YAML block scalar instead of a single-line
+// value. A block ends at the next non-blank, unindented line: another `- campo:`
+// bullet, the sets table (`| Set | ...`), a `## ` heading, or the next `# EJERCICIO:`
+// — all of which start at column 0. Blank lines are swallowed as part of the block
+// (trimmed off by parseYamlBlockScalar), matching parseYamlMetadata's frontmatter
+// behavior above.
+const isExerciseBlockEnd = (line) => line.trim() !== '' && !line.startsWith(' ');
+
 const parseExerciseBlock = ({ name, content }, idx, warnings) => {
   const metadata = {};
-  const metaLines = content.match(/^- ([a-zA-Z_]+):\s*(.+)$/gm) || [];
-
-  for (const line of metaLines) {
-    const m = line.match(/^- ([a-zA-Z_]+):\s*(.+)$/);
-    if (m) metadata[m[1]] = m[2].trim();
+  const lines = content.split('\n');
+  let li = 0;
+  while (li < lines.length) {
+    const m = lines[li].match(/^- ([a-zA-Z_]+):\s*(.+)$/);
+    if (!m) { li++; continue; }
+    const key = m[1];
+    const val = m[2].trim();
+    if (val === '|') {
+      const { value, nextIndex } = parseYamlBlockScalar(lines, li + 1, isExerciseBlockEnd);
+      metadata[key] = value;
+      li = nextIndex;
+    } else {
+      metadata[key] = val;
+      li++;
+    }
   }
 
   // Table of sets — look for | Set | header
