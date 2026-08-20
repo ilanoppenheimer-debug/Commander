@@ -7,6 +7,8 @@ import { isSignedIn, performDriveBackup } from '../../services/googleDriveServic
 import { SessionExportModal } from './SessionExportModal';
 import { UpdateRoutineModal } from '../routineUpdate/UpdateRoutineModal';
 import { db } from '../../db/database';
+import { getMeasurement, getCompanion } from '../../constants/exerciseMetadata';
+import { formatSetSummary } from '../../utils/formatters';
 
 function formatSet(s, barUnit = 'kg') {
   const type = s.type && s.type !== 'normal' ? s.type.toUpperCase() : '';
@@ -127,6 +129,11 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
           {exercises.map((ex, exIdx) => {
             const sets = Array.isArray(ex?.sets) ? ex.sets : [];
             const vol = sets.reduce((s, set) => s + (set.weight || 0) * (set.reps || 0), 0);
+            // Old history predating this exercise's measurement config (or never configured
+            // at all) falls through getMeasurement() === undefined, i.e. the 'reps' path below
+            // — same table as always, untouched.
+            const isTime = getMeasurement(ex?.name) === 'time';
+            const companion = isTime ? getCompanion(ex?.name) : undefined;
             return (
               <div key={ex?.id || exIdx} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
                 <div className="px-4 pt-3 pb-2 border-b border-slate-700/60">
@@ -162,9 +169,15 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                         <tr className="text-[10px] text-slate-600 uppercase tracking-wider border-b border-slate-700/40">
                           <th className="pl-4 py-2 text-left w-8">#</th>
                           <th className="py-2 text-left">Tipo</th>
-                          <th className="py-2 text-right">Peso</th>
-                          <th className="py-2 text-right">Reps</th>
-                          <th className="py-2 text-right">RPE</th>
+                          {isTime ? (
+                            <th className="py-2 text-right">Tiempo</th>
+                          ) : (
+                            <>
+                              <th className="py-2 text-right">Peso</th>
+                              <th className="py-2 text-right">Reps</th>
+                              <th className="py-2 text-right">RPE</th>
+                            </>
+                          )}
                           <th className="pr-4 py-2 text-right">Notas</th>
                         </tr>
                       </thead>
@@ -177,15 +190,23 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                               <td className={`py-2 font-bold text-[10px] uppercase ${typeColor}`}>
                                 {s.type && s.type !== 'normal' ? s.type : '—'}
                               </td>
-                              <td className="py-2 text-right text-slate-300 font-mono">
-                                {parseFloat(s.weight) > 0 ? `${parseFloat(s.weight)}${barUnit}` : 'PC'}
-                              </td>
-                              <td className="py-2 text-right text-slate-300 font-mono">
-                                {s.reps != null && s.reps !== '' ? (parseInt(s.reps, 10) || s.reps) : '—'}
-                              </td>
-                              <td className="py-2 text-right text-slate-500">
-                                {parseFloat(s.rpe) > 0 ? parseFloat(s.rpe) : '—'}
-                              </td>
+                              {isTime ? (
+                                <td className="py-2 text-right text-slate-300 font-mono">
+                                  {formatSetSummary(s, barUnit, companion)}
+                                </td>
+                              ) : (
+                                <>
+                                  <td className="py-2 text-right text-slate-300 font-mono">
+                                    {parseFloat(s.weight) > 0 ? `${parseFloat(s.weight)}${barUnit}` : 'PC'}
+                                  </td>
+                                  <td className="py-2 text-right text-slate-300 font-mono">
+                                    {s.reps != null && s.reps !== '' ? (parseInt(s.reps, 10) || s.reps) : '—'}
+                                  </td>
+                                  <td className="py-2 text-right text-slate-500">
+                                    {parseFloat(s.rpe) > 0 ? parseFloat(s.rpe) : '—'}
+                                  </td>
+                                </>
+                              )}
                               <td className="pr-4 py-2 text-right text-[10px] max-w-[80px] truncate">
                                 {s.notes?.trim()
                                   ? <span className="text-amber-400/80" title={s.notes}>{s.notes.length > 28 ? s.notes.slice(0, 28) + '…' : s.notes}</span>
