@@ -170,7 +170,9 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                           <th className="pl-4 py-2 text-left w-8">#</th>
                           <th className="py-2 text-left">Tipo</th>
                           {isTime ? (
-                            <th className="py-2 text-right">Tiempo</th>
+                            <th className="py-2 text-right">
+                              Tiempo{companion === 'difficulty' ? ' · Dificultad' : companion === 'hr' ? ' · FC' : ''}
+                            </th>
                           ) : (
                             <>
                               <th className="py-2 text-right">Peso</th>
