@@ -190,17 +190,23 @@ export const TimedSetRow = ({
     if (!isNaN(n) && n > 0) onUpdateField('companionValue', hrDraft);
   };
 
-  // Completing while 'pending' means there's a stopped, stable timer value sitting
-  // unconfirmed on screen — the exact pattern that let seconds silently stay empty
-  // while the set was marked done. Commit it in the same gesture, same idiom as
-  // SetRow's historical-placeholder-commit-on-complete. 'running' is left untouched:
-  // its value is still live/changing, and auto-stopping it as a side effect of
-  // tapping Check would silently cut off a hold the athlete may not have meant to end.
+  // Completing is the athlete's explicit "I'm done" signal — it implicitly stops
+  // whatever the timer is doing and confirms the real elapsed value in the same
+  // gesture, same idiom as SetRow's historical-placeholder-commit-on-complete.
+  // 'pending' already has a stopped, stable value sitting on screen; 'running' gets
+  // stopped right here instead of requiring a separate tap first. A mistaken tap is
+  // recoverable via 'editing' (tap the seconds cell to correct), so this doesn't need
+  // to be as conservative as it would without that correction path.
   const handleCompleteTap = () => {
     if (!isDone && phase === 'pending') {
       onUpdateField('seconds', String(pendingSeconds));
       setPendingSeconds(null);
       setPhase('idle');
+    } else if (!isDone && phase === 'running') {
+      onUpdateField('seconds', String(getRunningSeconds()));
+      startedAtRef.current = null;
+      setPhase('idle');
+      clearPersisted();
     }
     onToggleCompleted();
   };
