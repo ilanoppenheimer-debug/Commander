@@ -9,7 +9,6 @@ import {
   ACCENT_PRESETS
 } from "./constants/gymConstants";
 import { calculatePlates } from "./utils/plateMath";
-import { historyToCSV, csvToHistory, downloadCSV } from "./utils/csvExport";
 import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
@@ -824,38 +823,6 @@ function AppMain() {
     }
   };
 
-  const handleExportHistoryCSV = () => {
-    if (!Array.isArray(safeHistory) || safeHistory.length === 0) {
-      showNotify("Historial vacío, nada para exportar", "info");
-      return;
-    }
-    const csv = historyToCSV(safeHistory);
-    const today = new Date().toISOString().slice(0, 10);
-    downloadCSV(csv, `IronCmdr_history_${today}.csv`);
-    showNotify(`Exportadas ${safeHistory.length} sesiones`, "success");
-  };
-
-  const handleImportHistoryCSV = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const imported = csvToHistory(String(e.target?.result || ""));
-        if (imported.length === 0) { showNotify("CSV vacío o inválido", "error"); return; }
-        const existingIds = new Set(safeHistory.map(h => h?.historyId).filter(Boolean));
-        const deduped = imported.filter(h => !existingIds.has(h.historyId));
-        for (const s of deduped) await saveSession(s);
-        showNotify(`Importadas ${deduped.length} sesiones nuevas`, "success");
-      } catch (err) {
-        console.error("Import CSV failed", err);
-        showNotify("Error al leer el CSV", "error");
-      }
-    };
-    reader.readAsText(file);
-  };
-
   if (isMigrating) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
@@ -1229,11 +1196,7 @@ function AppMain() {
                 <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2"><Clock className="text-sky-500"/> Historial</h2>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500 font-mono">{safeHistory.length} sesiones</span>
-                  <button onClick={handleExportHistoryCSV} className="p-1.5 text-sky-400 hover:bg-slate-800 rounded transition" title="Exportar CSV"><Download size={14}/></button>
-                  <label className="p-1.5 text-emerald-400 hover:bg-slate-800 rounded transition cursor-pointer" title="Importar CSV">
-                    <FileText size={14}/>
-                    <input type="file" accept=".csv,text/csv" onChange={handleImportHistoryCSV} className="hidden" />
-                  </label>
+                  <button onClick={handleDownload} className="p-1.5 text-sky-400 hover:bg-slate-800 rounded transition" title="Descargar backup (JSON)"><Download size={14}/></button>
                 </div>
               </div>
 
