@@ -17,7 +17,7 @@ const Btn = ({ onClick, children, accent, className = '' }) => (
   </button>
 );
 
-export const KeypadGrid = ({ activeField, onDigit, onDot, onBackspace, onClearField, onNext, onSave }) => {
+export const KeypadGrid = ({ activeField, integerOnly = false, onDigit, onDot, onBackspace, onClearField, onNext, onSave }) => {
   const [bsTimer, setBsTimer] = useState(null);
 
   const handleBsDown = () => {
@@ -34,7 +34,7 @@ export const KeypadGrid = ({ activeField, onDigit, onDot, onBackspace, onClearFi
     if (bsTimer) { clearTimeout(bsTimer); setBsTimer(null); onBackspace(); }
   };
 
-  const dotDisabled = activeField === 'reps';
+  const dotDisabled = integerOnly || activeField === 'reps';
 
   return (
     <div className="px-4 pb-4 pt-1">
