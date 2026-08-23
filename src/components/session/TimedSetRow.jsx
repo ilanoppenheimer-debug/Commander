@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle, Pencil } from 'lucide-react';
 import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
+import { SecondsNumPad } from '../keypad/SecondsNumPad';
 
 // Duplicated from SetRow.jsx rather than imported — SetRow.jsx is not touched in this
 // phase (explicit constraint), so its unexported local constants aren't reachable here.
@@ -65,6 +66,7 @@ export const TimedSetRow = ({
   onToggleCompleted, onUpdateField, onCycleType, onDelete, onSaveNote,
 }) => {
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showSecondsPad, setShowSecondsPad] = useState(false);
 
   // idle | countdown | running | pending | editing
   const [phase, setPhase] = useState('idle');
@@ -87,19 +89,28 @@ export const TimedSetRow = ({
     ? 'bg-emerald-950/30 border border-emerald-800/30 cursor-pointer'
     : 'bg-slate-900/60 hover:bg-slate-900 active:bg-slate-800 border border-slate-800';
 
-  const persistTimer = (startedAt) => {
-    try { localStorage.setItem(storageKey, JSON.stringify({ startedAt })); } catch {}
+  // stoppedAt is only written when the timer moves into 'pending' — its presence is
+  // what tells the restore effect below which phase to reconstruct.
+  const persistTimer = (startedAt, stoppedAt) => {
+    try { localStorage.setItem(storageKey, JSON.stringify(stoppedAt ? { startedAt, stoppedAt } : { startedAt })); } catch {}
   };
   const clearPersisted = () => {
     try { localStorage.removeItem(storageKey); } catch {}
   };
 
   // ── Restore from localStorage on mount — same idiom as AdvancedTimer's restore
-  // effect: read a persisted startedAt, derive phase purely from real elapsed time. ──
+  // effect: read persisted real timestamps, derive phase/value purely from them, never
+  // from a stored count. 'pending' is reconstructed the same way 'running' always was —
+  // from two real clock readings, not from a persisted pendingSeconds number — because a
+  // stored derived value can't be trusted the way a stored moment in time can. ──
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey) || 'null');
-      if (stored?.startedAt) {
+      if (stored?.startedAt && stored?.stoppedAt) {
+        const secs = Math.max(0, Math.floor((stored.stoppedAt - stored.startedAt) / 1000 - COUNTDOWN_SECONDS));
+        setPendingSeconds(secs);
+        setPhase('pending');
+      } else if (stored?.startedAt) {
         startedAtRef.current = stored.startedAt;
         const elapsed = (Date.now() - stored.startedAt) / 1000;
         setPhase(elapsed < COUNTDOWN_SECONDS ? 'countdown' : 'running');
@@ -147,19 +158,29 @@ export const TimedSetRow = ({
   };
 
   const handleControlTap = () => {
-    if (phase === 'idle') { startTimer(); return; }
+    if (phase === 'idle') {
+      // Reusa window.confirm — mismo patrón ya usado en BlockEditModal.jsx / DataBackupTab.jsx
+      // para gates sí/no puntuales, en vez de armar un modal propio para este caso.
+      if (hasRealValue(set?.seconds) && !window.confirm('Ya hay un tiempo confirmado para este set. ¿Reiniciar el timer y reemplazarlo?')) {
+        return; // cancelar no toca nada — seconds, phase y storage quedan exactamente como estaban
+      }
+      startTimer();
+      return;
+    }
     if (phase === 'countdown') { startedAtRef.current = null; setPhase('idle'); clearPersisted(); return; } // cancel
     if (phase === 'running') {
-      setPendingSeconds(getRunningSeconds());
+      const secs = getRunningSeconds(); // reads startedAtRef.current — must run before it's nulled below
+      persistTimer(startedAtRef.current, Date.now()); // keeps pending alive across a remount, see restore effect
+      setPendingSeconds(secs);
       startedAtRef.current = null;
       setPhase('pending');
-      clearPersisted();
       return;
     }
     if (phase === 'pending') {
       // Descarta — el control chico ya no confirma, ver handleDisplayTap.
       setPendingSeconds(null);
       setPhase('idle');
+      clearPersisted();
     }
   };
 
@@ -169,9 +190,12 @@ export const TimedSetRow = ({
       onUpdateField('seconds', String(pendingSeconds));
       setPendingSeconds(null);
       setPhase('idle');
+      clearPersisted();
       return;
     }
-    if (phase === 'idle' && !hasRealValue(set?.seconds)) { startTimer(); return; } // bigger hit area
+    // Manual entry — the timer stays reachable via the control button (Play icon),
+    // which still calls startTimer() unchanged in handleControlTap's 'idle' branch.
+    if (phase === 'idle' && !hasRealValue(set?.seconds)) { setShowSecondsPad(true); return; }
     if (phase === 'idle' && hasRealValue(set?.seconds)) {
       setManualDraft(String(set.seconds));
       setPhase('editing');
@@ -202,6 +226,7 @@ export const TimedSetRow = ({
       onUpdateField('seconds', String(pendingSeconds));
       setPendingSeconds(null);
       setPhase('idle');
+      clearPersisted();
     } else if (!isDone && phase === 'running') {
       onUpdateField('seconds', String(getRunningSeconds()));
       startedAtRef.current = null;
@@ -260,6 +285,12 @@ export const TimedSetRow = ({
   } else if (phase === 'pending') {
     controlIcon = <XIcon size={15} className="text-slate-500" />;
     controlAriaLabel = 'Descartar tiempo y reintentar';
+  } else if (phase === 'editing') {
+    // Tocar el control acá sigue sin hacer nada (handleControlTap no tiene rama para
+    // 'editing') — este ícono es puramente informativo: "estás corrigiendo un valor ya
+    // confirmado", para que no quede en blanco con el label viejo de "Iniciar timer".
+    controlIcon = <Pencil size={13} className="text-slate-500" />;
+    controlAriaLabel = 'Editando tiempo';
   }
 
   // ── Companion cell content ───────────────────────────────────────────────────
@@ -386,6 +417,16 @@ export const TimedSetRow = ({
           initialText={set?.notes || ''}
           title={`Nota — Set ${setIndex}`}
           onSave={(text) => onSaveNote?.(text)}
+        />
+      )}
+
+      {showSecondsPad && (
+        <SecondsNumPad
+          open={showSecondsPad}
+          onClose={() => setShowSecondsPad(false)}
+          initialValue={set?.seconds}
+          setIndex={setIndex}
+          onSave={(val) => onUpdateField('seconds', val)}
         />
       )}
     </div>
