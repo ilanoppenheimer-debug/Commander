@@ -158,6 +158,65 @@ export const computeExercise1RM = (exerciseName, history, options = {}) => {
 };
 
 /**
+ * Devuelve el último set con reps reales de un ejercicio, sin pasar por isPredictiveSet
+ * — a diferencia de getTopHistoricalSet, un peso ausente o <= 0 NO descarta el set (esta
+ * es la misma convención "el peso real del set decide, no un flag de equipo" que ya usan
+ * isPredictiveSet/formatSetSummary/SetRow para bodyweight, aplicada acá directamente en
+ * vez de heredarla de isPredictiveSet, cuyo propósito — predecir un 1RM en kg — es
+ * genuinamente distinto y no debe tocarse).
+ *
+ * Uso: hermana de getTopHistoricalSet para el caso "sin dato de sesión actual, y el
+ * historial de este ejercicio nunca tuvo peso real" (bodyweight puro) — recalculatePlaceholdersForExercise
+ * la usa solo como fallback cuando getTopHistoricalSet no devolvió nada.
+ *
+ * Sin peso en el resultado a propósito: sugerir un número de peso acá sería inventar un
+ * dato que nunca existió. reps es el gate (>0, sin eso no hay nada útil que sugerir);
+ * rpe se incluye si está, pero no es un requisito — muchos sets bodyweight no llevan RPE.
+ *
+ * Returns: { reps: string, rpe: string } o null si no hay ningún set usable.
+ */
+export const getLastLoggedSet = (exerciseName, history, options = {}) => {
+  const { weeksBack = 12 } = options;
+
+  if (!Array.isArray(history) || history.length === 0) return null;
+
+  const cutoffDate = weeksBack
+    ? new Date(Date.now() - weeksBack * 7 * 24 * 60 * 60 * 1000)
+    : null;
+
+  const usable = [];
+  history.forEach(session => {
+    if (!session?.completedAt) return;
+    if (cutoffDate && new Date(session.completedAt) < cutoffDate) return;
+    const exercises = Array.isArray(session.exercises) ? session.exercises : [];
+    exercises.forEach(ex => {
+      if (!ex || ex.name !== exerciseName) return;
+      const sets = Array.isArray(ex.sets) ? ex.sets : [];
+      sets.forEach(set => {
+        if (!set) return;
+        if (set.type === 'warmup' || set.type === 'drop') return;
+        if (set.completed === false) return;
+        const r = parseInt(set.reps, 10);
+        if (!r || r < 1) return;
+        usable.push({ ...set, _date: session.completedAt });
+      });
+    });
+  });
+
+  if (usable.length === 0) return null;
+
+  // Orden ascendente por fecha; sort de JS es estable, así que dentro de la sesión más
+  // reciente el último elemento sigue siendo el último set de ese ejercicio en esa sesión.
+  usable.sort((a, b) => new Date(a._date) - new Date(b._date));
+  const last = usable[usable.length - 1];
+
+  return {
+    reps: String(last.reps),
+    rpe:  (last.rpe != null && last.rpe !== '' && parseFloat(last.rpe) > 0) ? String(last.rpe) : '',
+  };
+};
+
+/**
  * Devuelve el top set histórico de un ejercicio (el que genera mayor 1RM estimado).
  * Returns: { weight: string, reps: string, rpe: string } o null si no hay historial.
  */

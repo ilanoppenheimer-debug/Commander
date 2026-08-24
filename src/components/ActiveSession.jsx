@@ -48,7 +48,7 @@ import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
-import { getTopHistoricalSet } from "../utils/strengthMath";
+import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -78,6 +78,11 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   const exerciseForCalc = { ...ex, metadata: exMeta };
   const block = findBlockForExercise(exerciseForCalc, Array.isArray(activeBlocks) ? activeBlocks : []);
   const topHistorical = getTopHistoricalSet(ex.name, history);
+  // Fallback for the first set when getTopHistoricalSet found nothing (bodyweight
+  // exercises never have a weight for isPredictiveSet to accept) — never overrides
+  // topHistorical, and never touches the session-memory (findLastTypedBefore) path
+  // above, which already returns before either of these is ever consulted.
+  const lastLogged = topHistorical ? null : getLastLoggedSet(ex.name, history);
   const topSet = findTopSetInExercise(ex);
   const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
 
@@ -120,15 +125,19 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
 
     // No block: first set gets historical placeholder; others get nothing.
     if (!block) {
-      if (i === 0 && topHistorical) return { ...set, placeholder: topHistorical };
+      if (i === 0) {
+        if (topHistorical) return { ...set, placeholder: topHistorical };
+        if (lastLogged) return { ...set, placeholder: lastLogged };
+      }
       return set;
     }
 
     // Block context: TOP sets → historical, back sets → back-off from real typed TOP.
     const isTop = set === topSet || (!hasExplicitTop && i === 0);
     if (isTop) {
-      if (!topHistorical) return set;
-      return { ...set, placeholder: topHistorical };
+      if (topHistorical) return { ...set, placeholder: topHistorical };
+      if (lastLogged) return { ...set, placeholder: lastLogged };
+      return set;
     }
 
     const backoffSuggestion = calculateBackoffSuggestion(topSet, null, block, exerciseForCalc);
