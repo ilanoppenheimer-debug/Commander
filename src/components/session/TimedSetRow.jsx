@@ -71,7 +71,6 @@ export const TimedSetRow = ({
   // idle | countdown | running | pending | editing
   const [phase, setPhase] = useState('idle');
   const [pendingSeconds, setPendingSeconds] = useState(null);
-  const [manualDraft, setManualDraft] = useState('');
   const [hrEditing, setHrEditing] = useState(false);
   const [hrDraft, setHrDraft] = useState('');
   const [, setTick] = useState(0);
@@ -195,17 +194,17 @@ export const TimedSetRow = ({
     }
     // Manual entry — the timer stays reachable via the control button (Play icon),
     // which still calls startTimer() unchanged in handleControlTap's 'idle' branch.
+    // Both branches below open the same SecondsNumPad — 'editing' just keeps the
+    // phase (and its Pencil control icon) so it's visible which mode the row is in
+    // while the sheet is open.
     if (phase === 'idle' && !hasRealValue(set?.seconds)) { setShowSecondsPad(true); return; }
-    if (phase === 'idle' && hasRealValue(set?.seconds)) {
-      setManualDraft(String(set.seconds));
-      setPhase('editing');
-    }
+    if (phase === 'idle' && hasRealValue(set?.seconds)) { setPhase('editing'); }
   };
 
-  const commitManualEdit = () => {
-    const n = parseFloat(manualDraft);
-    if (!isNaN(n) && n > 0) onUpdateField('seconds', manualDraft);
-    setPhase('idle');
+  // Closes the seconds pad regardless of which path opened it.
+  const handleCloseSecondsPad = () => {
+    setShowSecondsPad(false);
+    if (phase === 'editing') setPhase('idle');
   };
 
   const commitHr = () => {
@@ -237,21 +236,12 @@ export const TimedSetRow = ({
   };
 
   // ── Seconds cell content ─────────────────────────────────────────────────────
+  // 'editing' has no cell content of its own anymore — it falls through to the
+  // hasRealValue branch below (true by construction: editing is only entered when a
+  // real value already exists), showing the confirmed value while SecondsNumPad
+  // handles the actual correction as an overlay.
   let secondsContent;
-  if (phase === 'editing') {
-    secondsContent = (
-      <input
-        type="number"
-        inputMode="numeric"
-        autoFocus
-        value={manualDraft}
-        onChange={(e) => setManualDraft(e.target.value)}
-        onBlur={commitManualEdit}
-        onKeyDown={(e) => { if (e.key === 'Enter') commitManualEdit(); }}
-        className="w-full h-full bg-transparent text-center text-sm font-bold text-slate-100 outline-none"
-      />
-    );
-  } else if (phase === 'countdown') {
+  if (phase === 'countdown') {
     secondsContent = <span className="text-accent-400 font-black text-lg tabular-nums">{getCountdownLeft()}</span>;
   } else if (phase === 'running') {
     secondsContent = <span className="text-accent-400 font-bold tabular-nums">{formatSeconds(getRunningSeconds())}</span>;
@@ -420,10 +410,10 @@ export const TimedSetRow = ({
         />
       )}
 
-      {showSecondsPad && (
+      {(showSecondsPad || phase === 'editing') && (
         <SecondsNumPad
-          open={showSecondsPad}
-          onClose={() => setShowSecondsPad(false)}
+          open={showSecondsPad || phase === 'editing'}
+          onClose={handleCloseSecondsPad}
           initialValue={set?.seconds}
           setIndex={setIndex}
           onSave={(val) => onUpdateField('seconds', val)}
