@@ -58,15 +58,22 @@ export const KeypadGrid = ({ activeField, integerOnly = false, onDigit, onDot, o
         <Btn onClick={() => onDigit('4')} className="text-2xl h-14">4</Btn>
         <Btn onClick={() => onDigit('5')} className="text-2xl h-14">5</Btn>
         <Btn onClick={() => onDigit('6')} className="text-2xl h-14">6</Btn>
-        {/* SIGUIENTE spans rows 2+3 */}
-        <Btn
-          onClick={onNext}
-          accent="orange"
-          className="row-span-2 h-[calc(112px+0.5rem)] flex-col gap-1"
-        >
-          <span className="text-[9px] uppercase tracking-widest font-black leading-none">SIG</span>
-          <span className="text-2xl font-black leading-none">→</span>
-        </Btn>
+        {/* SIGUIENTE spans rows 2+3 — solo tiene sentido cuando hay más de un campo entre
+            los que saltar (CustomNumPad). Sin onNext (SecondsNumPad, un solo campo), el
+            slot queda como placeholder inerte en vez de un botón sin handler — mismo
+            grid, mismo flujo, sin duplicar el layout para un caso de un componente. */}
+        {onNext ? (
+          <Btn
+            onClick={onNext}
+            accent="orange"
+            className="row-span-2 h-[calc(112px+0.5rem)] flex-col gap-1"
+          >
+            <span className="text-[9px] uppercase tracking-widest font-black leading-none">SIG</span>
+            <span className="text-2xl font-black leading-none">→</span>
+          </Btn>
+        ) : (
+          <div className="row-span-2" aria-hidden="true" />
+        )}
 
         {/* Row 3: 1 2 3 (col 4 occupied by SIGUIENTE) */}
         <Btn onClick={() => onDigit('1')} className="text-2xl h-14">1</Btn>
