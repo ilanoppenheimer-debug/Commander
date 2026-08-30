@@ -39,7 +39,7 @@ import SessionCard from "./components/history/SessionCard";
 import SessionDetailModal from "./components/history/SessionDetailModal";
 import SessionEditor from "./components/history/SessionEditor";
 import PreSessionModal from "./components/modals/PreSessionModal";
-import { useHistory, useRoutines, useCustomExercises, useActiveBlocksLive } from "./db/hooks";
+import { useHistory, useRoutines, useCustomExercises, useActiveBlocksLive, useAllBlocksLive } from "./db/hooks";
 import { migrateFromLocalStorageIfNeeded, fixHardcodedRoutineIds, sanitizeInvalidSetValues } from "./db/migrations";
 import { migrateLegacyModes } from "./db/migrations/migrateLegacyModes";
 import { migrateMainLiftTags } from "./db/migrations/migrateMainLiftTags";
@@ -399,6 +399,7 @@ function AppMain() {
   const dbRoutines        = useRoutines();
   const dbCustomExercises = useCustomExercises();
   const dbActiveBlocks    = useActiveBlocksLive();
+  const dbAllBlocks       = useAllBlocksLive();
 
   // ── Zustand session store ──────────────────────────────────────────────────
   const session    = useSessionStore(s => s.session);
@@ -545,6 +546,20 @@ function AppMain() {
   const safeHistory    = useMemo(() => Array.isArray(dbHistory)         ? dbHistory.filter(Boolean)         : [], [dbHistory]);
   const safeCustomExs  = useMemo(() => Array.isArray(dbCustomExercises) ? dbCustomExercises.filter(Boolean) : [], [dbCustomExercises]);
   const safeActiveBlocks = useMemo(() => Array.isArray(dbActiveBlocks)  ? dbActiveBlocks.filter(Boolean)     : [], [dbActiveBlocks]);
+  const blocksById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(dbAllBlocks) ? dbAllBlocks : []).filter(Boolean).forEach(b => map.set(b.id, b));
+    return map;
+  }, [dbAllBlocks]);
+  // Same transform App.jsx already uses to display a block's fase (the active-blocks
+  // summary card, "Sesiones por tipo" section) — snake_case field, spaced for display.
+  // Only resolved when a session's blockIds names exactly one block: 0 means nothing to
+  // show, 2+ means picking one would be an arbitrary guess, neither is "the" fase.
+  const getSessionFase = (s) => {
+    if (!Array.isArray(s?.blockIds) || s.blockIds.length !== 1) return undefined;
+    const block = blocksById.get(s.blockIds[0]);
+    return block?.fase ? block.fase.replace(/_/g, ' ') : undefined;
+  };
   const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   const isTraining      = session !== null;
 
@@ -1285,6 +1300,7 @@ function AppMain() {
                         <SessionCard
                           key={h.historyId || h._id}
                           session={h}
+                          fase={getSessionFase(h)}
                           barUnit={barUnit}
                           onClick={setDetailSession}
                           onEdit={setEditingSession}

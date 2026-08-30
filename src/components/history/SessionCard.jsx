@@ -37,7 +37,7 @@ function formatSet(set, barUnit = 'kg') {
   return `${w} × ${r}${rpe}`;
 }
 
-export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, onDelete }) {
+export default function SessionCard({ session, fase, barUnit = 'kg', onClick, onEdit, onDelete }) {
   const exercises = Array.isArray(session?.exercises) ? session.exercises : [];
   const totalSets = exercises.reduce((sum, ex) =>
     sum + (Array.isArray(ex?.sets) ? ex.sets.filter(s => s.completed !== false).length : 0), 0);
@@ -73,6 +73,7 @@ export default function SessionCard({ session, barUnit = 'kg', onClick, onEdit, 
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-slate-100 truncate">
               {session.name || 'Entrenamiento Libre'}
+              {fase && <span className="ml-1.5 text-[10px] font-normal text-slate-500 capitalize">· {fase}</span>}
             </span>
             <span className="text-[10px] text-slate-500 shrink-0">
               {relativeDate(session.completedAt)}

@@ -22,14 +22,16 @@ const formatShortDate = (iso) => {
   return `${String(d.getDate()).padStart(2, '0')}-${MONTHS_ES[d.getMonth()]}`;
 };
 
-// The type is whatever comes before the first "—" or "·" separator, or the whole
-// name if there's no separator. No vocabulary hardcoded — survives the Coach
+// The type is whatever comes before the first "—", "·", "." or "/" separator, or the
+// whole name if there's no separator. No vocabulary hardcoded — survives the Coach
 // renaming session types across blocks (2A's "Pierna/Torso" won't necessarily be
-// 2B's or 3's).
+// 2B's or 3's). Same separator set checkSessionNameHygiene (parser.js) warns on, so a
+// name that trips that warning classifies by its clean prefix here instead of landing
+// as its own one-off type.
 const extractPrefix = (name) => {
   const raw = String(name || '').trim();
   if (!raw) return '';
-  const sepMatch = raw.match(/[—·]/);
+  const sepMatch = raw.match(/[—·./]/);
   const prefix = sepMatch ? raw.slice(0, sepMatch.index) : raw;
   return prefix.trim().replace(/\s+/g, ' ');
 };
