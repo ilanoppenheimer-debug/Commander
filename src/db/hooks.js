@@ -28,3 +28,11 @@ export const useActiveBlocksLive = () =>
     () => db.blocks.where('status').equals('active').toArray(),
     []
   );
+
+// All blocks regardless of status — a Historial session can belong to a block that's
+// since gone completed/archived, which useActiveBlocksLive alone can't resolve.
+export const useAllBlocksLive = () =>
+  useLiveQuery(
+    () => db.blocks.toArray(),
+    []
+  );
