@@ -41,6 +41,14 @@ import { TAG_OPTIONS } from '../../constants/blockTemplates';
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
 
+// Session name convention: only the rotation day (PIERNA A, TORSO B, ...) — block,
+// phase, tramo and numbering already travel in bloque.id/bloque.fase/sesion_num.
+// A separator or one of these words in the name means it's carrying that info a
+// second time, which fragments "Sesiones por tipo" grouping in the block report
+// (same problem the Catálogo documents for exercise names, applied to session names).
+const SESSION_NAME_SEPARATOR_PATTERN = /[—·/.]/;
+const SESSION_NAME_RED_FLAG_WORDS = ['bloque', 'fase', 'tramo', 'semana', 'calibracion', 'calibración'];
+
 // Narrow shape guard for the "reps no parseable" branch below — deliberately stricter
 // than parseRestSeconds' bare-number fallback (which would wrongly accept a plain
 // number here). Only a value with an explicit s/seg/sec/min unit counts as duration-shaped.
@@ -164,6 +172,7 @@ export const parseRoutineMarkdown = (markdown) => {
       result.errors.push('Falta campo "nombre" en YAML');
       return result;
     }
+    checkSessionNameHygiene(metadata.nombre, result.warnings);
 
     const body = markdown.slice(yamlMatch[0].length);
 
@@ -262,6 +271,23 @@ const extractCalentamiento = (body) => {
 // exercises. If the Coach's same superset letter appears again after being closed by
 // a different exercise, auto-grouping can't express that — declare it instead of
 // silently grouping wrong (same principle as classifySessionType's "Sin clasificar").
+// Warns (never blocks — the import still works) when the session name looks like it's
+// carrying block/phase/tramo info that already has its own field. Only a warning: some
+// Coaches may have a legitimate reason to name a session that way, and blocking would
+// stop an otherwise-valid import over a naming convention.
+const checkSessionNameHygiene = (name, warnings) => {
+  if (typeof name !== 'string' || !name) return;
+  const lower = name.toLowerCase();
+  const hasSeparator = SESSION_NAME_SEPARATOR_PATTERN.test(name);
+  const flaggedWord = SESSION_NAME_RED_FLAG_WORDS.find(w => lower.includes(w));
+  if (hasSeparator || flaggedWord) {
+    const reason = flaggedWord ? `contiene "${flaggedWord}"` : 'tiene separadores (—, ·, /, .)';
+    warnings.push(
+      `Nombre de sesión "${name}" ${reason} — debería llevar solo el día de rotación (ej. "PIERNA A"); bloque/fase/tramo ya viajan en bloque.id/bloque.fase/sesion_num`
+    );
+  }
+};
+
 const checkNonConsecutiveSupersets = (exercises, warnings) => {
   const closed = new Set();
   const warned = new Set();
