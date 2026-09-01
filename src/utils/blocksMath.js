@@ -149,11 +149,18 @@ export const calculateBackoffSuggestion = (topSet, topSuggestion, block, exercis
 };
 
 /**
- * Returns the first explicitly-typed TOP set, or the first set as de-facto TOP.
+ * Returns the LAST explicitly-typed TOP set, or the first set as de-facto TOP if none
+ * is typed. "Last" on purpose — if the athlete adds a second set and marks it 'top',
+ * that one now governs the day's back-off, not the first one typed/imported. Applies
+ * regardless of `completed`: a top set with weight already keyed in — even before the
+ * athlete marks it done — is already the real intention for the day.
  */
 export const findTopSetInExercise = (exercise) => {
   if (!exercise || !Array.isArray(exercise.sets)) return null;
-  const explicit = exercise.sets.find(s => (s?.type || '').toLowerCase() === 'top');
+  let explicit = null;
+  for (const s of exercise.sets) {
+    if ((s?.type || '').toLowerCase() === 'top') explicit = s;
+  }
   return explicit || exercise.sets[0] || null;
 };
 
