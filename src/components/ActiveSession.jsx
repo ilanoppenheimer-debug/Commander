@@ -98,13 +98,25 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   const newSets = ex.sets.map((set, i) => {
     if (!set) return set;
 
-    const hasTypedValue = parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0;
+    const type = (set.type || 'normal').toLowerCase();
+
+    // back/backoff is the one type whose placeholder is a CALCULATED number (top ×
+    // backoff_pct), not a copy of a previous/historical set — so the field the app is
+    // responsible for filling is specifically weight. The Coach often sends a back set
+    // with real reps and an intentionally empty weight for the app to compute; gating
+    // on "weight OR reps" would let the typed reps block that calculation forever, which
+    // is exactly the bug this fixes. Every other type keeps the original all-fields
+    // gate — their placeholder is a deliberate copy (session memory / historical top),
+    // so a set with only reps typed (weight still pending) shouldn't get a suggestion
+    // that doesn't reflect that "copy" semantics; that behavior is unchanged.
+    const isBackoffType = type === 'back' || type === 'backoff';
+    const hasTypedValue = isBackoffType
+      ? parseFloat(set.weight) > 0
+      : (parseFloat(set.weight) > 0 || parseInt(set.reps, 10) > 0);
     if (hasTypedValue) {
       if (set.placeholder) { const { placeholder: _ph, ...rest } = set; return rest; }
       return set;
     }
-
-    const type = (set.type || 'normal').toLowerCase();
 
     // NORMAL: session memory takes priority. If no previous typed set, fall through.
     if (type === 'normal') {
