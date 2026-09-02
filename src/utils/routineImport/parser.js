@@ -506,8 +506,11 @@ export const parseRestSeconds = (str) => {
   if (!str) return null;
   const t = str.trim().toLowerCase();
   // \b instead of $ end-anchors: ignore descriptive text after the value
-  // ("90s post-superset" → 90), not just the bare "90s" case.
-  const sMatch = t.match(/^(\d+)\s*s\b/);
+  // ("90s post-superset" → 90), not just the bare "90s" case. Accepts "s"/"seg"/"sec" —
+  // same duration vocabulary TIME_SHAPE_PATTERN already treats as time-shaped, so a
+  // "30seg"/"30sec" reps-column value (used for targetSeconds) parses here too instead
+  // of silently returning null.
+  const sMatch = t.match(/^(\d+)\s*s(?:eg|ec)?\b/);
   if (sMatch) return parseInt(sMatch[1], 10);
   const minMatch = t.match(/^(\d+)\s*min\b/);
   if (minMatch) return parseInt(minMatch[1], 10) * 60;

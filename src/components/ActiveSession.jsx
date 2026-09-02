@@ -49,6 +49,7 @@ import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
+import { formatSeconds } from "../utils/formatters";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -169,6 +170,19 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
     JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
   );
   return changed ? { ...ex, sets: newSets } : ex;
+}
+
+// The exercise-level "objetivo" chip only makes sense when every set that carries a
+// targetSeconds (Coach-prescribed duration, written once at import) agrees on the same
+// number — a set added by hand has no targetSeconds and doesn't count against the
+// match, but two imported sets with different objectives means there's no single
+// number to show honestly, so the chip is omitted rather than picking one arbitrarily
+// (same principle as History omitting a block label when a session spans more than one).
+function getConsistentTargetSeconds(sets) {
+  if (!Array.isArray(sets)) return null;
+  const values = sets.map(s => s?.targetSeconds).filter(v => v != null && v > 0);
+  if (values.length === 0) return null;
+  return values.every(v => v === values[0]) ? values[0] : null;
 }
 
 export const FinishMissionModal = ({
@@ -900,6 +914,16 @@ export default function ActiveSession({
                             );
                           })()}
                         </div>
+
+                        {(() => {
+                          const consistentTarget = getConsistentTargetSeconds(ex.sets);
+                          if (consistentTarget == null) return null;
+                          return (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-700 font-mono">
+                              objetivo {formatSeconds(consistentTarget)}
+                            </span>
+                          );
+                        })()}
 
                         {prevPerformance && (
                           <button
