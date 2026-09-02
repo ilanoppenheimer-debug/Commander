@@ -1,6 +1,7 @@
 import { saveRoutine } from '../../db/repository';
 import { db } from '../../db/database';
 import { saveExerciseMeta, getExerciseMeta, getMeasurement } from '../../constants/exerciseMetadata';
+import { parseRestSeconds } from './parser';
 
 /**
  * Converts a parsed routine + name resolutions into an app-storable routine.
@@ -21,16 +22,25 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       decisionAdaptativa: impEx.decisionAdaptativa || null,
       unilateral: !!impEx.unilateral,
       _supersetGroup: impEx.supersetGroup || null, // consumed below, not persisted
-      sets: (Array.isArray(impEx.sets) ? impEx.sets : []).map((s, si) => ({
-        id: s.id || `set-${Date.now()}-${si}`,
-        type: s.type || 'normal',
-        weight: s.weight || '',
-        reps: s.reps || '',
-        rpe: s.rpe || '',
-        completed: false,
-        notes: s.notes || '',
-        ...(s.restSeconds != null ? { restSeconds: s.restSeconds } : {}),
-      })),
+      sets: (Array.isArray(impEx.sets) ? impEx.sets : []).map((s, si) => {
+        // targetSeconds is written ONCE here, from the Coach's prescribed duration
+        // (parser.js's _rawReps, e.g. "30s") — it's the objective, never the result.
+        // It's a distinct field from `seconds` (what the athlete actually logs) and is
+        // never recomputed afterward; a set with no _rawReps (manual entry, or a reps-
+        // measured exercise) simply doesn't get the field.
+        const targetSeconds = s._rawReps ? parseRestSeconds(s._rawReps) : null;
+        return {
+          id: s.id || `set-${Date.now()}-${si}`,
+          type: s.type || 'normal',
+          weight: s.weight || '',
+          reps: s.reps || '',
+          rpe: s.rpe || '',
+          completed: false,
+          notes: s.notes || '',
+          ...(s.restSeconds != null ? { restSeconds: s.restSeconds } : {}),
+          ...(targetSeconds != null ? { targetSeconds } : {}),
+        };
+      }),
     };
   });
 
