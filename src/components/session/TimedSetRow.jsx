@@ -3,6 +3,7 @@ import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle, Pe
 import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
 import { SecondsNumPad } from '../keypad/SecondsNumPad';
+import { timerKey } from '../../utils/timedSetTimerStorage';
 
 // Duplicated from SetRow.jsx rather than imported — SetRow.jsx is not touched in this
 // phase (explicit constraint), so its unexported local constants aren't reachable here.
@@ -76,7 +77,7 @@ export const TimedSetRow = ({
   const [, setTick] = useState(0);
 
   const startedAtRef = useRef(null); // ms; fijo desde el tap de play hasta stop/cancel
-  const storageKey = `ironcmdr_timedset_timer_${exerciseId}_${setIndex}`;
+  const storageKey = timerKey(exerciseId, setIndex);
 
   const isDone   = !!set?.completed;
   const type     = set?.type && set.type !== 'normal' ? set.type : null;
