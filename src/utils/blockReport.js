@@ -75,13 +75,32 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   if (!Array.isArray(allHistory)) return '';
 
   const blockTags = Array.isArray(block.appliesTo) ? block.appliesTo : [];
-  const blockSessions = sessionsForBlock(block.id, allHistory)
+  // Attribution is by blockIds, not date — a backfill (or a hand-edited startedAt) can
+  // leave sessions stamped onto this block from before it actually started. Filtering
+  // them out here is read-only: blockIds and the sessions themselves are untouched in
+  // db.history, this just keeps pre-start data out of THIS report's math and listings.
+  const inPeriod = (s) => s.completedAt >= block.startedAt;
+  const allBlockIdSessions = sessionsForBlock(block.id, allHistory);
+  const blockSessions = allBlockIdSessions
+    .filter(inPeriod)
     .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+  // getSessionCountsByBlock() (db/blocks.js) — used by the home screen and the Coach
+  // context export — intentionally stays blockId-only, no date filter: it's a different
+  // consumer with a different question ("how many sessions ever, for billing/frequency
+  // purposes"). This report declares its own exclusion instead of trying to agree with it.
+  const excludedPreStartCount = allBlockIdSessions.length - blockSessions.length;
 
   const startMs = new Date(block.startedAt).getTime();
   const endDate = block.completedAt || new Date().toISOString();
   const endMs = new Date(endDate).getTime();
-  const weeksDiff = Math.max(1, Math.round((endMs - startMs) / (7 * 24 * 60 * 60 * 1000)));
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  // floor(diff/week)+1, not ceil — same "day 8 = week 2" semantics, but without ceil's
+  // edge case: a session at EXACTLY 7.0 days out would round-trip through ceil(7/7)=1
+  // (week 1) instead of the week 2 it actually belongs to. floor+1 puts day 0-6.999 in
+  // week 1 and day 7.0-13.999 in week 2, matching real calendar weeks. Shared by the
+  // headline week count and the per-session bucket below, so they can't disagree.
+  const weekNumber = (ms) => Math.max(1, Math.floor((ms - startMs) / WEEK_MS) + 1);
+  const weeksDiff = weekNumber(endMs);
 
   // Declared, not filled: sessions in the block's date range that were never stamped
   // with any blockIds at all. Guessing them in by date+tag would resurrect the exact
@@ -115,7 +134,7 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   const weeklyVolume = {};
   let totalVolume = 0, totalSets = 0, rpeSum = 0, rpeCount = 0;
   blockSessions.forEach(s => {
-    const weekNum = Math.max(1, Math.ceil((new Date(s.completedAt).getTime() - startMs) / (7 * 24 * 60 * 60 * 1000)));
+    const weekNum = weekNumber(new Date(s.completedAt).getTime());
     const key = `S${weekNum}`;
     if (!weeklyVolume[key]) weeklyVolume[key] = 0;
     (s.exercises || []).forEach(ex => {
@@ -157,12 +176,12 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   lines.push('=== REPORTE DE BLOQUE ===');
   lines.push(`Bloque: ${block.name} · ${block.type || 'custom'}${block.fase ? ` · fase ${block.fase}` : ''}`);
   lines.push(`Período: ${block.startedAt.slice(0, 10)} – ${block.completedAt ? block.completedAt.slice(0, 10) : 'hoy'} · ${weeksDiff} semana${weeksDiff !== 1 ? 's' : ''}`);
-  lines.push(`Sesiones: ${blockSessions.length}${block.sessionsTarget ? ` / ${block.sessionsTarget}` : ''}`);
+  lines.push(`Sesiones: ${blockSessions.length}${block.sessionsTarget ? ` / ${block.sessionsTarget}` : ''}${excludedPreStartCount > 0 ? ` (${excludedPreStartCount} anterior${excludedPreStartCount !== 1 ? 'es' : ''} al inicio del bloque, excluida${excludedPreStartCount !== 1 ? 's' : ''} del reporte)` : ''}`);
   if (orphanCount > 0) {
     lines.push(`⚠ ${orphanCount} sesión${orphanCount !== 1 ? 'es' : ''} en el rango del bloque sin blockIds — no incluida${orphanCount !== 1 ? 's' : ''}, revisar manualmente.`);
   }
 
-  const typeBreakdown = getSessionTypeBreakdown(block.id, allHistory);
+  const typeBreakdown = getSessionTypeBreakdown(block.id, allHistory.filter(inPeriod));
   if (typeBreakdown.length > 0) {
     lines.push('');
     lines.push('## Sesiones por tipo');
