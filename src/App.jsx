@@ -928,7 +928,7 @@ function AppMain() {
                     s => Array.isArray(s.blockIds) && s.blockIds.includes(block.id)
                   ).length;
                   const p = block.params || {};
-                  const faseStr = block.fase ? block.fase.replace(/_/g, ' ') : null;
+                  const faseStr = block.fase ? String(block.fase).replace(/_/g, ' ') : null;
                   const paramsStr = (p.repsRange && p.rpeRange)
                     ? `${p.repsRange[0]}-${p.repsRange[1]} reps @ RPE ${p.rpeRange[0]}-${p.rpeRange[1]}`
                     : null;

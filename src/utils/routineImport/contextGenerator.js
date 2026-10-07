@@ -51,13 +51,21 @@ const singularizeFirstWord = (str) => {
 
 const toTitleCase = (str) => str.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
 
-// Case/plural-insensitive by construction: two names that differ only in casing or a
-// trailing "s" on the first word produce the identical output string, so grouping by
-// this value (as a plain Map key) merges them without a separate normalization step.
+// What gets PRINTED: the session type exactly as the athlete named it (title-cased),
+// no singularization — "LEGS" prints "Legs", "ACCESORIOS" prints "Accesorios".
 export const classifySessionType = (name) => {
   const prefix = extractPrefix(name);
   if (!prefix) return 'Sin clasificar';
-  return toTitleCase(singularizeFirstWord(prefix));
+  return toTitleCase(prefix);
+};
+
+// What gets GROUPED: case/plural-insensitive, so legacy names like "Piernas A" and
+// "Pierna A" (both exist in block 2A's history) still count as one type. The
+// singularized form lives only in this key; it is never shown, so it can't rename a
+// type the athlete wrote on purpose.
+const sessionTypeKey = (name) => {
+  const prefix = extractPrefix(name);
+  return prefix ? singularizeFirstWord(prefix).toLowerCase() : 'sin clasificar';
 };
 
 // Most recent session attributed to this block, regardless of whether it carries
@@ -79,15 +87,19 @@ export const getSessionTypeBreakdown = (blockId, allHistory) => {
   );
   const byType = new Map();
   for (const s of blockSessions) {
-    const label = classifySessionType(s.name);
+    const key = sessionTypeKey(s.name);
     const date = s.completedAt || s.createdAt || null;
-    const entry = byType.get(label) || { count: 0, lastDate: null };
+    const entry = byType.get(key) || { count: 0, lastDate: null, label: classifySessionType(s.name) };
     entry.count++;
-    if (date && (!entry.lastDate || date > entry.lastDate)) entry.lastDate = date;
-    byType.set(label, entry);
+    // The printed label is the variant used by the most recent session of the group.
+    if (date && (!entry.lastDate || date > entry.lastDate)) {
+      entry.lastDate = date;
+      entry.label = classifySessionType(s.name);
+    }
+    byType.set(key, entry);
   }
-  return [...byType.entries()]
-    .map(([label, entry]) => ({ label, count: entry.count, lastDate: entry.lastDate }))
+  return [...byType.values()]
+    .map(({ label, count, lastDate }) => ({ label, count, lastDate }))
     .sort((a, b) => b.count - a.count);
 };
 
