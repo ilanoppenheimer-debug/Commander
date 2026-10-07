@@ -42,6 +42,7 @@ export const BlocksTab = () => {
   const bump = () => setRefresh(r => r + 1);
 
   const handleClone = async (block) => {
+    if (!window.confirm(`¿Crear un bloque NUEVO a partir de "${block.name}"? Se crea como borrador, con sus mismos parámetros y sin sesiones; el original no se modifica.`)) return;
     const cloned = await cloneBlock(block.id);
     if (cloned) {
       bump();
