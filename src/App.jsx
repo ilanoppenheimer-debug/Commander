@@ -29,7 +29,7 @@ import ReverseCalculator from "./components/ReverseCalculator";
 import StrengthCalculator from "./components/StrengthCalculator";
 import { BlocksTab } from "./components/blocks/BlocksTab";
 import { getActiveBlocks } from "./db/blocks";
-import { getExerciseMeta } from "./constants/exerciseMetadata";
+import { resolveExerciseTag } from "./utils/blockReport";
 import { BlockReportModal } from "./components/blocks/BlockReportModal";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
@@ -647,12 +647,14 @@ function AppMain() {
     try {
       const activeBlocks = await getActiveBlocks();
       if (activeBlocks.length > 0) {
-        // No tag → no vote. A silent 'accessory' fallback here would let an untagged
-        // exercise both (a) get orphaned from the block it actually belongs to, if
-        // that block doesn't apply to 'accessory', and (b) falsely attribute the
-        // session to an unrelated PARALLEL block that does apply to 'accessory' —
-        // cross-contamination between blocks that have nothing to do with each other.
-        const exerciseTags = safeFinalExercises.map(ex => getExerciseMeta(ex?.name)?.defaultTag || null);
+        // No tag → no vote (an untagged exercise shouldn't orphan from its real block or
+        // cross-contaminate an unrelated parallel one). Resolution order is ex.tag (the
+        // import-time snapshot) first, live metadata as fallback — same precedence
+        // blockReport.js's resolveExerciseTag uses for display, so what gets attributed
+        // here agrees with what the report later shows. Previously this read metadata
+        // only, so an exercise whose name changed after import (global metadata lost,
+        // snapshot intact) silently stopped counting and stopped voting.
+        const exerciseTags = safeFinalExercises.map(ex => resolveExerciseTag(ex));
         untaggedCount = exerciseTags.filter(t => !t).length;
         const sessionTags = new Set(exerciseTags.filter(Boolean));
         matchedBlocks = activeBlocks.filter(b =>
