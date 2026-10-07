@@ -8,6 +8,7 @@ import { setMeasurement } from '../../constants/exerciseMetadata';
 import { TagPicker } from '../blocks/TagPicker';
 import { getAllBlocks, getSessionCountsByBlock, upsertBlockFromCoach } from '../../db/blocks';
 import { db } from '../../db/database';
+import { localDateStr } from '../../utils/localDate';
 
 const MEASUREMENT_OPTIONS = ['reps', 'time'];
 const MEASUREMENT_LABELS = { reps: 'Reps', time: 'Tiempo' };
@@ -79,7 +80,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
           );
           if (dup) {
             parseWarnings.push(
-              `Ya existe una sesión ${result.routine.sessionNum} de este bloque (${dup.name || 'sin nombre'}, ${(dup.completedAt || '').slice(0, 10)}) — ¿el número es correcto?`
+              `Ya existe una sesión ${result.routine.sessionNum} de este bloque (${dup.name || 'sin nombre'}, ${localDateStr(dup.completedAt)}) — ¿el número es correcto?`
             );
           }
         }

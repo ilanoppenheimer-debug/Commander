@@ -1,6 +1,7 @@
 import { formatSetSummary, formatVolume } from './formatters';
 import { computeExercise1RM } from './strengthMath';
-import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
+import { getExerciseMeta, getCompanion, getMeasurement } from '../constants/exerciseMetadata';
+import { localDateStr } from './localDate';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -8,7 +9,7 @@ const formatDate = (isoDate) => {
   if (!isoDate) return '—';
   const d = new Date(isoDate);
   const dayName = DAYS_ES[d.getDay()];
-  const dateStr = isoDate.slice(0, 10);
+  const dateStr = localDateStr(isoDate);
   const hourStr = d.toTimeString().slice(0, 5);
   return `${dateStr} (${dayName}, ${hourStr})`;
 };
@@ -171,12 +172,13 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     lines.push('');
     lines.push(`## ${ex.name}${tag ? ` [${tag}]` : ''}${supersetTag}`);
 
-    const planLine = formatPlanLine(blockCtx);
+    // A reps/RPE plan means nothing for a timed exercise (its sets carry seconds, not reps).
+    const planLine = getMeasurement(ex.name) === 'time' ? null : formatPlanLine(blockCtx);
     if (planLine) lines.push(planLine);
     if (blockCtx) {
       const sess = blockCtx.sessionsTarget
         ? `${blockCtx.sessionsLogged}/${blockCtx.sessionsTarget}`
-        : `${blockCtx.sessionsLogged} sesiones`;
+        : `${blockCtx.sessionsLogged} ${blockCtx.sessionsLogged === 1 ? 'sesión' : 'sesiones'}`;
       lines.push(`  Bloque: ${blockCtx.blockName} (${sess})`);
     }
 
