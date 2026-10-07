@@ -1,9 +1,33 @@
 import { db } from '../db/database';
 import { logger } from './logger';
 import { buildFilename } from '../utils/downloadNaming';
+import { loadExerciseMeta, replaceAllExerciseMeta } from '../constants/exerciseMetadata';
 
 const APP_VERSION = '14.1';
 const MAX_AUTO_BACKUPS = 7;
+
+// localStorage preferences worth carrying across devices — small, user-set, and cheap
+// to snapshot as plain strings. Mirrors key names owned by their respective modules
+// (constants/exerciseMetadata.js's SORT_1RM_KEY, components/keypad/SecondsNumPad.jsx's
+// UNIT_PREF_KEY, features/AdvancedTimer.jsx's CORNER_KEY) — read directly here rather
+// than importing those UI modules into this service layer. Deliberately excluded:
+// in-progress timer state (ironcmdr_active_timer, the per-set TimedSetRow timer keys —
+// device-local, tied to a live clock, meaningless to transplant) and migration-flag
+// keys (replaying them on a device that hasn't run that migration would make it skip
+// work it still needs).
+const PREF_KEYS = {
+  sort1RM: 'ironCmdrExMeta1RMSort',
+  secondsPadUnit: 'ironcmdr_seconds_pad_unit',
+  timerCorner: 'timerCorner',
+};
+
+const readPreferences = () => {
+  const prefs = {};
+  for (const [name, key] of Object.entries(PREF_KEYS)) {
+    prefs[name] = localStorage.getItem(key);
+  }
+  return prefs;
+};
 
 const sha256 = async (str) => {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -20,7 +44,11 @@ export const createBackup = async () => {
     db.blocks.toArray(),
   ]);
 
-  const data = { history, routines, customExercises, settings, logs, blocks };
+  const data = {
+    history, routines, customExercises, settings, logs, blocks,
+    exerciseMetadata: loadExerciseMeta(),
+    preferences: readPreferences(),
+  };
   const dataStr = JSON.stringify(data);
   const checksum = await sha256(dataStr);
 
@@ -56,8 +84,12 @@ export const restoreFromBackup = async (backupObj) => {
   const validation = await validateBackup(backupObj);
   if (!validation.valid) throw new Error(validation.error);
 
-  const { history, routines, customExercises, settings, blocks } = backupObj.data;
+  const { history, routines, customExercises, settings, blocks, exerciseMetadata, preferences } = backupObj.data;
   const hasBlocks = Array.isArray(blocks);
+  // Old backups (pre- this change) omit these — leave localStorage untouched in that
+  // case, same non-destructive-fallback precedent as hasBlocks above for pre-14.2.
+  const hasExerciseMetadata = exerciseMetadata != null && typeof exerciseMetadata === 'object';
+  const hasPreferences = preferences != null && typeof preferences === 'object';
 
   await db.transaction('rw', db.history, db.routines, db.customExercises, db.settings, db.blocks, async () => {
     await Promise.all([
@@ -75,9 +107,25 @@ export const restoreFromBackup = async (backupObj) => {
     if (hasBlocks) await db.blocks.bulkPut(blocks);
   });
 
+  // localStorage isn't part of the Dexie transaction above (different storage engine) —
+  // restore = return to the snapshot, so a present field fully REPLACES the target's
+  // current value (never merges), same as Dexie's clear()+bulkPut() for everything else.
+  if (hasExerciseMetadata) replaceAllExerciseMeta(exerciseMetadata);
+  if (hasPreferences) {
+    for (const [name, key] of Object.entries(PREF_KEYS)) {
+      const value = preferences[name];
+      try {
+        if (value == null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      } catch { /* non-blocking */ }
+    }
+  }
+
   logger.info('Backup restored', {
     historySessions: history?.length || 0,
     blocksRestored: hasBlocks ? blocks.length : 'not in backup — left intact',
+    exerciseMetadataRestored: hasExerciseMetadata,
+    preferencesRestored: hasPreferences,
     timestamp: backupObj.timestamp,
   });
 };

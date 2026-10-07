@@ -42,6 +42,12 @@ export function saveExerciseMeta(name, data) {
   localStorage.setItem(META_KEY, JSON.stringify(all));
 }
 
+// Full replace, not merge — used by backup restore, where the backup IS the snapshot to
+// return to, same semantics as Dexie's clear()+bulkPut() for the rest of a restore.
+export function replaceAllExerciseMeta(all) {
+  try { localStorage.setItem(META_KEY, JSON.stringify(all || {})); } catch { /* non-blocking */ }
+}
+
 export function getExerciseMeta(name) {
   return loadExerciseMeta()[name] || {};
 }
