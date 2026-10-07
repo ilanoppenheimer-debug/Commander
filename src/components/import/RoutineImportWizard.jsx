@@ -18,7 +18,7 @@ const MEASUREMENT_DESCRIPTIONS = {
 
 // ── Steps: paste → preview → success ─────────────────────────────────────────
 
-export default function RoutineImportWizard({ onClose, onSaved, onStartSession }) {
+export default function RoutineImportWizard({ onClose, onSaved, onStartSession, onNotify }) {
   const [step,       setStep]       = useState('paste');
   const [text,       setText]       = useState('');
   const [parsed,     setParsed]     = useState(null);
@@ -180,9 +180,16 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
       }
       const routine = await convertImportedToRoutine(parsed, mappings, overrides, 'temporary');
 
-      // Block import — non-blocking: session start takes priority if it fails
+      // Block import — non-blocking: session start takes priority if it fails. Not awaited
+      // on purpose (the normal path takes a pre-import backup). A 'skipped-closed' result
+      // resolves immediately with no write, so its warning surfaces right as the session
+      // starts — this path never renders StepSuccess, so the toast is the only place it shows.
       if (parsed.blockMeta) {
-        upsertBlockFromCoach(parsed.blockMeta).catch(() => {});
+        upsertBlockFromCoach(parsed.blockMeta)
+          .then((result) => {
+            if (result?.action === 'skipped-closed') onNotify?.(result.warnings?.[0], 'info');
+          })
+          .catch(() => {});
       }
 
       onStartSession?.(routine);
@@ -192,7 +199,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession }
     } finally {
       setProcessing(false);
     }
-  }, [parsed, mappings, overrides, onStartSession, onClose, measurementNotices, measurementOverrides]);
+  }, [parsed, mappings, overrides, onStartSession, onClose, onNotify, measurementNotices, measurementOverrides]);
 
   return (
     <Modal isOpen onClose={onClose} size="lg" align="center">
@@ -625,10 +632,12 @@ function StepSuccess({ routine, saveMode, blockImportResult, onStartSession, onC
       </div>
       {blockImportResult && (
         <div className="w-full bg-sky-900/20 border border-sky-500/30 rounded-xl p-2.5 text-xs text-left space-y-1">
-          <div className="text-sky-300 font-bold flex items-center gap-1.5">
-            <Layers size={11} />
-            Bloque {blockImportResult.action === 'created' ? 'creado' : 'actualizado'}: {blockImportResult.block?.name}
-          </div>
+          {blockImportResult.action !== 'skipped-closed' && (
+            <div className="text-sky-300 font-bold flex items-center gap-1.5">
+              <Layers size={11} />
+              Bloque {blockImportResult.action === 'created' ? 'creado' : 'actualizado'}: {blockImportResult.block?.name}
+            </div>
+          )}
           {blockImportResult.closed && (
             <div className="text-slate-400">Cerrado: {blockImportResult.closed.name}</div>
           )}

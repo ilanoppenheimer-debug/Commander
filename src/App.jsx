@@ -1490,6 +1490,7 @@ function AppMain() {
         <RoutineImportWizard
           onClose={() => setShowImportModal(false)}
           onSaved={() => showNotify('Plantilla importada', 'success')}
+          onNotify={showNotify}
           onStartSession={(routine) => {
             setShowImportModal(false);
             startRoutineFromTemplate(routine);

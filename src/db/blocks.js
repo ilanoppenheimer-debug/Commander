@@ -90,15 +90,29 @@ export const getSessionCountsByBlock = async () => {
 // Triggers a backup BEFORE any write — aborts if backup fails.
 // On update: preserves id, sessionsLogged (legacy, unused for display — see
 // getSessionCountsByBlock above), startedAt, createdAt, status, color.
+// A matched block that is 'completed' or 'archived' is NOT touched at all: closing it
+// was the athlete's decision, and applying YAML fields would silently change the params
+// its historical report shows. Returns action 'skipped-closed' with a warning instead —
+// no backup, no write, no auto-reopen, and closesCoachId is not processed either.
 export const upsertBlockFromCoach = async (blockMeta) => {
   if (!blockMeta?.coachId) throw new Error('blockMeta.coachId es requerido');
+
+  const allBlocks = await getAllBlocks();
+  const existing = allBlocks.find(b => b.coachId === blockMeta.coachId) || null;
+
+  if (existing && (existing.status === 'completed' || existing.status === 'archived')) {
+    return {
+      action: 'skipped-closed',
+      block: existing,
+      closed: null,
+      warnings: [`El bloque "${existing.name}" está cerrado. Esta rutina no se va a atribuir a ningún bloque.`],
+    };
+  }
 
   const backupResult = await createAutoBackup('pre-block-import');
   if (!backupResult.success) throw new Error(`Backup pre-import falló: ${backupResult.error}`);
 
   const warnings = [];
-  const allBlocks = await getAllBlocks();
-  const existing = allBlocks.find(b => b.coachId === blockMeta.coachId) || null;
 
   let block;
   let action;
@@ -189,6 +203,10 @@ export const cloneBlock = async (sourceId) => {
   const cloned = {
     ...source,
     id:             `blk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    // A clone is a new block — it must not claim the original's Coach identity, or
+    // upsertBlockFromCoach could match it instead of (or alongside) the original. If the
+    // Coach later uses it, the YAML assigns the coachId.
+    coachId:        null,
     name:           newName,
     status:         'draft',
     createdAt:      new Date().toISOString(),
