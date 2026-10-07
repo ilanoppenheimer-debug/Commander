@@ -24,7 +24,9 @@ const sessionsForBlock = (blockId, allHistory) =>
 // metadata is fallback only for sessions that predate the field. No 'accessory' fallback
 // — an untagged exercise votes for no block, so a mixed session (one that matches this
 // block AND another in parallel) doesn't leak the other block's exercises into this report.
-const resolveExerciseTag = (ex) => ex?.tag || getExerciseMeta(ex?.name)?.defaultTag || null;
+// Exported — App.jsx's handleFinishMission uses this same precedence for untaggedCount/
+// matchedBlocks instead of re-deriving its own (previously metadata-only) version.
+export const resolveExerciseTag = (ex) => ex?.tag || getExerciseMeta(ex?.name)?.defaultTag || null;
 
 // Ranks sets to pick the "best" one for display — not a projected/estimated value, just a
 // selection heuristic so we know which REAL set to show. Loaded work ranks by an Epley-ish
