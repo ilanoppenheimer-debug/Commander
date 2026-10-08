@@ -322,13 +322,13 @@ function StepPreview({
     const m = mappings[exName];
     if (!m || m.type === 'none') return { label: 'Nuevo', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     if (m.type === 'exact') return { label: '✓ ' + m.exerciseName, color: 'text-emerald-400', bg: 'bg-emerald-900/20 border-emerald-500/30' };
-    return { label: '≈ ' + m.candidates[0], color: 'text-sky-400', bg: 'bg-sky-900/20 border-sky-500/30' };
+    if (m.type === 'probable') return { label: '≈ probable · ' + m.exerciseName, color: 'text-sky-300', bg: 'bg-sky-900/30 border-sky-500/40' };
+    const n = m.candidates.length;
+    return { label: `sin resolver · ${n} sugerencia${n !== 1 ? 's' : ''}`, color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
   };
 
-  const hasFuzzy = exercises.some(ex => {
-    const m = mappings[ex.name];
-    return m?.type === 'fuzzy' && !overrides[ex.name];
-  });
+  const unresolvedCount = exercises.filter(ex => mappings[ex.name]?.type === 'fuzzy' && !overrides[ex.name]).length;
+  const hasFuzzy = unresolvedCount > 0;
 
   return (
     <div className="p-4 space-y-4">
@@ -496,9 +496,37 @@ function StepPreview({
               {isExpanded && (
                 <div className="border-t border-slate-700 p-3 space-y-2 bg-slate-900/50">
                   {/* Fuzzy match options */}
+                  {m?.type === 'probable' && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Probable (preseleccionado):</p>
+                      <button
+                        onClick={() => setOverrides(prev => { const n = { ...prev }; delete n[ex.name]; return n; })}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs border flex items-center justify-between ${!overrides[ex.name] ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-300' : 'text-slate-300 bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
+                      >
+                        <span>{m.exerciseName}</span>{!overrides[ex.name] && <Check size={12} />}
+                      </button>
+                      {m.alternatives?.length > 0 && <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide pt-1">Otras opciones:</p>}
+                      {(m.alternatives || []).map(c => (
+                        <button
+                          key={c}
+                          onClick={() => setOverrides(prev => ({ ...prev, [ex.name]: c }))}
+                          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs border ${overrides[ex.name] === c ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-300' : 'text-slate-300 bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setOverrides(prev => ({ ...prev, [ex.name]: ex.name }))}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs border border-dashed ${overrides[ex.name] === ex.name ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-300' : 'text-slate-500 bg-slate-900 border-slate-700 hover:text-white'}`}
+                      >
+                        Crear como nuevo: "{ex.name}"
+                      </button>
+                    </div>
+                  )}
+
                   {m?.type === 'fuzzy' && !overrides[ex.name] && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Seleccionar ejercicio:</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Sugerencias (ninguna elegida):</p>
                       <div className="space-y-1">
                         {m.candidates.slice(0, 4).map(c => (
                           <button
@@ -513,14 +541,14 @@ function StepPreview({
                           onClick={() => setOverrides(prev => ({ ...prev, [ex.name]: ex.name }))}
                           className="w-full text-left px-2 py-1.5 rounded-lg text-xs text-slate-500 bg-slate-900 border border-dashed border-slate-700 hover:text-white transition"
                         >
-                          Crear como "{ex.name}"
+                          Crear como nuevo: "{ex.name}"
                         </button>
                       </div>
                     </div>
                   )}
 
                   {/* Override selected */}
-                  {overrides[ex.name] && (
+                  {overrides[ex.name] && m?.type !== 'probable' && (
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-emerald-400">→ {overrides[ex.name]}</span>
                       <button
@@ -568,7 +596,7 @@ function StepPreview({
       <div className="space-y-2 pb-2">
         {hasFuzzy && (
           <p className="text-[10px] text-amber-400 text-center flex items-center justify-center gap-1">
-            <AlertTriangle size={10} /> Hay ejercicios sin resolver — expandilos para elegir
+            <AlertTriangle size={10} /> {unresolvedCount} sin resolver: se guarda{unresolvedCount !== 1 ? 'n' : ''} como ejercicio{unresolvedCount !== 1 ? 's' : ''} NUEVO{unresolvedCount !== 1 ? 'S' : ''} con el nombre del Coach (expandí para elegir)
           </p>
         )}
         <button

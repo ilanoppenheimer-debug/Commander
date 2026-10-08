@@ -1,3 +1,4 @@
+import { normalizeExerciseName } from '../utils/exerciseName';
 export const PLATE_CONFIG = {
   kg: {
     25:   { fill: "#dc2626", stroke: "#7f1d1d", text: "#ffffff", height: "h-32", label: "25",   type: "standard"   },
@@ -177,3 +178,13 @@ export const EXERCISE_TO_MUSCLE = Object.entries(EXERCISE_CATEGORIES).reduce(
   },
   {}
 );
+
+// Catalog muscle group by exercise IDENTITY (case/accents/spacing-insensitive), so a
+// spelling variant of a catalog exercise still classifies.
+let _muscleByIdentity = null;
+export const catalogMuscleFor = (name) => {
+  if (!_muscleByIdentity) {
+    _muscleByIdentity = new Map(Object.entries(EXERCISE_TO_MUSCLE).map(([k, v]) => [normalizeExerciseName(k), v]));
+  }
+  return _muscleByIdentity.get(normalizeExerciseName(name));
+};

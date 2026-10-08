@@ -1,4 +1,4 @@
-import { EXERCISE_TO_MUSCLE } from "../constants/gymConstants";
+import { catalogMuscleFor } from "../constants/gymConstants";
 
 export const analyzeWorkout = (routine) => {
   const exercises = Array.isArray(routine?.exercises) ? routine.exercises : [];
@@ -7,7 +7,7 @@ export const analyzeWorkout = (routine) => {
 
   exercises.forEach(ex => {
 
-    const muscle = EXERCISE_TO_MUSCLE[ex.name] || "other";
+    const muscle = catalogMuscleFor(ex.name) || "other";
 
     if (!volume[muscle]) volume[muscle] = 0;
 

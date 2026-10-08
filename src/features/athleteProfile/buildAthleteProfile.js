@@ -1,4 +1,5 @@
 import { calculate1RM } from "../../utils/strengthMath";
+import { buildDisplayNameIndex, displayNameFor } from "../../utils/exerciseName";
 
 export function buildAthleteProfile(history = []) {
   if (!Array.isArray(history) || history.length === 0) {
@@ -11,10 +12,13 @@ export function buildAthleteProfile(history = []) {
   let totalRPE = 0;
   let rpeCount = 0;
 
+  // One stats entry per exercise identity, keyed by the most recent spelling.
+  const displayNames = buildDisplayNameIndex(history);
   history.forEach(session => {
     session.exercises?.forEach(ex => {
-      if (!exerciseStats[ex.name]) {
-        exerciseStats[ex.name] = {
+      const statKey = displayNameFor(displayNames, ex.name);
+      if (!exerciseStats[statKey]) {
+        exerciseStats[statKey] = {
           sessions: 0,
           totalSets: 0,
           bestWeight: 0,
@@ -23,7 +27,7 @@ export function buildAthleteProfile(history = []) {
         };
       }
 
-      const stat = exerciseStats[ex.name];
+      const stat = exerciseStats[statKey];
       stat.sessions++;
 
       ex.sets?.forEach(set => {

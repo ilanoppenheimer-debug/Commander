@@ -1,4 +1,5 @@
 import { calculate1RM } from "../utils/strengthMath";
+import { sameExercise } from "../utils/exerciseName";
 import { getExerciseMeta } from "../constants/exerciseMetadata";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -65,7 +66,7 @@ export const findPRs = (currentExercises, history) => {
     let hist = { bestWeight: 0, bestReps: 0, best1RM: 0 };
     safeHistory.forEach((session) => {
       (session.exercises || []).forEach((pastEx) => {
-        if (pastEx?.name !== ex.name) return;
+        if (!sameExercise(pastEx?.name, ex.name)) return;
         const s = bestSetStats(pastEx.sets);
         if (s.bestWeight > hist.bestWeight) hist.bestWeight = s.bestWeight;
         if (s.bestReps > hist.bestReps) hist.bestReps = s.bestReps;
@@ -128,7 +129,7 @@ export const compareWithLastSession = (
 
   const exerciseComparisons = [];
   (currentExercises || []).forEach((ex) => {
-    const pastEx = (last.exercises || []).find((p) => p?.name === ex?.name);
+    const pastEx = (last.exercises || []).find((p) => sameExercise(p?.name, ex?.name));
     if (!pastEx) return;
     const currentStats = bestSetStats(ex.sets);
     const pastStats = bestSetStats(pastEx.sets);

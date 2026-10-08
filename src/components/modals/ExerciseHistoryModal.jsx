@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { X, BarChart2 } from "lucide-react";
 import Modal from "../ui/Modal";
+import { sameExercise } from "../../utils/exerciseName";
 
 const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
   const [limit, setLimit] = useState(5);
@@ -16,7 +17,7 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
       const exData = (session.exercises || []).find(
         (e) =>
           e &&
-          String(e.name).toLowerCase() === String(exName).toLowerCase()
+          sameExercise(e.name, exName)
       );
 
       if (exData && Array.isArray(exData.sets) && exData.sets.length > 0) {

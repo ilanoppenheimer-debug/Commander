@@ -5,6 +5,7 @@ import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { TAG_LABELS } from '../../constants/blockTemplates';
 import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta } from '../../constants/exerciseMetadata';
 import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
+import { sameExercise } from '../../utils/exerciseName';
 
 const DEBOUNCE_MS = 300;
 
@@ -81,7 +82,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     if (isEdit && !isRenameAttempt) { setDuplicate({ exact: null, similar: [] }); return; }
     if (!trimmed) { setDuplicate({ exact: null, similar: [] }); return; }
     debounceRef.current = setTimeout(() => {
-      const exact = allExerciseNames.find(e => e.toLowerCase() === trimmed) || null;
+      const exact = allExerciseNames.find(e => sameExercise(e, trimmed)) || null;
       const similar = exact ? [] : allExerciseNames.filter(e => {
         const el = e.toLowerCase();
         return el.startsWith(trimmed) || el.includes(trimmed) || trimmed.includes(el);
@@ -172,6 +173,11 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
               <span className="text-white font-bold">"{renamePreview.oldName}"</span> pasa a llamarse{' '}
               <span className="text-white font-bold">"{renamePreview.newName}"</span>.
             </div>
+            {renamePreview.caseOnly && (
+              <div className="text-xs text-sky-300 bg-sky-900/20 border border-sky-500/30 rounded-lg p-2">
+                Solo cambian mayúsculas, tildes o espacios: para la app sigue siendo el mismo ejercicio. Se unifica cómo está escrito en el historial y las rutinas.
+              </div>
+            )}
 
             <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 space-y-1 text-slate-300 text-xs">
               <div>Sesiones del historial a actualizar: <span className="text-white font-bold">{renamePreview.sessionsAffected}</span></div>

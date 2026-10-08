@@ -1,3 +1,5 @@
+import { sameExercise, buildDisplayNameIndex } from './exerciseName';
+
 export const FORMULAS = {
   epley: (w, r) => w * (1 + r / 30),
   brzycki: (w, r) => w * (36 / (37 - r)),
@@ -120,7 +122,7 @@ export const computeExercise1RM = (exerciseName, history, options = {}) => {
     if (cutoffDate && new Date(session.completedAt) < cutoffDate) return;
     const exercises = Array.isArray(session.exercises) ? session.exercises : [];
     exercises.forEach(ex => {
-      if (!ex || ex.name !== exerciseName) return;
+      if (!ex || !sameExercise(ex.name, exerciseName)) return;
       const sets = Array.isArray(ex.sets) ? ex.sets : [];
       sets.forEach(set => {
         allSetsRaw.push({ ...set, _date: session.completedAt, _sessionId: session.historyId || session.id });
@@ -190,7 +192,7 @@ export const getLastLoggedSet = (exerciseName, history, options = {}) => {
     if (cutoffDate && new Date(session.completedAt) < cutoffDate) return;
     const exercises = Array.isArray(session.exercises) ? session.exercises : [];
     exercises.forEach(ex => {
-      if (!ex || ex.name !== exerciseName) return;
+      if (!ex || !sameExercise(ex.name, exerciseName)) return;
       const sets = Array.isArray(ex.sets) ? ex.sets : [];
       sets.forEach(set => {
         if (!set) return;
@@ -238,14 +240,11 @@ export const getTopHistoricalSet = (exerciseName, history, options = {}) => {
 export const computeAll1RMs = (history, options = {}) => {
   if (!Array.isArray(history) || history.length === 0) return [];
 
-  const exerciseNames = new Set();
-  history.forEach(s => {
-    const exes = Array.isArray(s?.exercises) ? s.exercises : [];
-    exes.forEach(e => { if (e?.name) exerciseNames.add(e.name); });
-  });
+  // One entry per exercise IDENTITY; the printed name is the spelling of its most recent session.
+  const displayNames = buildDisplayNameIndex(history);
 
   const results = [];
-  exerciseNames.forEach(name => {
+  displayNames.forEach(name => {
     const computed = computeExercise1RM(name, history, options);
     if (computed.current1RM !== null) {
       results.push({ name, ...computed });

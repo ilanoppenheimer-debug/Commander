@@ -30,6 +30,7 @@ import StrengthCalculator from "./components/StrengthCalculator";
 import { BlocksTab } from "./components/blocks/BlocksTab";
 import { getActiveBlocks } from "./db/blocks";
 import { resolveExerciseTag } from "./utils/blockReport";
+import { sameExercise, buildDisplayNameIndex, displayNameFor } from "./utils/exerciseName";
 import { BlockReportModal } from "./components/blocks/BlockReportModal";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
@@ -1189,7 +1190,7 @@ function AppMain() {
           const now = Date.now();
           const filtered = safeHistory.filter(h => {
             if (historySearch && !((h.name || '').toLowerCase().includes(historySearch.toLowerCase()))) return false;
-            if (historyExFilter && !((h.exercises || []).some(ex => ex?.name === historyExFilter))) return false;
+            if (historyExFilter && !((h.exercises || []).some(ex => sameExercise(ex?.name, historyExFilter)))) return false;
             if (historyPeriod !== 'all') {
               const days = periodMs[historyPeriod];
               if (days && h.completedAt && (now - new Date(h.completedAt).getTime()) > days * 86400000) return false;
@@ -1204,7 +1205,7 @@ function AppMain() {
             return new Date(b.completedAt) - new Date(a.completedAt);
           });
 
-          const allExNames = [...new Set(safeHistory.flatMap(h => (h.exercises || []).map(ex => ex?.name).filter(Boolean)))].sort();
+          const allExNames = [...buildDisplayNameIndex(safeHistory).values()].sort();
           const hasFilters = historySearch || historyExFilter || historyPeriod !== 'all' || historySort !== 'newest';
 
           return (
@@ -1321,7 +1322,8 @@ function AppMain() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {(() => {
                       const counts = {};
-                      safeHistory.forEach(s => { s.exercises?.forEach(ex => { if (ex?.name) counts[ex.name] = (counts[ex.name] || 0) + 1; }); });
+                      const displayNames = buildDisplayNameIndex(safeHistory);
+                      safeHistory.forEach(s => { s.exercises?.forEach(ex => { if (ex?.name) { const n = displayNameFor(displayNames, ex.name); counts[n] = (counts[n] || 0) + 1; } }); });
                       return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, count]) => {
                         const details = getExerciseDetails(name);
                         return (

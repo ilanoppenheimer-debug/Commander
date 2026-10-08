@@ -1,7 +1,8 @@
 import { db } from '../db/database';
 import { removeCustomExercise, addCustomExercise } from '../db/repository';
 import { useSessionStore } from '../stores/sessionStore';
-import { getExerciseMeta, saveExerciseMeta, deleteExerciseMeta, mergeExerciseMeta } from '../constants/exerciseMetadata';
+import { getRawExerciseMeta, writeRawExerciseMeta, deleteExerciseMeta, mergeExerciseMeta } from '../constants/exerciseMetadata';
+import { sameExercise } from './exerciseName';
 import { createAutoBackup } from '../services/backupService';
 import { logger } from '../services/logger';
 
@@ -23,6 +24,9 @@ export const canRenameExercise = async (name) => {
 export const previewRenameExercise = async (oldName, newName) => {
   const trimmedNew = (newName || '').trim();
   if (!trimmedNew) return { ok: false, reason: 'empty-name' };
+  // Literal comparison on purpose: a change that only alters case/accents/spacing
+  // ("Remo en punta" -> "Remo en Punta") is a REAL rename — it unifies the stored
+  // spelling in history and routines — so it must not be swallowed as 'same-name'.
   if (trimmedNew === oldName) return { ok: false, reason: 'same-name' };
 
   const isCustom = await canRenameExercise(oldName);
@@ -30,7 +34,7 @@ export const previewRenameExercise = async (oldName, newName) => {
 
   const activeSession = useSessionStore.getState().session;
   const activeSessionHasIt = Array.isArray(activeSession?.exercises)
-    && activeSession.exercises.some(ex => ex?.name === oldName);
+    && activeSession.exercises.some(ex => sameExercise(ex?.name, oldName));
   if (activeSessionHasIt) return { ok: false, reason: 'active-session-conflict' };
 
   const [historyRows, routineRows, targetCount] = await Promise.all([
@@ -47,8 +51,9 @@ export const previewRenameExercise = async (oldName, newName) => {
   ).length;
 
   const willMerge = targetCount > 0;
+  // Raw (exact-key) reads: the rename acts on the literal spelling, not the identity group.
   const mergedMetaPreview = willMerge
-    ? mergeExerciseMeta(getExerciseMeta(oldName), getExerciseMeta(trimmedNew))
+    ? mergeExerciseMeta(getRawExerciseMeta(oldName), getRawExerciseMeta(trimmedNew))
     : null;
 
   return {
@@ -59,6 +64,7 @@ export const previewRenameExercise = async (oldName, newName) => {
     routinesAffected,
     willMerge,
     mergedMetaPreview,
+    caseOnly: sameExercise(oldName, trimmedNew),
   };
 };
 
@@ -122,8 +128,8 @@ export const renameExercise = async (oldName, newName) => {
     await addCustomExercise(to);
   }
 
-  const merged = mergeExerciseMeta(getExerciseMeta(from), willMerge ? getExerciseMeta(to) : {});
-  saveExerciseMeta(to, merged);
+  const merged = mergeExerciseMeta(getRawExerciseMeta(from), willMerge ? getRawExerciseMeta(to) : {});
+  writeRawExerciseMeta(to, merged);
   deleteExerciseMeta(from);
 
   logger.info('renameExercise', { from, to, sessionsChanged, routinesChanged, willMerge });

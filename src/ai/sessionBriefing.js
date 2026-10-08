@@ -4,6 +4,7 @@
 // deleted, in case AI returns with a different role (pattern detection, not
 // proposing workouts).
 import { callGeminiAPI } from "../services/aiService";
+import { sameExercise } from "../utils/exerciseName";
 import { localDateStr } from "../utils/localDate";
 
 const MAX_HISTORY_PER_EXERCISE = 5;
@@ -15,7 +16,7 @@ const summarizeExerciseHistory = (exerciseName, history) => {
   for (const session of history) {
     if (rows.length >= MAX_HISTORY_PER_EXERCISE) break;
     const ex = (session.exercises || []).find(
-      (e) => e?.name?.toLowerCase() === exerciseName.toLowerCase()
+      (e) => sameExercise(e?.name, exerciseName)
     );
     if (!ex || !Array.isArray(ex.sets)) continue;
 

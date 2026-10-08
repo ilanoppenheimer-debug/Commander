@@ -1,31 +1,37 @@
 import { db } from '../../db/database';
 import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
+import { normalizeExerciseName } from '../exerciseName';
 
-const normalize = (name) => {
-  if (!name) return '';
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9 ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
+// Filler words that never identify an exercise ("Remo con mancuerna" ≈ "Remo mancuerna").
+const STOPWORDS = new Set(['con', 'de', 'en', 'a', 'la', 'el']);
 
-const scoreSimilarity = (a, b, bWords) => {
-  if (a === b) return 100;
+// Looser than the app's identity: also ignores punctuation and filler words. Only used to
+// decide the "probable" tier and to score fuzzy candidates — never to treat two names as
+// the same exercise on its own.
+const looseWords = (name) =>
+  normalizeExerciseName(name).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOPWORDS.has(w));
+const looseKey = (name) => looseWords(name).join(' ');
+
+const scoreSimilarity = (candidateLoose, importedLoose, importedWords) => {
   let score = 0;
-  for (const word of bWords) {
-    if (a.includes(word)) score += 10;
+  for (const word of importedWords) {
+    if (candidateLoose.includes(word)) score += 10;
   }
-  if (a.includes(b) || b.includes(a)) score += 20;
+  if (importedLoose && candidateLoose && (candidateLoose.includes(importedLoose) || importedLoose.includes(candidateLoose))) score += 20;
   return score;
 };
 
+/**
+ * Tiers, strongest first:
+ *  - exact:    same exercise for the app (normalizeExerciseName equal) — applied silently.
+ *  - probable: equal once punctuation and filler words are ignored, and only ONE catalog
+ *              name qualifies — applied by default, visible and changeable in the wizard.
+ *  - fuzzy:    similar names, no default — pending until the athlete picks (or the Coach's
+ *              name is kept as a new exercise).
+ *  - none:     nothing similar.
+ */
 export const findExerciseMatch = async (importedName) => {
   if (!importedName) return { type: 'none' };
-
-  const normalized = normalize(importedName);
 
   let customNames = [];
   try {
@@ -35,17 +41,29 @@ export const findExerciseMatch = async (importedName) => {
 
   const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...customNames])];
 
-  const exact = allNames.find(n => normalize(n) === normalized);
+  const identity = normalizeExerciseName(importedName);
+  const exact = allNames.find(n => normalizeExerciseName(n) === identity);
   if (exact) return { type: 'exact', exerciseName: exact };
 
-  const bWords = normalized.split(' ').filter(w => w.length > 2);
-  const candidates = allNames
-    .map(n => ({ name: n, score: scoreSimilarity(normalize(n), normalized, bWords) }))
-    .filter(c => c.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+  const importedWords = looseWords(importedName);
+  const importedLoose = importedWords.join(' ');
 
-  if (candidates.length > 0) return { type: 'fuzzy', candidates: candidates.map(c => c.name) };
+  const ranked = allNames
+    .map(n => ({ name: n, score: scoreSimilarity(looseKey(n), importedLoose, importedWords) }))
+    .filter(c => c.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const probableMatches = importedLoose ? allNames.filter(n => looseKey(n) === importedLoose) : [];
+  if (probableMatches.length === 1) {
+    const probable = probableMatches[0];
+    return {
+      type: 'probable',
+      exerciseName: probable,
+      alternatives: ranked.map(c => c.name).filter(n => n !== probable).slice(0, 3),
+    };
+  }
+
+  if (ranked.length > 0) return { type: 'fuzzy', candidates: ranked.slice(0, 5).map(c => c.name) };
   return { type: 'none' };
 };
 

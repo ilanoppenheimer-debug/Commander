@@ -1,3 +1,5 @@
+import { normalizeExerciseName } from '../utils/exerciseName';
+
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
   { id: 'vertical_push',    label: 'Empuje vertical' },
@@ -36,9 +38,72 @@ export function loadExerciseMeta() {
   } catch { return {}; }
 }
 
+// ── Identity-aware storage ────────────────────────────────────────────────────
+// The blob is keyed by the literal name that was saved, so "Remo en punta" and "Remo en
+// Punta" can both exist as keys. They are one exercise (normalizeExerciseName), so READS
+// resolve every key of the group into one object; WRITES go to one key and stamp it with
+// updatedAt. Stored keys are never merged or deleted by this layer.
+
+// Fields that carry provenance: [value, override flag, assigned-at, assigned-by].
+const PROVENANCE_FIELDS = [
+  ['defaultTag',  'tagOverride',         'tagAssignedAt',         'tagAssignedBy'],
+  ['equipment',   'equipmentOverride',   'equipmentAssignedAt',   'equipmentAssignedBy'],
+  ['muscleGroup', 'muscleGroupOverride', 'muscleGroupAssignedAt', 'muscleGroupAssignedBy'],
+];
+const PROVENANCE_KEYS = new Set(PROVENANCE_FIELDS.flat());
+
+const groupKeysOf = (all, name) => {
+  const target = normalizeExerciseName(name);
+  return target === '' ? [] : Object.keys(all).filter(k => normalizeExerciseName(k) === target);
+};
+
+const stamp = (meta) => Number(meta?.updatedAt) || 0;
+
+// Per field: user-manual beats coach-import/auto; ties go to the most recent assignment,
+// then to the most recently written key. Fields without provenance (measurement,
+// companion, tracked1RM...) take the value of the most recently written key that has it,
+// so an explicit tracked1RM:false on any spelling survives; favorite is OR'd.
+const resolveGroup = (all, keys) => {
+  const metas = keys.map(k => all[k] || {});
+  const resolved = {};
+
+  for (const [valueKey, overrideKey, atKey, byKey] of PROVENANCE_FIELDS) {
+    const holders = metas.filter(m => m[valueKey] != null);
+    if (holders.length === 0) continue;
+    const isManual = (m) => m[overrideKey] === true || m[byKey] === 'user-manual';
+    holders.sort((a, b) =>
+      (isManual(b) - isManual(a))
+      || String(b[atKey] || '').localeCompare(String(a[atKey] || ''))
+      || (stamp(b) - stamp(a)));
+    const winner = holders[0];
+    for (const k of [valueKey, overrideKey, atKey, byKey]) if (winner[k] !== undefined) resolved[k] = winner[k];
+  }
+
+  const otherFields = new Set(metas.flatMap(m => Object.keys(m)).filter(k => !PROVENANCE_KEYS.has(k) && k !== 'favorite' && k !== 'updatedAt'));
+  const newestFirst = [...metas].sort((a, b) => stamp(b) - stamp(a));
+  for (const field of otherFields) {
+    const holder = newestFirst.find(m => m[field] !== undefined);
+    if (holder) resolved[field] = holder[field];
+  }
+  if (metas.some(m => m.favorite)) resolved.favorite = true;
+  return resolved;
+};
+
 export function saveExerciseMeta(name, data) {
   const all = loadExerciseMeta();
-  all[name] = { ...all[name], ...data };
+  const keys = groupKeysOf(all, name);
+  const key = all[name] !== undefined
+    ? name
+    : (keys.length > 0 ? [...keys].sort((a, b) => stamp(all[b]) - stamp(all[a]))[0] : name);
+  all[key] = { ...all[key], ...data, updatedAt: Date.now() };
+  localStorage.setItem(META_KEY, JSON.stringify(all));
+}
+
+// Exact-key accessors for the rename flow, which must act on a literal spelling.
+export const getRawExerciseMeta = (name) => loadExerciseMeta()[name] || {};
+export function writeRawExerciseMeta(name, meta) {
+  const all = loadExerciseMeta();
+  all[name] = { ...meta, updatedAt: Date.now() };
   localStorage.setItem(META_KEY, JSON.stringify(all));
 }
 
@@ -49,9 +114,14 @@ export function replaceAllExerciseMeta(all) {
 }
 
 export function getExerciseMeta(name) {
-  return loadExerciseMeta()[name] || {};
+  const all = loadExerciseMeta();
+  const keys = groupKeysOf(all, name);
+  if (keys.length === 0) return {};
+  if (keys.length === 1) return all[keys[0]] || {};
+  return resolveGroup(all, keys);
 }
 
+// Exact key only (used after a rename moved the data elsewhere).
 export function deleteExerciseMeta(name) {
   const all = loadExerciseMeta();
   delete all[name];

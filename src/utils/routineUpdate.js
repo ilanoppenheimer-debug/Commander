@@ -1,4 +1,5 @@
 import { db } from '../db/database';
+import { sameExercise, normalizeExerciseName } from './exerciseName';
 
 export const diffRoutineVsSession = (routine, session) => {
   const changes = [];
@@ -9,7 +10,7 @@ export const diffRoutineVsSession = (routine, session) => {
 
   for (const sessionEx of sessionExs) {
     const routineEx = routineExs.find(re =>
-      re.name === sessionEx.name || re.exerciseId === sessionEx.exerciseId
+      sameExercise(re.name, sessionEx.name) || re.exerciseId === sessionEx.exerciseId
     );
 
     const completedSets = (sessionEx.sets || []).filter(s => s.completed && s.weight && s.reps);
@@ -71,7 +72,7 @@ export const updateRoutineFromSession = async (routineId, session) => {
 
   for (const sessionEx of sessionExs) {
     const existingEx = (routine.exercises || []).find(re =>
-      re.name === sessionEx.name || re.exerciseId === sessionEx.exerciseId
+      sameExercise(re.name, sessionEx.name) || re.exerciseId === sessionEx.exerciseId
     );
 
     const sessionSets = (Array.isArray(sessionEx.sets) ? sessionEx.sets : [])
@@ -80,7 +81,7 @@ export const updateRoutineFromSession = async (routineId, session) => {
     if (sessionSets.length === 0) {
       if (existingEx) {
         updatedExercises.push(existingEx);
-        handledNames.add(existingEx.name);
+        handledNames.add(normalizeExerciseName(existingEx.name));
       }
       continue;
     }
@@ -94,7 +95,7 @@ export const updateRoutineFromSession = async (routineId, session) => {
         rest:   existingEx.sets?.[i]?.rest || existingEx.sets?.[0]?.rest || 90,
       }));
       updatedExercises.push({ ...existingEx, sets: newSets });
-      handledNames.add(existingEx.name);
+      handledNames.add(normalizeExerciseName(existingEx.name));
     } else {
       updatedExercises.push({
         exerciseId: sessionEx.exerciseId,
@@ -108,12 +109,12 @@ export const updateRoutineFromSession = async (routineId, session) => {
           rest:   90,
         })),
       });
-      handledNames.add(sessionEx.name);
+      handledNames.add(normalizeExerciseName(sessionEx.name));
     }
   }
 
   for (const routineEx of (routine.exercises || [])) {
-    if (!handledNames.has(routineEx.name)) {
+    if (!handledNames.has(normalizeExerciseName(routineEx.name))) {
       updatedExercises.push(routineEx);
     }
   }
