@@ -2,18 +2,23 @@ import { useState, useEffect } from 'react';
 import { X, Copy, Check, Loader2, RefreshCw } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { generateCoachContext } from '../../utils/routineImport/contextGenerator';
+import { generateExerciseTimeReport } from '../../utils/exerciseTimeReport';
+import { db } from '../../db/database';
 
 export default function CoachContextModal({ onClose }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
+  const [view, setView] = useState('context'); // 'context' | 'times' — times is on demand, never part of the context export
 
-  const generate = async () => {
+  const generate = async (which = view) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await generateCoachContext();
+      const result = which === 'times'
+        ? generateExerciseTimeReport(await db.history.toArray())
+        : await generateCoachContext();
       setText(result);
     } catch (e) {
       setError(e?.message || 'Error generando contexto');
@@ -22,7 +27,13 @@ export default function CoachContextModal({ onClose }) {
     }
   };
 
-  useEffect(() => { generate(); }, []);
+  useEffect(() => { generate('context'); }, []);
+
+  const switchView = (next) => {
+    if (next === view || loading) return;
+    setView(next);
+    generate(next);
+  };
 
   const handleCopy = async () => {
     try {
@@ -51,7 +62,7 @@ export default function CoachContextModal({ onClose }) {
           </h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={generate}
+              onClick={() => generate()}
               disabled={loading}
               className="p-1.5 text-slate-400 hover:text-white transition"
               title="Regenerar"
@@ -62,6 +73,20 @@ export default function CoachContextModal({ onClose }) {
               <X size={18} />
             </button>
           </div>
+        </div>
+
+        <div className="px-4 pt-3 flex gap-2 shrink-0">
+          {[['context', 'Contexto'], ['times', 'Tiempos por ejercicio']].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => switchView(id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                view === id ? 'bg-accent-600 text-black border-accent-500' : 'text-slate-400 border-slate-700 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
@@ -85,7 +110,7 @@ export default function CoachContextModal({ onClose }) {
 
         <div className="p-4 border-t border-slate-800 shrink-0 space-y-2">
           <p className="text-[10px] text-slate-500 text-center">
-            Copiá este texto y pegalo en tu Claude Project como contexto antes de pedir la próxima rutina.
+            {view === 'times' ? 'Reporte bajo demanda para planificar la duración de las sesiones.' : 'Copiá este texto y pegalo en tu Claude Project como contexto antes de pedir la próxima rutina.'}
           </p>
           <button
             onClick={handleCopy}
