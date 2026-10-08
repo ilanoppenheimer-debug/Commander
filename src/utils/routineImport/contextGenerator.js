@@ -49,15 +49,10 @@ const singularizeFirstWord = (str) => {
   return words.join(' ');
 };
 
-const toTitleCase = (str) => str.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
-
-// What gets PRINTED: the session type exactly as the athlete named it (title-cased),
-// no singularization — "LEGS" prints "Legs", "ACCESORIOS" prints "Accesorios".
-export const classifySessionType = (name) => {
-  const prefix = extractPrefix(name);
-  if (!prefix) return 'Sin clasificar';
-  return toTitleCase(prefix);
-};
+// What gets PRINTED: the session type exactly as the athlete wrote it ("DL", "LEGS",
+// "Pierna A"), whitespace-collapsed by extractPrefix and nothing else — no case
+// change, no singularization.
+export const classifySessionType = (name) => extractPrefix(name) || 'Sin clasificar';
 
 // What gets GROUPED: case/plural-insensitive, so legacy names like "Piernas A" and
 // "Pierna A" (both exist in block 2A's history) still count as one type. The
