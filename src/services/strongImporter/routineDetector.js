@@ -1,3 +1,4 @@
+import { sameExercise, buildDisplayNameIndex, displayNameFor } from '../../utils/exerciseName';
 /**
  * Compute a session's "signature": top-3 exercises by total volume (weight × reps).
  */
@@ -45,7 +46,7 @@ function avgRepsForExercise(exName, sessions, lastN = 5) {
   const repsList = [];
   for (const s of sessions) {
     for (const ex of s.exercises || []) {
-      if (ex.name === exName && ex.sets?.length > 0) {
+      if (sameExercise(ex.name, exName) && ex.sets?.length > 0) {
         const avgR = Math.round(ex.sets.reduce((sum, s) => sum + (s.reps || 0), 0) / ex.sets.length);
         repsList.push({ reps: avgR, setCount: ex.sets.length });
         break;
@@ -112,10 +113,13 @@ export function detectRoutines(normalizedSessions) {
     const dates = sessions.map(s => s.completedAt).sort();
 
     // Union all exercises
+    // Counted per exercise identity; the key is the spelling of the most recent session.
+    const displayNames = buildDisplayNameIndex(sessions);
     const exCounts = {};
     for (const s of sessions) {
       for (const ex of s.exercises || []) {
-        exCounts[ex.name] = (exCounts[ex.name] || 0) + 1;
+        const name = displayNameFor(displayNames, ex.name);
+        exCounts[name] = (exCounts[name] || 0) + 1;
       }
     }
     const allExercises = Object.keys(exCounts).sort((a, b) => exCounts[b] - exCounts[a]);
@@ -129,7 +133,7 @@ export function detectRoutines(normalizedSessions) {
 
     // For each template exercise, find equipment and avg reps from the last 5 sessions
     const templateExercises = templateExNames.map(exName => {
-      const exEntry = sessions.flatMap(s => s.exercises || []).find(e => e.name === exName);
+      const exEntry = sessions.flatMap(s => s.exercises || []).find(e => sameExercise(e.name, exName));
       const { reps, setCount } = avgRepsForExercise(exName, sessions, 5);
       return {
         id: `tpl-${idx}-${exName.replace(/\s+/g, '-').toLowerCase()}`,

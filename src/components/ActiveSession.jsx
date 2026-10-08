@@ -50,6 +50,7 @@ import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
+import { sameExercise } from "../utils/exerciseName";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -405,7 +406,7 @@ export default function ActiveSession({
       const pastSession = history[i];
       if (!pastSession || !Array.isArray(pastSession.exercises)) continue;
       const pastEx = pastSession.exercises.find(
-        (e) => e && String(e.name).toLowerCase() === String(exName).toLowerCase()
+        (e) => e && sameExercise(e.name, exName)
       );
       if (pastEx && Array.isArray(pastEx.sets) && pastEx.sets.length > 0) {
         const maxSet = pastEx.sets.reduce((max, cur) => {
@@ -450,7 +451,7 @@ export default function ActiveSession({
     if (!briefing?.perExercise || briefing.perExercise.length === 0) return;
     exercises.forEach((ex) => {
       const sug = briefing.perExercise.find(
-        (p) => p?.name?.toLowerCase() === ex.name?.toLowerCase()
+        (p) => sameExercise(p?.name, ex.name)
       );
       if (!sug) return;
       const w = parseFloat(sug.suggestedWeight) || 0;
@@ -481,7 +482,7 @@ export default function ActiveSession({
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
     } else {
-      const alreadyPresent = exercises.some(e => e.name === exName);
+      const alreadyPresent = exercises.some(e => sameExercise(e.name, exName));
       if (alreadyPresent) {
         showNotify?.(`"${exName}" ya está en la sesión — agregando igualmente`, 'info');
       }

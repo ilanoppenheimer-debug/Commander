@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
 import { Dumbbell, X, Search, Plus, Trash2, Star } from "lucide-react";
-import { DEFAULT_EXERCISE_DB, EXERCISE_TO_MUSCLE } from "../../constants/gymConstants";
+import { DEFAULT_EXERCISE_DB, catalogMuscleFor } from "../../constants/gymConstants";
+import { sameExercise } from "../../utils/exerciseName";
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
@@ -86,10 +87,9 @@ const ExerciseSelectorModal = ({
 
   const allExerciseNames = useMemo(() => {
     const safeCustom = Array.isArray(customExercises) ? customExercises.filter(Boolean) : [];
-    const deduped = [...DEFAULT_EXERCISE_DB, ...safeCustom].filter((e, _, arr) => {
-      const lower = e.toLowerCase();
-      return arr.findIndex(x => x.toLowerCase() === lower) === arr.indexOf(e);
-    });
+    const deduped = [...DEFAULT_EXERCISE_DB, ...safeCustom].filter((e, _, arr) =>
+      arr.findIndex(x => sameExercise(x, e)) === arr.indexOf(e)
+    );
     return [...new Set(deduped)].sort();
   }, [customExercises]);
 
@@ -122,7 +122,7 @@ const ExerciseSelectorModal = ({
         if (!expected) return allExerciseNames;
         const expectedArr = Array.isArray(expected) ? expected : [expected];
         return allExerciseNames.filter(e => {
-          const m = EXERCISE_TO_MUSCLE[e] || getExerciseMeta(e)?.muscleGroup;
+          const m = catalogMuscleFor(e) || getExerciseMeta(e)?.muscleGroup;
           return m && expectedArr.includes(m);
         });
       }

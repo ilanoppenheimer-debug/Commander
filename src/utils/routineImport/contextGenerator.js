@@ -3,6 +3,7 @@ import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 import { getCompanion, getMeasurement } from '../../constants/exerciseMetadata';
 import { localDateStr } from '../localDate';
+import { normalizeExerciseName } from '../exerciseName';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
 // bodyweight sets, seconds for time-measured sets (which never carry a real weight).
@@ -144,23 +145,32 @@ export const generateCoachContext = async () => {
       // Loaded/bodyweight work and timed work are tracked in separate maps: a hold
       // measured in seconds (with a heart-rate/difficulty companion) was ranking against
       // kg in one list, mixing two scales and two meanings of "top set".
+      // Keyed by exercise identity (spelling variants are one exercise); `name` is the
+      // spelling of the most recent session that has it.
       const topByEx = {};
       const timedByEx = {};
+      const latestNameAt = {};
       for (const session of recent) {
+        const sessionTime = Date.parse(session.completedAt || session.createdAt || '') || 0;
         for (const ex of (Array.isArray(session.exercises) ? session.exercises : [])) {
           if (!ex?.name) continue;
+          const key = normalizeExerciseName(ex.name);
+          if (!(key in latestNameAt) || sessionTime >= latestNameAt[key].t) latestNameAt[key] = { name: ex.name, t: sessionTime };
           const target = getMeasurement(ex.name) === 'time' ? timedByEx : topByEx;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
             const value = bestAxisValue(s);
             if (value <= 0) continue;
-            if (!target[ex.name] || value > target[ex.name].value) {
-              target[ex.name] = {
+            if (!target[key] || value > target[key].value) {
+              target[key] = {
                 value, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
                 date: localDateStr(session.completedAt),
               };
             }
           }
         }
+      }
+      for (const byEx of [topByEx, timedByEx]) {
+        for (const key of Object.keys(byEx)) byEx[key].name = latestNameAt[key].name;
       }
 
       const rankedEntries = (byEx) => Object.entries(byEx)
@@ -170,8 +180,8 @@ export const generateCoachContext = async () => {
       const pushSection = (title, entries) => {
         if (entries.length === 0) return;
         lines.push(title);
-        for (const [name, s] of entries) {
-          lines.push(`  - ${name}: ${formatSetSummary(s, 'kg', getCompanion(name))}${s.date ? ` (${s.date})` : ''}`);
+        for (const [, s] of entries) {
+          lines.push(`  - ${s.name}: ${formatSetSummary(s, 'kg', getCompanion(s.name))}${s.date ? ` (${s.date})` : ''}`);
         }
         lines.push('');
       };

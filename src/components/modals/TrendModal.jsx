@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { X, TrendingUp } from "lucide-react";
 import Modal from "../ui/Modal";
 import { calculate1RM } from "../../utils/strengthMath";
+import { sameExercise } from "../../utils/exerciseName";
 import { formatNum } from "../../utils/weightUtils";
 
 const TrendModal = ({ exName, history, barUnit, onClose }) => {
@@ -19,7 +20,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
       const exData = session.exercises.find(
         (e) =>
           e &&
-          String(e.name).toLowerCase() === String(exName).toLowerCase()
+          sameExercise(e.name, exName)
       );
 
       if (exData && Array.isArray(exData.sets) && exData.sets.length > 0) {

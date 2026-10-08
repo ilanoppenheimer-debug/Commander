@@ -2,6 +2,7 @@ import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
 import { formatSetSummary, formatVolume } from './formatters';
 import { getSessionTypeBreakdown } from './routineImport/contextGenerator';
 import { localDateStr } from './localDate';
+import { sameExercise, normalizeExerciseName } from './exerciseName';
 
 const PAIN_WORDS = ['dolor', 'molestia', 'pinchazo', 'tiron', 'tirón', 'lesion', 'lesión', 'pinzamiento'];
 const hasPainKeyword = (text) => {
@@ -38,7 +39,7 @@ const bestSetForExercise = (name, sessions) => {
   let best = null, bestDate = '', bestScoreVal = -1;
   for (const s of sessions) {
     for (const ex of (s.exercises || [])) {
-      if (ex?.name !== name) continue;
+      if (!sameExercise(ex?.name, name)) continue;
       for (const set of (ex.sets || [])) {
         if (!hasData(set) || !isWorkSet(set)) continue;
         const w = parseFloat(set.weight) || 0;
@@ -119,18 +120,21 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   const previousSessions = previousBlock ? sessionsForBlock(previousBlock.id, allHistory) : [];
 
   // Exercises that belong to this block by tag, in first-appearance order.
-  const exerciseNames = [];
-  const seenNames = new Set();
+  // One entry per exercise identity (spelling variants merge); blockSessions is in
+  // ascending date order, so the last spelling written wins = the most recent session's.
+  const nameByKey = new Map();
+  const keyOrder = [];
   blockSessions.forEach(s => {
     (s.exercises || []).forEach(ex => {
-      if (!ex?.name || seenNames.has(ex.name)) return;
+      if (!ex?.name) return;
       const tag = resolveExerciseTag(ex);
-      if (tag && blockTags.includes(tag)) {
-        exerciseNames.push(ex.name);
-        seenNames.add(ex.name);
-      }
+      if (!(tag && blockTags.includes(tag))) return;
+      const key = normalizeExerciseName(ex.name);
+      if (!nameByKey.has(key)) keyOrder.push(key);
+      nameByKey.set(key, ex.name);
     });
   });
+  const exerciseNames = keyOrder.map(k => nameByKey.get(k));
 
   // Weekly + total volume, sets, RPE — loaded work only for volume (kg·rep needs a
   // weight); sets/RPE count any real data, bodyweight included.
@@ -200,7 +204,7 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
     let exSets = 0, exVolume = 0;
     blockSessions.forEach(s => {
       (s.exercises || []).forEach(ex => {
-        if (ex.name !== name) return;
+        if (!sameExercise(ex.name, name)) return;
         (ex.sets || []).forEach(set => {
           if (!hasData(set) || !isWorkSet(set)) return;
           exSets++;

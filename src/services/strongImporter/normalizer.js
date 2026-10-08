@@ -1,4 +1,5 @@
 import { mapStrongExercise } from './exerciseDictionary';
+import { normalizeExerciseName } from '../../utils/exerciseName';
 
 const roundToQuarter = (n) => Math.round(n * 4) / 4;
 
@@ -144,11 +145,11 @@ export function normalizeStrongData(parsedRows, customMappings = {}) {
  * Collects all unique exercise names from normalized sessions.
  */
 export function collectCustomExercises(normalizedSessions, defaultExerciseDB) {
-  const defaultSet = new Set(defaultExerciseDB.map(e => e.toLowerCase()));
+  const defaultSet = new Set(defaultExerciseDB.map(e => normalizeExerciseName(e)));
   const custom = new Set();
   for (const session of normalizedSessions) {
     for (const ex of session.exercises || []) {
-      if (ex.name && !defaultSet.has(ex.name.toLowerCase())) {
+      if (ex.name && !defaultSet.has(normalizeExerciseName(ex.name))) {
         custom.add(ex.name);
       }
     }
