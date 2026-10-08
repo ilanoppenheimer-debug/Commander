@@ -163,6 +163,10 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
         reps:             backoffSuggestion.reps,
         rpe:              backoffSuggestion.rpe,
         sourceBlockColor: backoffSuggestion.sourceBlockColor,
+        // back/backoff weight is CALCULATED from the day's top — it must keep following
+        // the top until the athlete writes a weight in this set or confirms it. Only a
+        // back/backoff set carries this flag; session-memory/historical copies don't.
+        weightDerived:    isBackoffType,
       },
     };
   });
@@ -355,6 +359,11 @@ export default function ActiveSession({
     open: false, exerciseId: null, setIndex: -1, activeField: 'weight',
   });
 
+  // Derived (back/backoff) weights the athlete has started editing, as `exerciseId:setIndex`.
+  // Once edited, clearing the field must NOT bring the derived value back under the cursor.
+  const editedDerivedWeightRef = useRef(new Set());
+  const isDerivedWeight = (exId, setIdx, ph) => !!ph?.weightDerived && !editedDerivedWeightRef.current.has(`${exId}:${setIdx}`);
+
   const openKeypad = useCallback((exerciseId, setIdx, field, enrichedSet) => {
     // Auto-populate from placeholder when the field is empty
     if (enrichedSet?.placeholder) {
@@ -363,13 +372,17 @@ export default function ActiveSession({
       for (const f of fields) {
         const isEmpty = enrichedSet[f] === null || enrichedSet[f] === undefined || enrichedSet[f] === '' || enrichedSet[f] === 0;
         const suggested = ph[f];
+        // A derived weight is never frozen by merely opening the keypad (on any field,
+        // weight included): the keypad shows it as an overlay, and it becomes real data
+        // only when edited or when the set is confirmed (handleCompleteSet).
+        if (f === 'weight' && isDerivedWeight(exerciseId, setIdx, ph)) continue;
         if (isEmpty && suggested != null && suggested !== '' && parseFloat(suggested) > 0) {
           storeUpdateSet(exerciseId, setIdx, f, suggested);
         }
       }
     }
     setKeypadState({ open: true, exerciseId, setIndex: setIdx, activeField: field });
-  }, [storeUpdateSet]);
+  }, [storeUpdateSet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeKeypad = useCallback(() => {
     setKeypadState(prev => ({ ...prev, open: false }));
@@ -397,6 +410,7 @@ export default function ActiveSession({
   }, [exercises]);
 
   const updateSetField = useCallback((exId, setIdx, field, value) => {
+    if (field === 'weight') editedDerivedWeightRef.current.add(`${exId}:${setIdx}`);
     storeUpdateSet(exId, setIdx, field, value);
   }, [storeUpdateSet]);
 
@@ -1133,7 +1147,12 @@ export default function ActiveSession({
       {/* Custom Keypad */}
       {keypadState.open && (() => {
         const kpEx = exercises.find(e => e.id === keypadState.exerciseId);
-        const kpSet = kpEx?.sets?.[keypadState.setIndex];
+        const kpRawSet = kpEx?.sets?.[keypadState.setIndex];
+        // Keypad edits the RAW set. Overlay the derived weight so it is visible and edits
+        // start from it, without having written it to the store.
+        const kpPh = exercisesWithPlaceholders.find(e => e.id === keypadState.exerciseId)?.sets?.[keypadState.setIndex]?.placeholder;
+        const kpWeightEmpty = !(parseFloat(kpRawSet?.weight) > 0);
+        const kpSet = kpRawSet && isDerivedWeight(keypadState.exerciseId, keypadState.setIndex, kpPh) && kpWeightEmpty ? { ...kpRawSet, weight: kpPh.weight } : kpRawSet;
         const kpPrev = keypadState.setIndex > 0 ? kpEx?.sets?.[keypadState.setIndex - 1] : null;
         if (!kpEx || !kpSet) return null;
         return (
