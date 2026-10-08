@@ -98,6 +98,9 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
     }
   }, [text]);
 
+  // The name an imported exercise is saved under (same precedence convertImportedToRoutine uses).
+  const resolvedNameOf = (name) => overrides[name] || mappings[name]?.exerciseName || name;
+
   const handleImport = useCallback(async () => {
     if (!parsed) return;
     setProcessing(true);
@@ -115,7 +118,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
       // not — a Coach re-declaring a tag for an exercise that already existed must
       // update it, not just for brand-new ones.
       for (const ex of parsed.exercises) {
-        syncExerciseMetadataFromImport(ex);
+        syncExerciseMetadataFromImport(ex, resolvedNameOf(ex.name));
       }
 
       // Apply measurement resolutions — the athlete's "Cambiar" pick wins if present;
@@ -124,9 +127,9 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
       for (const notice of measurementNotices) {
         const resolved = measurementOverrides[notice.exerciseName];
         if (resolved) {
-          setMeasurement(notice.exerciseName, resolved);
+          setMeasurement(resolvedNameOf(notice.exerciseName), resolved);
         } else if (notice.type === 'auto') {
-          setMeasurement(notice.exerciseName, notice.measurementDetected);
+          setMeasurement(resolvedNameOf(notice.exerciseName), notice.measurementDetected);
         }
       }
 
@@ -169,14 +172,14 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
         await createExerciseFromImport(ex);
       }
       for (const ex of parsed.exercises) {
-        syncExerciseMetadataFromImport(ex);
+        syncExerciseMetadataFromImport(ex, resolvedNameOf(ex.name));
       }
       for (const notice of measurementNotices) {
         const resolved = measurementOverrides[notice.exerciseName];
         if (resolved) {
-          setMeasurement(notice.exerciseName, resolved);
+          setMeasurement(resolvedNameOf(notice.exerciseName), resolved);
         } else if (notice.type === 'auto') {
-          setMeasurement(notice.exerciseName, notice.measurementDetected);
+          setMeasurement(resolvedNameOf(notice.exerciseName), notice.measurementDetected);
         }
       }
       const routine = await convertImportedToRoutine(parsed, mappings, overrides, 'temporary');

@@ -99,8 +99,11 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
 // (that's a user-picked field, set only via CreateExerciseModal). Left out on
 // purpose — nothing to sync, not an oversight. Add here if the contract ever grows
 // a field for it.
-export const syncExerciseMetadataFromImport = (importedEx) => {
-  const name = importedEx?.name;
+// `resolvedName` is the name the exercise is SAVED under (exact match, accepted probable,
+// or the athlete's pick) — metadata must follow it, not the Coach's literal spelling, or
+// every probable/fuzzy match leaves an orphan entry under a name no session uses.
+export const syncExerciseMetadataFromImport = (importedEx, resolvedName = importedEx?.name) => {
+  const name = resolvedName;
   if (!name) return;
   const existing = getExerciseMeta(name);
 
