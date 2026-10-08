@@ -151,7 +151,9 @@ export const upsertBlockFromCoach = async (blockMeta) => {
     if (blockMeta.currentWeek    != null) updates.currentWeek    = blockMeta.currentWeek;
     if (blockMeta.appliesTo      != null) updates.appliesTo      = blockMeta.appliesTo;
     if (blockMeta.sessionsTarget != null) updates.sessionsTarget = blockMeta.sessionsTarget;
-    if (blockMeta.params         != null) updates.params         = blockMeta.params;
+    // Merge, don't replace: a YAML whose params carry only some keys (e.g. reps_rango
+    // without backoff_pct) must not erase the others already stored on the block.
+    if (blockMeta.params         != null) updates.params         = { ...(existing.params || {}), ...blockMeta.params };
     block = { ...existing, ...updates };
     action = 'updated';
   }
