@@ -566,6 +566,10 @@ function StepPreview({
                     </div>
                   )}
 
+                  {ex.backoffPct != null && (
+                    <p className="text-[11px] text-slate-400">Back-off: {Math.round(ex.backoffPct * 1000) / 10}% del top (propio de este ejercicio)</p>
+                  )}
+
                   {/* Adaptive decision */}
                   {Array.isArray(ex.decisionAdaptativa) && ex.decisionAdaptativa.length > 0 && (
                     <div className="bg-slate-800 rounded-lg p-2 space-y-1">

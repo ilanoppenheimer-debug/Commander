@@ -127,9 +127,20 @@ const parseBlockYaml = (lines) => {
   return raw;
 };
 
+// backoff_pct is a fraction of the top set's weight, valid in (0.5, 1.0] — the same range
+// calculateBackoffSuggestion has always enforced (silently falling back to 0.90). Accepts a
+// comma decimal. Returns { status: 'absent' | 'ok' | 'bad', value, hint }.
+const parseBackoffPct = (raw) => {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return { status: 'absent' };
+  const n = typeof raw === 'number' ? raw : Number(String(raw).trim().replace(',', '.'));
+  if (isFinite(n) && n > 0.5 && n <= 1.0) return { status: 'ok', value: n };
+  const hint = isFinite(n) && n > 50 && n <= 100 ? ` (¿querías ${n / 100}?)` : '';
+  return { status: 'bad', hint };
+};
+
 // Maps raw YAML field names → app block field names.
 // Only sets fields that are present in raw — never invents defaults.
-const buildBlockMeta = (raw) => {
+const buildBlockMeta = (raw, warnings = []) => {
   if (!raw || raw.id == null) return null;
   const meta = { coachId: String(raw.id) };
   if (raw.nombre    !== undefined) meta.name           = raw.nombre;
@@ -145,7 +156,11 @@ const buildBlockMeta = (raw) => {
     const p = {};
     if (Array.isArray(raw.params.reps_rango))       p.repsRange       = raw.params.reps_rango;
     if (Array.isArray(raw.params.rpe_rango))        p.rpeRange        = raw.params.rpe_rango;
-    if (raw.params.backoff_pct !== undefined)       p.backoffPctOfTop = raw.params.backoff_pct;
+    if (raw.params.backoff_pct !== undefined) {
+      const bp = parseBackoffPct(raw.params.backoff_pct);
+      if (bp.status === 'ok') p.backoffPctOfTop = bp.value;
+      else if (bp.status === 'bad') warnings.push(`Bloque: backoff_pct "${raw.params.backoff_pct}" fuera de rango (0.5–1.0)${bp.hint} — se ignora; el bloque conserva su valor guardado o usa 0.90`);
+    }
     if (Object.keys(p).length > 0) meta.params = p;
   }
 
@@ -197,7 +212,7 @@ export const parseRoutineMarkdown = (markdown) => {
       mesociclo: metadata.mesociclo || null,
       sessionNum: metadata.sesion_num || null,
       sessionTotal: metadata.sesion_total || null,
-      blockMeta: buildBlockMeta(metadata._bloque),
+      blockMeta: buildBlockMeta(metadata._bloque, result.warnings),
       warmup: calentamiento,
       exercises,
       closingNotes: notasCierre,
@@ -392,12 +407,19 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     warnings.push(`Ejercicio "${name}" sin descanso — se asume 90s`);
   }
 
+  // Optional per-exercise back-off: overrides the block's backoff_pct for this exercise only.
+  const bp = parseBackoffPct(metadata.backoff_pct);
+  if (bp.status === 'bad') {
+    warnings.push(`Ejercicio "${name}": backoff_pct "${metadata.backoff_pct}" fuera de rango (0.5–1.0)${bp.hint} — se ignora, usa el del bloque`);
+  }
+
   return {
     id: `imp-ex-${Date.now()}-${idx}`,
     name,
     equipment,
     tagSuggested: validTag,
     restSeconds,
+    ...(bp.status === 'ok' ? { backoffPct: bp.value } : {}),
     notes: metadata.nota_ejercicio || '',
     decisionAdaptativa: decisionAdaptativa || null,
     unilateral: metadata.unilateral === 'true',
