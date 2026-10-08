@@ -987,7 +987,7 @@ export default function ActiveSession({
                     if (isTimed) {
                       return (
                         <TimedSetRow
-                          key={i}
+                          key={`${i}-${safeSets.length}`}
                           set={s}
                           setIndex={i + 1}
                           exerciseId={ex.id}

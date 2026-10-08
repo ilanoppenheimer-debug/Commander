@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { setSetting, deleteSetting } from '../db/repository';
 import { SET_TYPES } from '../constants/gymConstants';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
 
 let _debounceTimer = null;
 
@@ -28,6 +29,9 @@ export const useSessionStore = create((set, get) => ({
   },
 
   startSession: (routine) => {
+    // Timers left behind by a session that never cleaned up (closed app, pre-fix leftovers)
+    // must not attach to this session's reused exercise ids.
+    clearAllTimedSetTimers();
     const session = {
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
@@ -109,6 +113,7 @@ export const useSessionStore = create((set, get) => ({
   removeExercise: (exId) => {
     const s = get().session;
     if (!s) return;
+    clearTimedSetTimersForExercise(exId);
     const next = {
       ...s,
       exercises: s.exercises.filter(e => e.id !== exId),
@@ -172,6 +177,7 @@ export const useSessionStore = create((set, get) => ({
   removeSet: (exId, idx) => {
     const s = get().session;
     if (!s) return;
+    shiftTimedSetTimersAfterRemoval(exId, idx, s.exercises.find(e => e.id === exId)?.sets?.length ?? 0);
     const next = {
       ...s,
       exercises: s.exercises.map(e => {
@@ -291,11 +297,13 @@ export const useSessionStore = create((set, get) => ({
   },
 
   finishSession: () => {
+    clearAllTimedSetTimers();
     set({ session: null });
     persistToDb(null);
   },
 
   discardSession: () => {
+    clearAllTimedSetTimers();
     set({ session: null });
     persistToDb(null);
   },
