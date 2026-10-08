@@ -101,15 +101,21 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
   // The name an imported exercise is saved under (same precedence convertImportedToRoutine uses).
   const resolvedNameOf = (name) => overrides[name] || mappings[name]?.exerciseName || name;
 
+  // True when this exercise will be saved under the Coach's own name as a NEW exercise:
+  // no mapping, an unresolved fuzzy (nothing chosen), or "Crear como nuevo" picked.
+  const needsNewExercise = (ex) => {
+    const m = mappings[ex.name];
+    const chosen = overrides[ex.name];
+    if (chosen) return chosen === ex.name;
+    return !m || m.type === 'none' || m.type === 'fuzzy';
+  };
+
   const handleImport = useCallback(async () => {
     if (!parsed) return;
     setProcessing(true);
     try {
       // Create unmatched exercises first
-      const unmatched = parsed.exercises.filter(ex => {
-        const m = mappings[ex.name];
-        return !overrides[ex.name] && (!m || m.type === 'none');
-      });
+      const unmatched = parsed.exercises.filter(needsNewExercise);
       for (const ex of unmatched) {
         await createExerciseFromImport(ex);
       }
@@ -164,10 +170,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
     if (!parsed) return;
     setProcessing(true);
     try {
-      const unmatched = parsed.exercises.filter(ex => {
-        const m = mappings[ex.name];
-        return !overrides[ex.name] && (!m || m.type === 'none');
-      });
+      const unmatched = parsed.exercises.filter(needsNewExercise);
       for (const ex of unmatched) {
         await createExerciseFromImport(ex);
       }
