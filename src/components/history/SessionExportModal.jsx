@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Copy, Check } from 'lucide-react';
 import { generateSessionReport } from '../../utils/sessionExport';
+import { localDateStr } from '../../utils/localDate';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { db } from '../../db/database';
 
@@ -60,7 +61,7 @@ export const SessionExportModal = ({ open, onClose, session }) => {
           <div>
             <h2 className="text-lg font-bold text-slate-100">Compartir con coach</h2>
             <p className="text-xs text-slate-500">
-              {session.name || 'Sesión'} · {(session.completedAt || '').slice(0, 10) || '—'}
+              {session.name || 'Sesión'} · {localDateStr(session.completedAt) || '—'}
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200">

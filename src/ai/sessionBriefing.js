@@ -4,6 +4,7 @@
 // deleted, in case AI returns with a different role (pattern detection, not
 // proposing workouts).
 import { callGeminiAPI } from "../services/aiService";
+import { localDateStr } from "../utils/localDate";
 
 const MAX_HISTORY_PER_EXERCISE = 5;
 
@@ -32,7 +33,7 @@ const summarizeExerciseHistory = (exerciseName, history) => {
 
     rows.push({
       date: session.completedAt
-        ? new Date(session.completedAt).toISOString().slice(0, 10)
+        ? localDateStr(session.completedAt)
         : "?",
       topWeight: tops.weight,
       reps: tops.reps,

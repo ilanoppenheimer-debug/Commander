@@ -1,7 +1,8 @@
 import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
-import { getCompanion } from '../../constants/exerciseMetadata';
+import { getCompanion, getMeasurement } from '../../constants/exerciseMetadata';
+import { localDateStr } from '../localDate';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
 // bodyweight sets, seconds for time-measured sets (which never carry a real weight).
@@ -99,7 +100,7 @@ export const generateCoachContext = async () => {
   const lines = [];
 
   lines.push('=== CONTEXTO PARA COACH ===');
-  lines.push(`Fecha: ${new Date().toISOString().slice(0, 10)}`);
+  lines.push(`Fecha: ${localDateStr(new Date())}`);
   lines.push('');
 
   // ── Última sesión ──────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ export const generateCoachContext = async () => {
 
     if (allHistory.length > 0) {
       const last = allHistory[0];
-      const date = (last.completedAt || last.createdAt || '').slice(0, 10);
+      const date = localDateStr(last.completedAt || last.createdAt);
       const exes = Array.isArray(last.exercises) ? last.exercises : [];
 
       lines.push(`## Última sesión: ${last.name || 'Sin nombre'} (${date})`);
@@ -133,38 +134,43 @@ export const generateCoachContext = async () => {
     const recent = allHistory.filter(s => new Date(s.completedAt || s.createdAt || 0).getTime() > cutoff);
 
     if (recent.length > 0) {
+      // Loaded/bodyweight work and timed work are tracked in separate maps: a hold
+      // measured in seconds (with a heart-rate/difficulty companion) was ranking against
+      // kg in one list, mixing two scales and two meanings of "top set".
       const topByEx = {};
+      const timedByEx = {};
       for (const session of recent) {
         for (const ex of (Array.isArray(session.exercises) ? session.exercises : [])) {
           if (!ex?.name) continue;
+          const target = getMeasurement(ex.name) === 'time' ? timedByEx : topByEx;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
             const value = bestAxisValue(s);
             if (value <= 0) continue;
-            if (!topByEx[ex.name] || value > topByEx[ex.name].value) {
-              topByEx[ex.name] = {
+            if (!target[ex.name] || value > target[ex.name].value) {
+              target[ex.name] = {
                 value, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
-                date: (session.completedAt || '').slice(0, 10),
+                date: localDateStr(session.completedAt),
               };
             }
           }
         }
       }
 
-      // Cross-exercise, ranked by raw magnitude on whichever axis each entry used —
-      // same simplification the weight-only version already had (a 140kg squat and a
-      // 12kg curl were never on a comparable scale either); a seconds value now sits
-      // in that same list on equal footing, not normalized against loaded work.
-      const entries = Object.entries(topByEx)
+      const rankedEntries = (byEx) => Object.entries(byEx)
         .sort((a, b) => b[1].value - a[1].value)
         .slice(0, 10);
 
-      if (entries.length > 0) {
-        lines.push('## Top sets recientes (últimas 4 semanas)');
+      const pushSection = (title, entries) => {
+        if (entries.length === 0) return;
+        lines.push(title);
         for (const [name, s] of entries) {
           lines.push(`  - ${name}: ${formatSetSummary(s, 'kg', getCompanion(name))}${s.date ? ` (${s.date})` : ''}`);
         }
         lines.push('');
-      }
+      };
+
+      pushSection('## Top sets recientes (últimas 4 semanas)', rankedEntries(topByEx));
+      pushSection('## Ejercicios de tiempo recientes (últimas 4 semanas)', rankedEntries(timedByEx));
     }
   } catch { lines.push('(Error leyendo top sets)\n'); }
 

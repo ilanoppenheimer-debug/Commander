@@ -1,6 +1,7 @@
 import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
 import { formatSetSummary, formatVolume } from './formatters';
 import { getSessionTypeBreakdown } from './routineImport/contextGenerator';
+import { localDateStr } from './localDate';
 
 const PAIN_WORDS = ['dolor', 'molestia', 'pinchazo', 'tiron', 'tirón', 'lesion', 'lesión', 'pinzamiento'];
 const hasPainKeyword = (text) => {
@@ -53,7 +54,7 @@ const bestSetForExercise = (name, sessions) => {
         // (reconfigured mid-stream) is the one case where this comparison is not
         // apples-to-apples — accepted, not solved here.
         const score = r > 0 ? setScore(w, r) : secs;
-        if (score > bestScoreVal) { bestScoreVal = score; best = set; bestDate = (s.completedAt || '').slice(0, 10); }
+        if (score > bestScoreVal) { bestScoreVal = score; best = set; bestDate = localDateStr(s.completedAt); }
       }
     }
   }
@@ -163,11 +164,11 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   blockSessions.forEach(s => {
     (s.exercises || []).forEach(ex => {
       if (ex?.exerciseNotes?.trim() && hasPainKeyword(ex.exerciseNotes)) {
-        molestias.push({ date: (s.completedAt || '').slice(0, 10), exercise: ex.name, note: ex.exerciseNotes.trim() });
+        molestias.push({ date: localDateStr(s.completedAt), exercise: ex.name, note: ex.exerciseNotes.trim() });
       }
       (ex.sets || []).forEach(set => {
         if (set?.notes?.trim() && hasPainKeyword(set.notes)) {
-          molestias.push({ date: (s.completedAt || '').slice(0, 10), exercise: ex.name, note: set.notes.trim() });
+          molestias.push({ date: localDateStr(s.completedAt), exercise: ex.name, note: set.notes.trim() });
         }
       });
     });
@@ -177,7 +178,7 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
 
   lines.push('=== REPORTE DE BLOQUE ===');
   lines.push(`Bloque: ${block.name} · ${block.type || 'custom'}${block.fase ? ` · fase ${block.fase}` : ''}`);
-  lines.push(`Período: ${block.startedAt.slice(0, 10)} – ${block.completedAt ? block.completedAt.slice(0, 10) : 'hoy'} · ${weeksDiff} semana${weeksDiff !== 1 ? 's' : ''}`);
+  lines.push(`Período: ${localDateStr(block.startedAt)} – ${block.completedAt ? localDateStr(block.completedAt) : 'hoy'} · ${weeksDiff} semana${weeksDiff !== 1 ? 's' : ''}`);
   lines.push(`Sesiones: ${blockSessions.length}${block.sessionsTarget ? ` / ${block.sessionsTarget}` : ''}${excludedPreStartCount > 0 ? ` (${excludedPreStartCount} anterior${excludedPreStartCount !== 1 ? 'es' : ''} al inicio del bloque, excluida${excludedPreStartCount !== 1 ? 's' : ''} del reporte)` : ''}`);
   if (orphanCount > 0) {
     lines.push(`⚠ ${orphanCount} sesión${orphanCount !== 1 ? 'es' : ''} en el rango del bloque sin blockIds — no incluida${orphanCount !== 1 ? 's' : ''}, revisar manualmente.`);
