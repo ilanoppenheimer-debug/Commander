@@ -18,6 +18,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       equipment: impEx.equipment || 'barbell',
       tag: impEx.tagSuggested || null,
       restSeconds: impEx.restSeconds || 90,
+      ...(impEx.backoffPct != null ? { backoffPct: impEx.backoffPct } : {}),
       notes: impEx.notes || '',
       decisionAdaptativa: impEx.decisionAdaptativa || null,
       unilateral: !!impEx.unilateral,

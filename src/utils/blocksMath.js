@@ -125,10 +125,11 @@ export const calculateBackoffSuggestion = (topSet, topSuggestion, block, exercis
 
   if (!referenceWeight || referenceWeight <= 0) return null;
 
-  const backoffPct = (typeof block.params.backoffPctOfTop === 'number'
-    && block.params.backoffPctOfTop > 0.5
-    && block.params.backoffPctOfTop <= 1.0)
-    ? block.params.backoffPctOfTop : 0.90;
+  // Priority: the exercise's own backoffPct (Coach YAML) > the block's > 0.90.
+  const validPct = (v) => typeof v === 'number' && v > 0.5 && v <= 1.0;
+  const backoffPct = validPct(exercise?.backoffPct) ? exercise.backoffPct
+    : validPct(block.params.backoffPctOfTop) ? block.params.backoffPctOfTop
+    : 0.90;
 
   const repsAdjust = Number.isInteger(block.params.backoffRepsAdjust)
     ? block.params.backoffRepsAdjust : 0;
