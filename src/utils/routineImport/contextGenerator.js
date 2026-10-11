@@ -4,6 +4,8 @@ import { formatSetSummary } from '../formatters';
 import { getCompanion, getMeasurement } from '../../constants/exerciseMetadata';
 import { localDateStr } from '../localDate';
 import { normalizeExerciseName } from '../exerciseName';
+import { resolveExerciseTag } from '../blockReport';
+import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix } from '../exerciseHistoryLines';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
 // bodyweight sets, seconds for time-measured sets (which never carry a real weight).
@@ -15,27 +17,6 @@ const bestAxisValue = (s) => {
   const w = parseFloat(s?.weight) || 0;
   if (w > 0) return w;
   return parseFloat(s?.seconds) || 0;
-};
-
-const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const formatShortDate = (iso) => {
-  if (!iso) return '?';
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}-${MONTHS_ES[d.getMonth()]}`;
-};
-
-// The type is whatever comes before the first "—", "·", "." or "/" separator, or the
-// whole name if there's no separator. No vocabulary hardcoded — survives the Coach
-// renaming session types across blocks (2A's "Pierna/Torso" won't necessarily be
-// 2B's or 3's). Same separator set checkSessionNameHygiene (parser.js) warns on, so a
-// name that trips that warning classifies by its clean prefix here instead of landing
-// as its own one-off type.
-const extractPrefix = (name) => {
-  const raw = String(name || '').trim();
-  if (!raw) return '';
-  const sepMatch = raw.match(/[—·./]/);
-  const prefix = sepMatch ? raw.slice(0, sepMatch.index) : raw;
-  return prefix.trim().replace(/\s+/g, ' ');
 };
 
 // Naive singular normalization on the first word only, so "Piernas A" and "Pierna A"
@@ -190,6 +171,37 @@ export const generateCoachContext = async () => {
       pushSection('## Ejercicios de tiempo recientes (últimas 4 semanas)', rankedEntries(timedByEx));
     }
   } catch { lines.push('(Error leyendo top sets)\n'); }
+
+  // ── Últimos registros por ejercicio (8 semanas) ────────────────────────────
+  // Everything that is NOT a main lift (accessories, secondary): the Coach only saw main
+  // lifts above and had to guess accessory loads. One line per exercise with its latest
+  // appearance, grouped under the session type of that appearance. Cap: none, for now.
+  try {
+    const sinceMs = Date.now() - 56 * 24 * 60 * 60 * 1000;
+    const allHistory = await db.history.toArray();
+    const byKey = collectAppearances(allHistory, {
+      sinceMs,
+      include: (ex) => resolveExerciseTag(ex) !== 'main_lift',
+    });
+    if (byKey.size > 0) {
+      const groups = new Map(); // sessionTypeKey -> { label, entries: [{ time, text }] }
+      for (const apps of byKey.values()) {
+        const latest = apps[0];
+        const gKey = sessionTypeKey(latest.sessionName);
+        if (!groups.has(gKey)) groups.set(gKey, { label: classifySessionType(latest.sessionName), entries: [] });
+        groups.get(gKey).entries.push({
+          time: latest.time,
+          text: `${latest.name} — ${formatLatestEntry(apps, getCompanion(latest.name))}`,
+        });
+      }
+      lines.push('## Últimos registros por ejercicio (últimas 8 semanas, sin main lifts)');
+      for (const g of [...groups.values()].sort((a, b) => b.entries.length - a.entries.length)) {
+        lines.push(`${g.label}:`);
+        for (const e of g.entries.sort((a, b) => b.time - a.time)) lines.push(`  - ${e.text}`);
+      }
+      lines.push('');
+    }
+  } catch { lines.push('(Error leyendo últimos registros por ejercicio)\n'); }
 
   // ── Bloques activos ────────────────────────────────────────────────────────
   try {
