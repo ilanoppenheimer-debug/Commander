@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { X, BarChart2 } from "lucide-react";
+import { X, BarChart2, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import { sameExercise } from "../../utils/exerciseName";
+import { buildExerciseShareText } from "../../utils/exerciseHistoryLines";
 
-const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
+const ExerciseHistoryModal = ({ exName, history, onClose, barUnit, showNotify }) => {
   const [limit, setLimit] = useState(5);
 
   const pastPerformances = useMemo(() => {
@@ -32,6 +33,27 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
     return matches.slice(0, limit === "all" ? undefined : limit);
   }, [history, exName, limit]);
 
+  // Always the last 6 appearances, regardless of the 5/10/todas selector: this text is
+  // for the Coach, not for the screen.
+  const handleSendToCoach = async () => {
+    const text = buildExerciseShareText(exName, history, { count: 6 });
+    if (!text) { showNotify?.("No hay registros para enviar", "info"); return; }
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (e) {
+        if (e?.name === "AbortError") return; // user closed the share sheet
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showNotify?.("Historial copiado: pegalo en el Coach", "success");
+    } catch {
+      showNotify?.("No se pudo compartir ni copiar", "error");
+    }
+  };
+
   return (
     <Modal isOpen onClose={onClose} size="2xl">
       <div className="bg-slate-900 w-full max-h-[85vh] min-h-[420px] rounded-t-2xl sm:rounded-2xl flex flex-col border border-slate-700 shadow-2xl">
@@ -42,12 +64,20 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit }) => {
             </h2>
             <span className="text-xs text-white uppercase">{exName}</span>
           </div>
+          <div className="flex items-center gap-2">
+          <button
+            onClick={handleSendToCoach}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-sky-600 text-white hover:bg-sky-500 transition"
+          >
+            <Share2 size={14} /> Enviar al Coach
+          </button>
           <button
             onClick={onClose}
             className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
             <X size={24} />
           </button>
+          </div>
         </div>
 
         <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex gap-2 overflow-x-auto shrink-0">

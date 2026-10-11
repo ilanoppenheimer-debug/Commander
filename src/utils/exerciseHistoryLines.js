@@ -1,5 +1,7 @@
 import { formatSetSummary } from './formatters';
 import { normalizeExerciseName } from './exerciseName';
+import { computeExercise1RM } from './strengthMath';
+import { getExerciseMeta } from '../constants/exerciseMetadata';
 
 // ONE formatter for "what did I do on this exercise, session by session". Used by the
 // Coach context ("Últimos registros por ejercicio") and by "Enviar al Coach" in the
@@ -73,7 +75,7 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
       if (sets.length === 0) continue;
       const key = normalizeExerciseName(ex.name);
       if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, sets });
+      byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment: ex.equipment || null, sets });
     }
   }
   for (const apps of byKey.values()) apps.sort((a, b) => b.time - a.time);
@@ -81,9 +83,11 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
 };
 
 // "47.5×10@7.5, 47.5×10@8 (15-sep, TORSO A)"
-export const formatAppearance = (app, companion) => {
+// `equipmentLabel` (optional) goes last inside the parens: "(15-sep, TORSO A, mancuerna)".
+export const formatAppearance = (app, companion, equipmentLabel) => {
   const type = app.sessionType ? `, ${app.sessionType}` : '';
-  return `${formatSets(app.sets, companion)} (${formatShortDate(app.iso)}${type})`;
+  const eq = equipmentLabel ? `, ${equipmentLabel}` : '';
+  return `${formatSets(app.sets, companion)} (${formatShortDate(app.iso)}${type}${eq})`;
 };
 
 const isBodyweightOnly = (app) => !app.sets.some(hasLoad) && app.sets.some(s => num(s.reps) > 0);
@@ -105,4 +109,48 @@ export const formatLatestEntry = (apps, companion) => {
     }
   }
   return out;
+};
+
+const EQUIPMENT_SHORT = {
+  barbell: 'barra', dumbbell: 'mancuerna', machine: 'máquina', cable: 'polea',
+  smith: 'multipower', kettlebell: 'kettlebell', bodyweight: 'peso corporal',
+};
+
+/**
+ * Text for "Enviar al Coach": the last `count` appearances of one exercise (spelling
+ * variants are one exercise), same line format as the Coach context. Returns null when
+ * there is nothing logged.
+ *  - Equipment is printed on each line only when the sent appearances disagree.
+ *  - The 1RM line only for barbell/dumbbell (same criterion as the session report) and
+ *    only when computeExercise1RM has a value.
+ */
+export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
+  const all = collectAppearances(history).get(normalizeExerciseName(exName)) || [];
+  const apps = all.slice(0, count);
+  if (apps.length === 0) return null;
+
+  const metaEquipment = getExerciseMeta(exName).equipment || null;
+  const equipOf = (a) => a.equipment || metaEquipment;
+  const mixed = new Set(apps.map(equipOf)).size > 1;
+  const companion = getExerciseMeta(exName).companion;
+
+  const display = apps[0].name;
+  const variants = [...new Set(apps.map(a => a.name))].filter(n => n !== display);
+
+  const out = [`Historial de ${display}${variants.length ? ` (también registrado como: ${variants.join(', ')})` : ''}`];
+
+  const equipment = equipOf(apps[0]);
+  if (equipment === 'barbell' || equipment === 'dumbbell') {
+    const orm = computeExercise1RM(display, history, { weeksBack: 12 });
+    if (orm.current1RM != null && orm.sampleSize >= 1) {
+      out.push(`1RM estimado: ${Math.round(orm.current1RM * 2) / 2} kg (N=${orm.sampleSize}, últimas 12 semanas) — referencia, no máximo del día`);
+    }
+  }
+
+  out.push(`Últimas ${apps.length} apariciones:`);
+  for (const a of apps) {
+    const eq = mixed ? (EQUIPMENT_SHORT[equipOf(a)] || equipOf(a) || 'sin equipo') : null;
+    out.push(`- ${formatAppearance(a, companion, eq)}`);
+  }
+  return out.join('\n');
 };

@@ -622,6 +622,7 @@ export default function ActiveSession({
           exName={selectedExHistory}
           history={history}
           barUnit={barUnit}
+          showNotify={showNotify}
           onClose={() => setSelectedExHistory(null)}
         />
       )}
