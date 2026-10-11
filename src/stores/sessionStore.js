@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { setSetting, deleteSetting } from '../db/repository';
 import { SET_TYPES } from '../constants/gymConstants';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { clearRestTimerStorage } from '../utils/restTimerStorage';
 import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
 
 let _debounceTimer = null;
@@ -21,17 +22,25 @@ const persistToDb = (session) => {
 
 export const useSessionStore = create((set, get) => ({
   session: null,
+  // True once the saved session (if any) has been loaded — consumers that must not act on
+  // the initial null (the rest timer's restore) wait for it.
+  hydrated: false,
 
   hydrateFromDb: async () => {
-    const { getSetting } = await import('../db/repository');
-    const saved = await getSetting('activeSession');
-    if (saved) set({ session: saved });
+    try {
+      const { getSetting } = await import('../db/repository');
+      const saved = await getSetting('activeSession');
+      if (saved) set({ session: saved });
+    } finally {
+      set({ hydrated: true });
+    }
   },
 
   startSession: (routine) => {
     // Timers left behind by a session that never cleaned up (closed app, pre-fix leftovers)
     // must not attach to this session's reused exercise ids.
     clearAllTimedSetTimers();
+    clearRestTimerStorage();
     const session = {
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
@@ -298,12 +307,14 @@ export const useSessionStore = create((set, get) => ({
 
   finishSession: () => {
     clearAllTimedSetTimers();
+    clearRestTimerStorage();
     set({ session: null });
     persistToDb(null);
   },
 
   discardSession: () => {
     clearAllTimedSetTimers();
+    clearRestTimerStorage();
     set({ session: null });
     persistToDb(null);
   },

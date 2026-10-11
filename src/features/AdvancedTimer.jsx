@@ -1,15 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Timer, Pause, Play, RotateCcw, X } from 'lucide-react';
-import { playTacticalAlarm, playPreAlert } from '../services/audioService';
+import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
+import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
+import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
 
 const CORNER_KEY = 'timerCorner';
-const TIMER_STORAGE_KEY = 'ironcmdr_active_timer';
+const TIMER_STORAGE_KEY = REST_TIMER_KEY;
 const MARGIN = 16;
 const TIMER_SIZE = 56;
 const BOTTOM_NAV_HEIGHT = 80;
-const ALARM_REPEAT_MS = 10000;
+// The alarm repeats every 5s, 6 plays in total: ~30s of sound at most, unless the athlete
+// silences it first (overlay tap / any timer control).
+const ALARM_REPEAT_MS = 5000;
 const ALARM_MAX_REPEATS = 6;
+
+const formatLate = (ms) => {
+  const s = Math.floor(ms / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+};
 
 function getCornerPos(corner) {
   const w = window.innerWidth;
@@ -39,6 +47,7 @@ const AdvancedTimer = () => {
   // (isTraining in App.jsx is the same session !== null check) — the timer follows
   // it rather than inventing a second notion of "active" that could drift from it.
   const hasActiveSession = useSessionStore(state => state.session !== null);
+  const hydrated = useSessionStore(state => state.hydrated);
 
   const [mode,               setMode]               = useState('stopwatch');
   const [initialTimerSeconds,setInitialTimerSeconds] = useState(60);
@@ -54,6 +63,13 @@ const AdvancedTimer = () => {
   const adjustSecsRef     = useRef(0);    // cumulative +/- from user buttons
   const completedRef      = useRef(false);
   const preAlertFiredRef  = useRef(false);
+  const nextRef            = useRef(null);  // "what's next" label sent with the rest-timer event
+  const wakeLockRef        = useRef(null);
+  const modeRef            = useRef('stopwatch');
+  const prevHasSessionRef  = useRef(hasActiveSession);
+  // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
+  const [alertInfo, setAlertInfo] = useState(null);
+  modeRef.current = mode;
 
   // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
   // "the timer has finished" for the rest of the component regardless of whether the
@@ -86,17 +102,22 @@ const AdvancedTimer = () => {
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   // ── Alarm repeat loop ────────────────────────────────────────────────────────
-  // Only started when the timer completes while the tab isn't visible (see the
-  // completion effect below) — playTacticalAlarm() every 10s, up to 6 total plays
-  // (spans the 0-50s mark, well inside the 60s cap) — cut short by real interaction
-  // (handleToggleActive, resetTimer, handleClick) or by returning to foreground.
+  // Started when the timer reaches 0 (app visible or not): playTacticalAlarm() every 5s,
+  // 6 plays in total (~30s cap). Silenced by the full-screen alert, any timer control,
+  // or the session ending. clearAlarmInterval only stops the repetition (used at the cap,
+  // so the last alarm isn't cut off); stopAlarmLoop also silences what is still sounding.
 
-  const stopAlarmLoop = () => {
+  const clearAlarmInterval = () => {
     if (alarmIntervalRef.current) {
       clearInterval(alarmIntervalRef.current);
       alarmIntervalRef.current = null;
     }
     alarmRepeatsRef.current = 0;
+  };
+
+  const stopAlarmLoop = () => {
+    clearAlarmInterval();
+    stopAlarm();
   };
 
   const startAlarmLoop = () => {
@@ -105,31 +126,38 @@ const AdvancedTimer = () => {
     alarmIntervalRef.current = setInterval(() => {
       alarmRepeatsRef.current += 1;
       playTacticalAlarm();
-      if (alarmRepeatsRef.current >= ALARM_MAX_REPEATS) stopAlarmLoop();
+      if (alarmRepeatsRef.current >= ALARM_MAX_REPEATS) clearAlarmInterval();
     }, ALARM_REPEAT_MS);
   };
 
-  // ── Notification permission + firing ────────────────────────────────────────
-  // Requested on start/resume (a real user gesture), never at completion time —
-  // by then it's too late to ask. No-ops silently on unsupported browsers or once
-  // the user has already answered (granted or denied), so it's never re-prompted.
-  const maybeRequestNotificationPermission = () => {
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
+  const dismissAlert = () => {
+    stopAlarmLoop();
+    setAlertInfo(null);
   };
 
-  const fireRestNotification = () => {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  // ── Screen Wake Lock ─────────────────────────────────────────────────────────
+  // Keeps the screen on while a REST timer is counting down, so the app stays in the
+  // foreground and the alert can actually be seen/heard. The browser drops the lock when
+  // the tab is hidden; the visibilitychange handler asks for it again if the timer is
+  // still running. Silently does nothing where the API doesn't exist.
+
+  const requestWakeLock = async () => {
     try {
-      const n = new Notification('Descanso terminado', {
-        body: 'Volvé a la siguiente serie',
-        icon: '/icon-192.png',
-        requireInteraction: true,
+      if (!('wakeLock' in navigator) || wakeLockRef.current) return;
+      const sentinel = await navigator.wakeLock.request('screen');
+      wakeLockRef.current = sentinel;
+      console.info('[restTimer] wake lock acquired');
+      sentinel.addEventListener?.('release', () => {
+        if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
+        console.info('[restTimer] wake lock released');
       });
-      n.onclick = () => { window.focus(); };
-    } catch {}
+    } catch { /* denied / unsupported: not worth breaking the timer */ }
+  };
+
+  const releaseWakeLock = () => {
+    const sentinel = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (sentinel) { try { Promise.resolve(sentinel.release()).catch(() => {}); } catch { /* ignore */ } }
   };
 
   // ── Interval — ticks every 250ms while active ──────────────────────────────
@@ -156,14 +184,11 @@ const AdvancedTimer = () => {
       completedRef.current = true;
       setIsActive(false);
       persistTimerState(null); // clear storage
-      if (document.visibilityState === 'visible') {
-        // Same single-shot behavior as before this change — the repeat loop and
-        // notification only matter when the athlete isn't looking at the screen.
-        playTacticalAlarm();
-      } else {
-        startAlarmLoop();
-        fireRestNotification();
-      }
+      releaseWakeLock();
+      // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
+      // is raised — if the app was hidden, it's what the athlete sees on coming back.
+      startAlarmLoop();
+      setAlertInfo({ at: Date.now(), next: nextRef.current });
     }
   }); // runs on every render; fine since it checks refs before acting
 
@@ -173,16 +198,22 @@ const AdvancedTimer = () => {
     const handler = () => {
       if (document.visibilityState === 'visible') {
         setTick(t => t + 1);
-        stopAlarmLoop();
+        // The browser releases the wake lock when the tab is hidden: ask again if a rest
+        // timer is still counting down.
+        if (modeRef.current === 'timer' && startedAtRef.current && !completedRef.current) requestWakeLock();
       }
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
-  // ── Restore from localStorage on mount ────────────────────────────────────
+  // ── Restore from localStorage once the saved session has been loaded ───────
+  // Not on first mount: session is still null until hydrateFromDb finishes, and a timer
+  // with no session (a leftover key) has nothing to time — it is dropped, never restored.
 
   useEffect(() => {
+    if (!hydrated) return;
+    if (useSessionStore.getState().session === null) { clearRestTimerStorage(); return; }
     try {
       const stored = JSON.parse(localStorage.getItem(TIMER_STORAGE_KEY) || 'null');
       if (stored && stored.startedAt && stored.duration) {
@@ -197,6 +228,7 @@ const AdvancedTimer = () => {
           setInitialTimerSeconds(stored.duration);
           setIsActive(true);
           setTick(t => t + 1);
+          requestWakeLock();
         } else {
           localStorage.removeItem(TIMER_STORAGE_KEY);
         }
@@ -204,7 +236,7 @@ const AdvancedTimer = () => {
     } catch {
       localStorage.removeItem(TIMER_STORAGE_KEY);
     }
-  }, []);
+  }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── localStorage helpers ───────────────────────────────────────────────────
 
@@ -219,13 +251,13 @@ const AdvancedTimer = () => {
 
   const startOrResume = () => {
     stopAlarmLoop();
-    maybeRequestNotificationPermission();
     startedAtRef.current = Date.now();
     completedRef.current     = false;
     preAlertFiredRef.current = false;
     setIsActive(true);
     setTick(t => t + 1);
     if (mode === 'timer') {
+      requestWakeLock();
       persistTimerState({
         startedAt:    Date.now(),
         duration:     initialTimerSeconds,
@@ -241,6 +273,7 @@ const AdvancedTimer = () => {
     startedAtRef.current = null;
     setIsActive(false);
     persistTimerState(null);
+    releaseWakeLock();
   };
 
   const resetTimer = () => {
@@ -251,9 +284,22 @@ const AdvancedTimer = () => {
     completedRef.current     = false;
     preAlertFiredRef.current = false;
     setIsActive(false);
+    setAlertInfo(null);
     setTick(t => t + 1);
     persistTimerState(null);
+    releaseWakeLock();
   };
+
+  // The session ending (finish or discard) ends the rest timer with it: interval, alarm,
+  // persisted key and wake lock. Only the true -> false TRANSITION counts — the initial
+  // false before hydration must not wipe a timer about to be restored.
+  useEffect(() => {
+    if (prevHasSessionRef.current && !hasActiveSession) {
+      resetTimer();
+      clearRestTimerStorage();
+    }
+    prevHasSessionRef.current = hasActiveSession;
+  }, [hasActiveSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleActive = () => {
     stopAlarmLoop();
@@ -279,9 +325,11 @@ const AdvancedTimer = () => {
     }
   };
 
-  const setTimerPreset = (secs) => {
+  const setTimerPreset = (secs, next = null) => {
     stopAlarmLoop();
-    maybeRequestNotificationPermission();
+    setAlertInfo(null);
+    nextRef.current = next;
+    requestWakeLock();
     startedAtRef.current     = Date.now();
     accumulatedMsRef.current = 0;
     adjustSecsRef.current    = 0;
@@ -305,9 +353,9 @@ const AdvancedTimer = () => {
   useEffect(() => {
     let autoCloseTimer;
     const handler = (e) => {
-      const { seconds: restSecs } = e.detail || {};
+      const { seconds: restSecs, next } = e.detail || {};
       if (!restSecs) return;
-      setTimerPreset(restSecs);
+      setTimerPreset(restSecs, next || null);
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
@@ -394,8 +442,39 @@ const AdvancedTimer = () => {
   // (Rules of Hooks), only the render is skipped.
   if (!hasActiveSession) return null;
 
+  const lateMs = alertInfo ? Date.now() - alertInfo.at : 0;
+
   return (
     <>
+      {alertInfo && (
+        <div
+          role="alertdialog"
+          aria-label="Descanso terminado"
+          onClick={dismissAlert}
+          className="fixed inset-0 z-[120] flex flex-col bg-amber-500 text-black"
+        >
+          <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3">
+            <BellRing size={64} strokeWidth={2.2} className="animate-pulse" />
+            <div className="text-4xl font-black leading-tight tracking-tight">DESCANSO<br />TERMINADO</div>
+            {lateMs > 5000 && <div className="text-sm font-bold opacity-80">terminó hace {formatLate(lateMs)}</div>}
+            {alertInfo.next && (
+              <>
+                <div className="mt-2 text-lg font-bold">Sigue</div>
+                <div className="text-2xl font-black">{alertInfo.next}</div>
+              </>
+            )}
+          </div>
+          <div className="px-4 pb-8">
+            <div className="text-center text-xs font-bold opacity-70 mb-3">Tocá en cualquier parte para apagar</div>
+            <button
+              onClick={(e) => { e.stopPropagation(); dismissAlert(); }}
+              className="h-20 w-full rounded-2xl bg-black text-amber-400 text-2xl font-black shadow-xl active:scale-[0.98] transition"
+            >
+              APAGAR
+            </button>
+          </div>
+        </div>
+      )}
       {isExpanded && (
         <div
           className="fixed inset-0 z-[99] bg-black/60 backdrop-blur-sm flex items-end justify-center p-4 animate-fade-in"
