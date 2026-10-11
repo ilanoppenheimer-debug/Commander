@@ -71,6 +71,16 @@ const COMPANION_DESCRIPTIONS = {
   hr: 'Pulsaciones por minuto',
 };
 
+// "Sigue: ..." label for the end-of-rest alert: the next set of this exercise, else the
+// first set of the next exercise in the list, else nothing.
+const describeNextSet = (ex, setIdx, allExercises) => {
+  const sets = Array.isArray(ex?.sets) ? ex.sets : [];
+  if (setIdx + 1 < sets.length) return `${ex.name} · serie ${setIdx + 2}`;
+  const list = Array.isArray(allExercises) ? allExercises : [];
+  const next = list[list.findIndex(e => e?.id === ex?.id) + 1];
+  return next?.name ? `${next.name} · serie 1` : null;
+};
+
 // Pure function — derives an exercise with placeholder fields computed from history + blocks.
 // Never writes to the Zustand store. Returns same reference if nothing changed.
 function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
@@ -553,7 +563,7 @@ export default function ActiveSession({
       if (isLastInSupersetGroup(ex, exercises)) {
         const restSecs = ex.restSeconds ?? 90;
         window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
-          detail: { seconds: restSecs, exerciseName: ex.name }
+          detail: { seconds: restSecs, exerciseName: ex.name, next: describeNextSet(ex, setIdx, exercises) }
         }));
       }
     }
@@ -576,7 +586,7 @@ export default function ActiveSession({
       if (isLastInSupersetGroup(ex, exercises)) {
         const restSecs = ex.restSeconds ?? 90;
         window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
-          detail: { seconds: restSecs, exerciseName: ex.name }
+          detail: { seconds: restSecs, exerciseName: ex.name, next: describeNextSet(ex, setIdx, exercises) }
         }));
       }
     }
