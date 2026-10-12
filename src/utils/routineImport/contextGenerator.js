@@ -120,9 +120,9 @@ export const generateCoachContext = async () => {
     }
   } catch { lines.push('(Error leyendo última sesión)\n'); }
 
-  // ── Top sets recientes (4 semanas) ─────────────────────────────────────────
+  // ── Top sets recientes (8 semanas) ─────────────────────────────────────────
   try {
-    const cutoff = Date.now() - 28 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 56 * 24 * 60 * 60 * 1000;
     const allHistory = await db.history.toArray();
     const recent = allHistory.filter(s => new Date(s.completedAt || s.createdAt || 0).getTime() > cutoff);
 
@@ -167,7 +167,7 @@ export const generateCoachContext = async () => {
         lines.push('');
       };
 
-      pushSection('## Top sets recientes (últimas 4 semanas)', rankedEntries(topByEx));
+      pushSection('## Top sets recientes (últimas 8 semanas)', rankedEntries(topByEx));
     }
   } catch { lines.push('(Error leyendo top sets)\n'); }
 
