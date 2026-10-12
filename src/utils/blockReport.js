@@ -55,7 +55,7 @@ const bestSetForExercise = (name, sessions) => {
         // (reconfigured mid-stream) is the one case where this comparison is not
         // apples-to-apples — accepted, not solved here.
         const score = r > 0 ? setScore(w, r) : secs;
-        if (score > bestScoreVal) { bestScoreVal = score; best = set; bestDate = localDateStr(s.completedAt); }
+        if (score >= bestScoreVal) { bestScoreVal = score; best = set; bestDate = localDateStr(s.completedAt); }
       }
     }
   }
