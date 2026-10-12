@@ -154,3 +154,34 @@ export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
   }
   return out.join('\n');
 };
+
+/**
+ * Shared by every "Enviar al Coach" button. navigator.share first; if it is missing or
+ * fails (anything but the user dismissing the sheet), copy to the clipboard.
+ * Resolves to 'shared' | 'copied' | 'cancelled' | 'empty' | 'failed' so each caller
+ * shows its own feedback.
+ */
+export const sendExerciseToCoach = async (exName, history) => {
+  const text = buildExerciseShareText(exName, history, { count: 6 });
+  if (!text) return 'empty';
+  if (typeof navigator !== 'undefined' && navigator.share) {
+    try {
+      await navigator.share({ text });
+      return 'shared';
+    } catch (e) {
+      if (e?.name === 'AbortError') return 'cancelled';
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
+};
+
+export const SEND_TO_COACH_MESSAGES = {
+  empty: ['No hay registros para enviar', 'info'],
+  copied: ['Historial copiado: pegalo en el Coach', 'success'],
+  failed: ['No se pudo compartir ni copiar', 'error'],
+};

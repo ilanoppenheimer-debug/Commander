@@ -1,11 +1,21 @@
-import React, { useMemo } from "react";
-import { X, TrendingUp } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { X, TrendingUp, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import { calculate1RM } from "../../utils/strengthMath";
 import { sameExercise } from "../../utils/exerciseName";
 import { formatNum } from "../../utils/weightUtils";
+import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 const TrendModal = ({ exName, history, barUnit, onClose }) => {
+  // Opened from several places (App, 1RM detail) with no notify prop: feedback is local.
+  const [feedback, setFeedback] = useState(null);
+  const handleSendToCoach = async () => {
+    const result = await sendExerciseToCoach(exName, history);
+    const msg = SEND_TO_COACH_MESSAGES[result];
+    if (!msg) return;
+    setFeedback(msg);
+    setTimeout(() => setFeedback(null), 3000);
+  };
   const chartData = useMemo(() => {
     if (!exName || !Array.isArray(history)) return [];
 
@@ -170,13 +180,24 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
             <p className="text-white text-sm font-bold mt-1">{exName}</p>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-white bg-slate-800 transition"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendToCoach}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-purple-600 text-white hover:bg-purple-500 transition"
+            >
+              <Share2 size={14} /> Enviar al Coach
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-slate-400 hover:text-white bg-slate-800 transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
+        {feedback && (
+          <p className={`text-xs font-bold mb-3 ${feedback[1] === "error" ? "text-red-400" : "text-emerald-400"}`}>{feedback[0]}</p>
+        )}
 
         {renderChart()}
 
