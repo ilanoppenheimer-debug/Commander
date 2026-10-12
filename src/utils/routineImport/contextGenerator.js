@@ -143,9 +143,16 @@ export const generateCoachContext = async () => {
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
             const value = bestAxisValue(s);
             if (value <= 0) continue;
-            if (!target[key] || value > target[key].value) {
+            // Best = heaviest; same weight -> more reps; same reps -> most recent. The
+            // history array comes in key order, not chronological, so without the
+            // explicit tiebreak the winner of a tie was whichever session came first.
+            const reps = parseInt(s.reps, 10) || 0;
+            const cur = target[key];
+            const better = !cur || value > cur.value
+              || (value === cur.value && (reps > cur.repsNum || (reps === cur.repsNum && sessionTime > cur.t)));
+            if (better) {
               target[key] = {
-                value, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
+                value, repsNum: reps, t: sessionTime, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
                 date: localDateStr(session.completedAt),
               };
             }
