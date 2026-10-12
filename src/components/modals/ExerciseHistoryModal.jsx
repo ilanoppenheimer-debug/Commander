@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { X, BarChart2, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import { sameExercise } from "../../utils/exerciseName";
-import { buildExerciseShareText } from "../../utils/exerciseHistoryLines";
+import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 const ExerciseHistoryModal = ({ exName, history, onClose, barUnit, showNotify }) => {
   const [limit, setLimit] = useState(5);
@@ -36,22 +36,9 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit, showNotify })
   // Always the last 6 appearances, regardless of the 5/10/todas selector: this text is
   // for the Coach, not for the screen.
   const handleSendToCoach = async () => {
-    const text = buildExerciseShareText(exName, history, { count: 6 });
-    if (!text) { showNotify?.("No hay registros para enviar", "info"); return; }
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
-        return;
-      } catch (e) {
-        if (e?.name === "AbortError") return; // user closed the share sheet
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      showNotify?.("Historial copiado: pegalo en el Coach", "success");
-    } catch {
-      showNotify?.("No se pudo compartir ni copiar", "error");
-    }
+    const result = await sendExerciseToCoach(exName, history);
+    const msg = SEND_TO_COACH_MESSAGES[result];
+    if (msg) showNotify?.(msg[0], msg[1]);
   };
 
   return (

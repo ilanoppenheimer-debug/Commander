@@ -1,7 +1,7 @@
 import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
-import { getCompanion, getMeasurement } from '../../constants/exerciseMetadata';
+import { getCompanion } from '../../constants/exerciseMetadata';
 import { localDateStr } from '../localDate';
 import { normalizeExerciseName } from '../exerciseName';
 import { resolveExerciseTag } from '../blockReport';
@@ -102,42 +102,44 @@ export const generateCoachContext = async () => {
       const exes = Array.isArray(last.exercises) ? last.exercises : [];
 
       lines.push(`## Última sesión: ${last.name || 'Sin nombre'} (${date})`);
-      lines.push(`Ejercicios: ${exes.length}`);
-
-      for (const ex of exes.slice(0, 6)) {
+      // Every exercise is listed; one with no completed set carrying data (nothing to
+      // summarize) is skipped, and the header says so instead of counting it as listed.
+      const entries = [];
+      for (const ex of exes) {
         if (!ex?.name || !Array.isArray(ex.sets)) continue;
         const completed = ex.sets.filter(s => s?.completed && bestAxisValue(s) > 0);
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
           bestAxisValue(s) > bestAxisValue(best) ? s : best, completed[0]);
-        lines.push(`  - ${ex.name}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
+        entries.push(`  - ${ex.name}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
       }
+      const skipped = exes.length - entries.length;
+      lines.push(`Ejercicios: ${entries.length}${skipped > 0 ? ` (${skipped} sin datos, omitido${skipped > 1 ? 's' : ''})` : ''}`);
+      lines.push(...entries);
       lines.push('');
     }
   } catch { lines.push('(Error leyendo última sesión)\n'); }
 
-  // ── Top sets recientes (4 semanas) ─────────────────────────────────────────
+  // ── Top sets recientes (8 semanas) ─────────────────────────────────────────
   try {
-    const cutoff = Date.now() - 28 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 56 * 24 * 60 * 60 * 1000;
     const allHistory = await db.history.toArray();
     const recent = allHistory.filter(s => new Date(s.completedAt || s.createdAt || 0).getTime() > cutoff);
 
     if (recent.length > 0) {
-      // Loaded/bodyweight work and timed work are tracked in separate maps: a hold
-      // measured in seconds (with a heart-rate/difficulty companion) was ranking against
-      // kg in one list, mixing two scales and two meanings of "top set".
-      // Keyed by exercise identity (spelling variants are one exercise); `name` is the
-      // spelling of the most recent session that has it.
+      // Main lifts only: everything else (accessories, secondary, timed work) is covered
+      // by "Últimos registros por ejercicio", which excludes mains — complementary, not
+      // overlapping. Keyed by exercise identity (spelling variants are one exercise);
+      // `name` is the spelling of the most recent session that has it.
       const topByEx = {};
-      const timedByEx = {};
       const latestNameAt = {};
       for (const session of recent) {
         const sessionTime = Date.parse(session.completedAt || session.createdAt || '') || 0;
         for (const ex of (Array.isArray(session.exercises) ? session.exercises : [])) {
-          if (!ex?.name) continue;
+          if (!ex?.name || resolveExerciseTag(ex) !== 'main_lift') continue;
           const key = normalizeExerciseName(ex.name);
           if (!(key in latestNameAt) || sessionTime >= latestNameAt[key].t) latestNameAt[key] = { name: ex.name, t: sessionTime };
-          const target = getMeasurement(ex.name) === 'time' ? timedByEx : topByEx;
+          const target = topByEx;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
             const value = bestAxisValue(s);
             if (value <= 0) continue;
@@ -150,9 +152,7 @@ export const generateCoachContext = async () => {
           }
         }
       }
-      for (const byEx of [topByEx, timedByEx]) {
-        for (const key of Object.keys(byEx)) byEx[key].name = latestNameAt[key].name;
-      }
+      for (const key of Object.keys(topByEx)) topByEx[key].name = latestNameAt[key].name;
 
       const rankedEntries = (byEx) => Object.entries(byEx)
         .sort((a, b) => b[1].value - a[1].value)
@@ -167,8 +167,7 @@ export const generateCoachContext = async () => {
         lines.push('');
       };
 
-      pushSection('## Top sets recientes (últimas 4 semanas)', rankedEntries(topByEx));
-      pushSection('## Ejercicios de tiempo recientes (últimas 4 semanas)', rankedEntries(timedByEx));
+      pushSection('## Top sets recientes (últimas 8 semanas)', rankedEntries(topByEx));
     }
   } catch { lines.push('(Error leyendo top sets)\n'); }
 
