@@ -50,7 +50,7 @@ import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
-import { sameExercise } from "../utils/exerciseName";
+import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -74,9 +74,24 @@ const COMPANION_DESCRIPTIONS = {
 // "Sigue: ..." label for the end-of-rest alert: the next set of this exercise, else the
 // first set of the next exercise in the list, else nothing.
 const describeNextSet = (ex, setIdx, allExercises) => {
-  const sets = Array.isArray(ex?.sets) ? ex.sets : [];
-  if (setIdx + 1 < sets.length) return `${ex.name} · serie ${setIdx + 2}`;
   const list = Array.isArray(allExercises) ? allExercises : [];
+  const setsOf = (e) => (Array.isArray(e?.sets) ? e.sets : []);
+
+  // Superset: rest comes after the round, so what follows is the FIRST exercise of the
+  // group that still has an unfinished set in the next round (a shorter exercise just
+  // skips rounds it has no set for). Out-of-order completion is not modeled.
+  const group = ex?.supersetId ? list.filter(e => e?.supersetId === ex.supersetId) : [];
+  if (group.length > 1) {
+    const rounds = Math.max(...group.map(e => setsOf(e).length));
+    for (let r = setIdx + 1; r < rounds; r++) {
+      const nextEx = group.find(e => setsOf(e)[r] && !setsOf(e)[r].completed);
+      if (nextEx) return `${nextEx.name} · serie ${r + 1}`;
+    }
+    const after = list[list.indexOf(group[group.length - 1]) + 1];
+    return after?.name ? `${after.name} · serie 1` : null;
+  }
+
+  if (setIdx + 1 < setsOf(ex).length) return `${ex.name} · serie ${setIdx + 2}`;
   const next = list[list.findIndex(e => e?.id === ex?.id) + 1];
   return next?.name ? `${next.name} · serie 1` : null;
 };
@@ -363,6 +378,20 @@ export default function ActiveSession({
     ),
     [exercises, history, activeBlocks]
   );
+
+  // Exercises that already have logged reps: their measurement is implicit (reps), so the
+  // "medición?" prompt is noise. It stays for exercises with no measurement AND no history
+  // (or history without reps, e.g. only seconds), where it is genuinely ambiguous.
+  const repsHistoryNames = useMemo(() => {
+    const names = new Set();
+    for (const session of (Array.isArray(history) ? history : [])) {
+      for (const e of (Array.isArray(session?.exercises) ? session.exercises : [])) {
+        if (!e?.name || names.has(normalizeExerciseName(e.name))) continue;
+        if ((Array.isArray(e.sets) ? e.sets : []).some(st => parseInt(st?.reps, 10) > 0)) names.add(normalizeExerciseName(e.name));
+      }
+    }
+    return names;
+  }, [history]);
 
   // ── Custom keypad state ────────────────────────────────────────────────────
   const [keypadState, setKeypadState] = useState({
@@ -796,24 +825,68 @@ export default function ActiveSession({
               )}
 
               <div className={`bg-slate-800 rounded-xl overflow-hidden border shadow-md transition-all ${isInSuperset ? "border-accent-500/30" : "border-slate-700"} mb-4`}>
-                <div className="p-3 bg-slate-900/50 flex items-start justify-between border-b border-slate-700">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1">
+                <div className="p-3 bg-slate-900/50 border-b border-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${details.dotBg || 'bg-slate-500'}`} />
-                      <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{details.label}</span>
+                      <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold truncate">
+                        {details.label}
+                        {isInSuperset && groupPos > 0 && (
+                          <span className="text-accent-400"> · SUPERSET {groupPos}/{groupSize}</span>
+                        )}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center shrink-0">
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => storeMoveEx(index, -1)}
+                        disabled={index === 0}
+                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                        aria-label="Subir ejercicio"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => storeMoveEx(index, 1)}
+                        disabled={index === exercises.length - 1}
+                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
+                        aria-label="Bajar ejercicio"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      <button
+                        onClick={() => setExerciseNoteFor(ex.id)}
+                        className={`p-1.5 rounded transition ${ex.exerciseNotes?.trim() ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400'}`}
+                        aria-label="Nota del ejercicio"
+                      >
+                        <StickyNote size={14} />
+                      </button>
+                      {index < exercises.length - 1 && (
+                        <button
+                          onClick={() => storeToggleSS(index)}
+                          className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
+                          aria-label="Encadenar con el de abajo (superset)"
+                        >
+                          <LinkIcon size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => storeRemoveEx(ex.id)}
+                        className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  </div>
+                  <div className="min-w-0 mt-1">
                       <button
                         onClick={() => { setEditingExId(ex.id); setShowExSelector(true); }}
-                        className="text-left font-bold text-white text-lg leading-tight truncate hover:text-accent-500 transition-colors"
+                        className="block w-full text-left font-bold text-white text-lg leading-tight line-clamp-2 hover:text-accent-500 transition-colors"
                         title="Cambiar Ejercicio"
                       >
                         {ex.name || "Ejercicio Desconocido"}
                       </button>
-                        {isInSuperset && groupPos > 0 && (
-                          <span className="text-[9px] text-accent-400 font-mono shrink-0">{groupPos}/{groupSize}</span>
-                        )}
-                      </div>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <div className="relative">
                           <select
@@ -829,6 +902,14 @@ export default function ActiveSession({
                         </div>
 
                         {/* Rest timer badge */}
+                        {isInSuperset && !isLastInSupersetGroup(ex, exercises) ? (
+                          <span
+                            className="flex items-center gap-1 text-[10px] text-slate-600 bg-slate-900/60 px-2 py-1 rounded border border-slate-800 font-mono italic"
+                            title="En un superset el descanso corre al terminar el último ejercicio de la ronda"
+                          >
+                            <Timer size={10} /> descanso al final del superset
+                          </span>
+                        ) : (
                         <div className="relative group/rest">
                           <button
                             onClick={() => {
@@ -844,6 +925,7 @@ export default function ActiveSession({
                             <Timer size={10} /> {ex.restSeconds ?? 90}s
                           </button>
                         </div>
+                        )}
 
                         {/* Tag button */}
                         <div className="relative">
@@ -890,7 +972,7 @@ export default function ActiveSession({
                             Manual-entry counterpart of the wizard's auto-detect notices: an
                             exercise added by hand in a free session has no _rawReps signal to
                             detect from, so this is the only path to configure it there. */}
-                        <div className="relative">
+                        <div className={`relative ${!getMeasurement(ex.name) && repsHistoryNames.has(normalizeExerciseName(ex.name)) ? 'hidden' : ''}`}>
                           {(() => {
                             const measurement = getMeasurement(ex.name);
                             return (
@@ -962,48 +1044,6 @@ export default function ActiveSession({
                       </div>
                     </div>
 
-                  <div className="flex flex-col items-end gap-1 ml-2">
-                    <div className="flex items-center gap-1 mt-1">
-                      <button
-                        onClick={() => storeMoveEx(index, -1)}
-                        disabled={index === 0}
-                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                        aria-label="Subir ejercicio"
-                      >
-                        <ChevronUp size={14} />
-                      </button>
-                      <button
-                        onClick={() => storeMoveEx(index, 1)}
-                        disabled={index === exercises.length - 1}
-                        className="p-1.5 rounded text-slate-600 hover:text-accent-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:text-slate-600 disabled:hover:bg-transparent transition"
-                        aria-label="Bajar ejercicio"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                      <button
-                        onClick={() => setExerciseNoteFor(ex.id)}
-                        className={`p-1.5 rounded transition ${ex.exerciseNotes?.trim() ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400'}`}
-                        aria-label="Nota del ejercicio"
-                      >
-                        <StickyNote size={14} />
-                      </button>
-                      {index < exercises.length - 1 && (
-                        <button
-                          onClick={() => storeToggleSS(index)}
-                          className={`p-1.5 rounded transition ${isSupersetTop ? "text-accent-500 bg-accent-900/20" : "text-slate-600 hover:text-accent-500 hover:bg-slate-700"}`}
-                          aria-label="Encadenar con el de abajo (superset)"
-                        >
-                          <LinkIcon size={14} />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => storeRemoveEx(ex.id)}
-                        className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="pt-1">

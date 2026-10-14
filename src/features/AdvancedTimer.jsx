@@ -64,6 +64,9 @@ const AdvancedTimer = () => {
   const completedRef      = useRef(false);
   const preAlertFiredRef  = useRef(false);
   const nextRef            = useRef(null);  // "what's next" label sent with the rest-timer event
+  const sourceRef          = useRef(null);  // exercise whose set started the running rest
+  const [sourceName, setSourceName] = useState(null);
+  const [corner, setCorner] = useState('br');
   const wakeLockRef        = useRef(null);
   const modeRef            = useRef('stopwatch');
   const prevHasSessionRef  = useRef(hasActiveSession);
@@ -188,7 +191,7 @@ const AdvancedTimer = () => {
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
       startAlarmLoop();
-      setAlertInfo({ at: Date.now(), next: nextRef.current });
+      setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
     }
   }); // runs on every render; fine since it checks refs before acting
 
@@ -222,6 +225,9 @@ const AdvancedTimer = () => {
           startedAtRef.current     = stored.startedAt;
           accumulatedMsRef.current = stored.accumulatedMs || 0;
           adjustSecsRef.current    = stored.adjustSecs || 0;
+          nextRef.current          = stored.next || null;
+          sourceRef.current        = stored.exerciseName || null;
+          setSourceName(stored.exerciseName || null);
           completedRef.current     = false;
           preAlertFiredRef.current = false;
           setMode('timer');
@@ -263,6 +269,8 @@ const AdvancedTimer = () => {
         duration:     initialTimerSeconds,
         accumulatedMs: accumulatedMsRef.current,
         adjustSecs:   adjustSecsRef.current,
+        exerciseName: sourceRef.current,
+        next:         nextRef.current,
       });
     }
   };
@@ -285,6 +293,8 @@ const AdvancedTimer = () => {
     preAlertFiredRef.current = false;
     setIsActive(false);
     setAlertInfo(null);
+    sourceRef.current = null;
+    setSourceName(null);
     setTick(t => t + 1);
     persistTimerState(null);
     releaseWakeLock();
@@ -321,14 +331,18 @@ const AdvancedTimer = () => {
         duration:     initialTimerSeconds,
         accumulatedMs: accumulatedMsRef.current,
         adjustSecs:   adjustSecsRef.current,
+        exerciseName: sourceRef.current,
+        next:         nextRef.current,
       });
     }
   };
 
-  const setTimerPreset = (secs, next = null) => {
+  const setTimerPreset = (secs, next = null, name = null) => {
     stopAlarmLoop();
     setAlertInfo(null);
     nextRef.current = next;
+    sourceRef.current = name;
+    setSourceName(name);
     requestWakeLock();
     startedAtRef.current     = Date.now();
     accumulatedMsRef.current = 0;
@@ -345,6 +359,8 @@ const AdvancedTimer = () => {
       duration:  secs,
       accumulatedMs: 0,
       adjustSecs: 0,
+      exerciseName: name,
+      next,
     });
   };
 
@@ -353,9 +369,9 @@ const AdvancedTimer = () => {
   useEffect(() => {
     let autoCloseTimer;
     const handler = (e) => {
-      const { seconds: restSecs, next } = e.detail || {};
+      const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
-      setTimerPreset(restSecs, next || null);
+      setTimerPreset(restSecs, next || null, exerciseName || null);
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
@@ -376,6 +392,7 @@ const AdvancedTimer = () => {
   useEffect(() => {
     const place = () => {
       const savedCorner = localStorage.getItem(CORNER_KEY) || 'br';
+      setCorner(savedCorner);
       const pos = getCornerPos(savedCorner);
       applyPos(pos.x, pos.y, false);
     };
@@ -423,6 +440,7 @@ const AdvancedTimer = () => {
       const pos = getCornerPos(corner);
       applyPos(pos.x, pos.y, true);
       localStorage.setItem(CORNER_KEY, corner);
+      setCorner(corner);
     }
     startPosRef.current = { x: null, y: null };
   };
@@ -456,6 +474,7 @@ const AdvancedTimer = () => {
           <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3">
             <BellRing size={64} strokeWidth={2.2} className="animate-pulse" />
             <div className="text-4xl font-black leading-tight tracking-tight">DESCANSO<br />TERMINADO</div>
+            {alertInfo.name && <div className="text-xl font-bold">de {alertInfo.name}</div>}
             {lateMs > 5000 && <div className="text-sm font-bold opacity-80">terminó hace {formatLate(lateMs)}</div>}
             {alertInfo.next && (
               <>
@@ -525,6 +544,9 @@ const AdvancedTimer = () => {
                 +15s
               </button>
             </div>
+            {sourceName && mode === 'timer' && (
+              <div className="text-center text-base font-bold text-white -mt-2 mb-3 truncate">{sourceName}</div>
+            )}
 
             <div className="flex justify-center gap-3 mb-4">
               <button
@@ -601,6 +623,16 @@ const AdvancedTimer = () => {
             {formatTime(displaySecs)}
           </span>
         </div>
+        {sourceName && mode === 'timer' && (isActive || accumulatedMsRef.current > 0) && (
+          <div
+            data-testid="timer-source"
+            className={`absolute max-w-[180px] truncate whitespace-nowrap rounded bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-xs font-bold text-white pointer-events-none ${
+              corner.startsWith('b') ? 'bottom-full mb-1' : 'top-full mt-1'
+            } ${corner.endsWith('l') ? 'left-0' : 'right-0'}`}
+          >
+            {sourceName}
+          </div>
+        )}
       </div>
     </>
   );
