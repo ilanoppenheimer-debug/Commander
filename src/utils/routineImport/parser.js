@@ -466,14 +466,12 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
     warnings.push(`Tipo desconocido "${type}", default normal`);
   }
 
-  const notesParts = [];
-
   const pesoTrimmed = (peso || '').trim();
   if (pesoTrimmed && pesoTrimmed !== '-') {
     if (/^\d+(\.\d+)?$/.test(pesoTrimmed)) {
       set.weight = pesoTrimmed;
     } else if (/^\d+(\.\d+)?-\d+(\.\d+)?$/.test(pesoTrimmed)) {
-      notesParts.push(`Peso planeado: ${pesoTrimmed} kg`);
+      // (planned text lives in set.planned, not in the athlete's notes field)
     } else {
       warnings.push(`Peso no parseable: "${peso}"`);
     }
@@ -486,7 +484,7 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
     } else if (/^\d+$/.test(repsTrimmed)) {
       set.reps = repsTrimmed;
     } else if (/^\d+-\d+$/.test(repsTrimmed)) {
-      notesParts.push(`Reps planeadas: ${repsTrimmed}`);
+      // (see set.planned)
     } else {
       warnings.push(`Reps no parseables: "${reps}"`);
       // Preserve the raw value only when it's duration-shaped ("25s", "10min") — the
@@ -511,14 +509,19 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
       // as the set's planned RPE: the back-off placeholder uses it instead of deriving a
       // number from the top. Accepts en/em dashes — the Contract writes "7.5–8".
       const [lo, hi] = rpeTrimmed.split(/\s*[-–—]\s*/);
-      notesParts.push(`RPE objetivo: ${lo}-${hi}`);
       set.plannedRpe = lo;
     } else {
       warnings.push(`RPE no parseable: "${rpe}"`);
     }
   }
 
-  set.notes = notesParts.join(' · ');
+  // The plan as the Coach wrote it, raw (weight "100", reps "5" / "25s", RPE "7–8"): a
+  // separate field so the athlete's note stays the athlete's and the plan survives edits.
+  const planned = {};
+  if (pesoTrimmed && pesoTrimmed !== '-') planned.weight = pesoTrimmed;
+  if (repsTrimmed && repsTrimmed !== '-') planned.reps = repsTrimmed;
+  if (rpeTrimmed && rpeTrimmed !== '-') planned.rpeText = rpeTrimmed;
+  if (Object.keys(planned).length > 0) set.planned = planned;
 
   const descansoTrimmed = (descanso || '').trim();
   if (descansoTrimmed && descansoTrimmed !== '-') {

@@ -587,9 +587,9 @@ function StepPreview({
                         <div key={si} className="flex items-center gap-2 text-[10px] text-slate-500 px-1">
                           <span className="w-4 shrink-0 font-mono">{si + 1}</span>
                           <span className={`w-12 shrink-0 font-bold ${s.type === 'warmup' ? 'text-blue-400' : s.type === 'top' ? 'text-amber-400' : 'text-slate-400'}`}>{s.type}</span>
-                          <span>{s.weight || '–'}kg</span>
-                          <span>×{s.reps || '–'}</span>
-                          {s.rpe && <span>@{s.rpe}</span>}
+                          <span>{s.weight || s.planned?.weight || '–'}kg</span>
+                          <span>×{s.reps || s.planned?.reps || '–'}</span>
+                          {(s.rpe || s.planned?.rpeText) && <span>@{s.rpe || s.planned.rpeText}</span>}
                           {s.notes && <span className="text-[9px] italic truncate">{s.notes}</span>}
                         </div>
                       ))}

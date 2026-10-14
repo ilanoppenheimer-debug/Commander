@@ -51,6 +51,7 @@ import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
+import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -385,6 +386,15 @@ export default function ActiveSession({
   const [measurementPickerExId, setMeasurementPickerExId] = useState(null);
   const [companionPickerExId,   setCompanionPickerExId]   = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
+  // Folded "Objetivo" summaries (the Coach's plan per set). Component state only: every
+  // session starts folded, nothing is persisted.
+  const [openObjExIds, setOpenObjExIds] = useState(() => new Set());
+  useEffect(() => { setOpenObjExIds(new Set()); }, [session?.id]);
+  const toggleObjEx = (id) => setOpenObjExIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [exerciseNoteFor,     setExerciseNoteFor]     = useState(null);
 
   // Placeholder-enriched exercises — derived state, never written back to the store.
@@ -1049,6 +1059,17 @@ export default function ActiveSession({
                           );
                         })()}
 
+                        {hasPlannedSets(ex.sets) && (
+                          <button
+                            onClick={() => toggleObjEx(ex.id)}
+                            aria-expanded={openObjExIds.has(ex.id)}
+                            aria-label="Objetivo por set"
+                            className="relative flex items-center gap-1 text-[10px] font-bold text-sky-400 bg-sky-900/20 px-2 py-1 rounded border border-sky-500/30 before:absolute before:content-[''] before:-inset-x-1 before:-inset-y-2"
+                          >
+                            Objetivo {openObjExIds.has(ex.id) ? '▾' : '▸'}
+                          </button>
+                        )}
+
                         {prevPerformance && (
                           <button
                             onClick={() => setSelectedExHistory(ex.name)}
@@ -1058,6 +1079,16 @@ export default function ActiveSession({
                           </button>
                         )}
                       </div>
+                      {openObjExIds.has(ex.id) && hasPlannedSets(ex.sets) && (
+                        <div className="mt-2 rounded-lg border border-sky-500/30 bg-sky-950/30 px-2.5 py-2 text-[12px] leading-relaxed text-sky-100 space-y-0.5">
+                          {summarizePlannedSets(ex.sets).map((g, gi) => (
+                            <div key={gi} className="flex gap-2">
+                              <span className="w-12 shrink-0 font-bold text-sky-300">{g.label}</span>
+                              <span className="tabular-nums">{g.text}{g.count > 1 ? <span className="text-sky-400/70"> (×{g.count})</span> : null}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                 </div>

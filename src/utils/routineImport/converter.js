@@ -40,6 +40,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
           notes: s.notes || '',
           ...(s.restSeconds != null ? { restSeconds: s.restSeconds } : {}),
           ...(s.plannedRpe != null ? { plannedRpe: s.plannedRpe } : {}),
+          ...(s.planned ? { planned: s.planned } : {}),
           ...(targetSeconds != null ? { targetSeconds } : {}),
         };
       }),
