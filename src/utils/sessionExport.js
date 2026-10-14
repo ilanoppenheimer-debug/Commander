@@ -1,5 +1,6 @@
 import { formatSetSummary, formatVolume } from './formatters';
 import { computeExercise1RM } from './strengthMath';
+import { formatPlannedSet, planDeviates } from './plannedSets';
 import { getExerciseMeta, getCompanion, getMeasurement } from '../constants/exerciseMetadata';
 import { localDateStr } from './localDate';
 
@@ -152,7 +153,9 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
 
       const summary = formatSetSummary(s, 'kg', companion);
       const flagsStr = flags.length > 0 ? `   ⚠️ ${flags.join(', ')}` : '';
-      setLines.push(`    ${si + 1}. ${padType(s.type)} ${summary}${flagsStr}`);
+      // Plan suffix only when the real set departs from it; old sessions have no plan.
+      const planStr = planDeviates(s) ? ` · plan ${formatPlannedSet(s.planned)}` : '';
+      setLines.push(`    ${si + 1}. ${padType(s.type)} ${summary}${planStr}${flagsStr}`);
 
       const isWorkSet = s.type !== 'warmup';
 
