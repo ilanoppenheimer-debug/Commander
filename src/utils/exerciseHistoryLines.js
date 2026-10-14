@@ -51,6 +51,13 @@ const formatCompactSet = (s, companion, plus = false) => {
   return `${w}×${numText(s.reps)}${rpe && Number(rpe) > 0 ? `@${rpe}` : ''}`;
 };
 
+// "100 × 3 @ 8" / "PC × 10 @ 7.5" — one set, no unit, for lines that already say kg once.
+export const formatPlainSet = (s) => {
+  if (num(s.reps) <= 0) return formatSetSummary(s, 'kg');
+  const rpe = numText(s.rpe);
+  return `${hasLoad(s) ? numText(s.weight) : 'PC'} × ${numText(s.reps)}${rpe && Number(rpe) > 0 ? ` @ ${rpe}` : ''}`;
+};
+
 const MAX_SETS = 4;
 const formatSets = (sets, companion, plus = false) => {
   const shown = sets.slice(0, MAX_SETS).map(s => formatCompactSet(s, companion, plus)).join(', ');

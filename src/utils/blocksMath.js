@@ -136,9 +136,12 @@ export const calculateBackoffSuggestion = (topSet, topSuggestion, block, exercis
 
   const backoffWeight = referenceWeight * backoffPct;
   const backoffReps   = clampReps(referenceReps + repsAdjust);
-  const backoffRpe    = clampRpe(referenceRpe - 0.5);
+  let backoffRpe      = clampRpe(referenceRpe - 0.5);
 
   const finalWeight = roundToEquipment(backoffWeight, exercise?.equipment || 'barbell');
+
+  // Same weight (or more) after the top can't be easier than the top: never below its RPE.
+  if (finalWeight >= referenceWeight && referenceRpe > 0) backoffRpe = Math.max(backoffRpe, clampRpe(referenceRpe));
 
   return {
     weight: String(finalWeight),

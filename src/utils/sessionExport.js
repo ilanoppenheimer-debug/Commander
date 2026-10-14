@@ -86,7 +86,7 @@ const padType = (type) => {
   return label;
 };
 
-const confianza1RM = (n) => {
+export const confianza1RM = (n) => {
   if (n >= 6) return 'alta';
   if (n >= 3) return 'media';
   return 'baja';
