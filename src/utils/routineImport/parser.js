@@ -506,8 +506,13 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
   if (rpeTrimmed && rpeTrimmed !== '-') {
     if (/^\d+(\.\d+)?$/.test(rpeTrimmed)) {
       set.rpe = rpeTrimmed;
-    } else if (/^\d+(\.\d+)?-\d+(\.\d+)?$/.test(rpeTrimmed)) {
-      notesParts.push(`RPE objetivo: ${rpeTrimmed}`);
+    } else if (/^\d+(\.\d+)?\s*[-–—]\s*\d+(\.\d+)?$/.test(rpeTrimmed)) {
+      // A planned RANGE is not a real RPE (rpe stays empty), but its lower end is kept
+      // as the set's planned RPE: the back-off placeholder uses it instead of deriving a
+      // number from the top. Accepts en/em dashes — the Contract writes "7.5–8".
+      const [lo, hi] = rpeTrimmed.split(/\s*[-–—]\s*/);
+      notesParts.push(`RPE objetivo: ${lo}-${hi}`);
+      set.plannedRpe = lo;
     } else {
       warnings.push(`RPE no parseable: "${rpe}"`);
     }

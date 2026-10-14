@@ -5,7 +5,9 @@ import { getCompanion } from '../../constants/exerciseMetadata';
 import { localDateStr } from '../localDate';
 import { normalizeExerciseName } from '../exerciseName';
 import { resolveExerciseTag } from '../blockReport';
-import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix } from '../exerciseHistoryLines';
+import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
+import { computeExercise1RM } from '../strengthMath';
+import { confianza1RM } from '../sessionExport';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
 // bodyweight sets, seconds for time-measured sets (which never carry a real weight).
@@ -132,6 +134,7 @@ export const generateCoachContext = async () => {
       // overlapping. Keyed by exercise identity (spelling variants are one exercise);
       // `name` is the spelling of the most recent session that has it.
       const topByEx = {};
+      const lastTopByEx = {}; // the most recent session's top (same criterion, work sets only)
       const latestNameAt = {};
       for (const session of recent) {
         const sessionTime = Date.parse(session.completedAt || session.createdAt || '') || 0;
@@ -140,9 +143,16 @@ export const generateCoachContext = async () => {
           const key = normalizeExerciseName(ex.name);
           if (!(key in latestNameAt) || sessionTime >= latestNameAt[key].t) latestNameAt[key] = { name: ex.name, t: sessionTime };
           const target = topByEx;
+          let sessionTop = null;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
             const value = bestAxisValue(s);
             if (value <= 0) continue;
+            if (s.type !== 'warmup' && s.type !== 'drop' && s.completed !== false) {
+              const r = parseInt(s.reps, 10) || 0;
+              if (!sessionTop || value > sessionTop.value || (value === sessionTop.value && r > sessionTop.repsNum)) {
+                sessionTop = { value, repsNum: r, t: sessionTime, set: s, iso: session.completedAt || session.createdAt };
+              }
+            }
             // Best = heaviest; same weight -> more reps; same reps -> most recent. The
             // history array comes in key order, not chronological, so without the
             // explicit tiebreak the winner of a tie was whichever session came first.
@@ -153,10 +163,11 @@ export const generateCoachContext = async () => {
             if (better) {
               target[key] = {
                 value, repsNum: reps, t: sessionTime, weight: s.weight, reps: s.reps, rpe: s.rpe, seconds: s.seconds, companionValue: s.companionValue,
-                date: localDateStr(session.completedAt),
+                iso: session.completedAt || session.createdAt,
               };
             }
           }
+          if (sessionTop && (!lastTopByEx[key] || sessionTime > lastTopByEx[key].t)) lastTopByEx[key] = sessionTop;
         }
       }
       for (const key of Object.keys(topByEx)) topByEx[key].name = latestNameAt[key].name;
@@ -165,16 +176,26 @@ export const generateCoachContext = async () => {
         .sort((a, b) => b[1].value - a[1].value)
         .slice(0, 10);
 
-      const pushSection = (title, entries) => {
-        if (entries.length === 0) return;
-        lines.push(title);
-        for (const [, s] of entries) {
-          lines.push(`  - ${s.name}: ${formatSetSummary(s, 'kg', getCompanion(s.name))}${s.date ? ` (${s.date})` : ''}`);
+      // Per main lift: the best set (criterion above), plus the LAST top when it is a
+      // different set — "best" can sit weeks back and hide where the lift is today. Then
+      // the 1RM estimate, reusing computeExercise1RM (12-week window, not the 8 of this
+      // section — said in the text).
+      const entries = rankedEntries(topByEx);
+      if (entries.length > 0) {
+        lines.push('## Top sets recientes (últimas 8 semanas)');
+        for (const [key, s] of entries) {
+          const best = `${formatSetSummary(s, 'kg', getCompanion(s.name))} (${formatShortDate(s.iso)})`;
+          const last = lastTopByEx[key];
+          lines.push(last && last.t !== s.t
+            ? `  - ${s.name}: mejor ${best} · último ${formatPlainSet(last.set)} (${formatShortDate(last.iso)})`
+            : `  - ${s.name}: ${best}`);
+          const orm = computeExercise1RM(s.name, allHistory, { weeksBack: 12 });
+          if (orm.current1RM != null && orm.sampleSize >= 1) {
+            lines.push(`    1RM est. ${Math.round(orm.current1RM * 2) / 2} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}, ventana 12 semanas)`);
+          }
         }
         lines.push('');
-      };
-
-      pushSection('## Top sets recientes (últimas 8 semanas)', rankedEntries(topByEx));
+      }
     }
   } catch { lines.push('(Error leyendo top sets)\n'); }
 

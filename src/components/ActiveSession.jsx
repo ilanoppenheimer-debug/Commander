@@ -171,7 +171,9 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
       placeholder: {
         weight:           backoffSuggestion.weight,
         reps:             backoffSuggestion.reps,
-        rpe:              backoffSuggestion.rpe,
+        // A planned RPE from the imported set wins over the derived one (which is only
+        // the fallback when the Coach gave no RPE for this set).
+        rpe:              set.plannedRpe != null && set.plannedRpe !== '' ? String(set.plannedRpe) : backoffSuggestion.rpe,
         sourceBlockColor: backoffSuggestion.sourceBlockColor,
         // back/backoff weight is CALCULATED from the day's top — it must keep following
         // the top until the athlete writes a weight in this set or confirms it. Only a
