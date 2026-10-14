@@ -107,7 +107,23 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
     return null;
   };
 
-  const newSets = ex.sets.map((set, i) => {
+  // Planned RPE from the imported set (a range like "7.5–8" keeps its lower end as
+  // `plannedRpe`): when the set has no real numeric RPE it IS the RPE placeholder, over
+  // whatever the type's own logic derived (session memory, history, back-off math).
+  // Priority: real value > plannedRpe > calculated/historical. AMRAP is the exception —
+  // its reps/RPE stay empty on purpose.
+  const withPlannedRpe = (s) => {
+    if (!s || (s.type || '').toLowerCase() === 'amrap') return s;
+    if (s.plannedRpe == null || s.plannedRpe === '') return s;
+    if (parseFloat(s.rpe) > 0) return s;
+    const planned = String(s.plannedRpe);
+    if (s.placeholder?.rpe === planned) return s;
+    return { ...s, placeholder: { ...(s.placeholder || {}), rpe: planned } };
+  };
+
+  const newSets = ex.sets.map((set, i) => withPlannedRpe(computeSetPlaceholder(set, i)));
+
+  function computeSetPlaceholder(set, i) {
     if (!set) return set;
 
     const type = (set.type || 'normal').toLowerCase();
@@ -171,9 +187,7 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
       placeholder: {
         weight:           backoffSuggestion.weight,
         reps:             backoffSuggestion.reps,
-        // A planned RPE from the imported set wins over the derived one (which is only
-        // the fallback when the Coach gave no RPE for this set).
-        rpe:              set.plannedRpe != null && set.plannedRpe !== '' ? String(set.plannedRpe) : backoffSuggestion.rpe,
+        rpe:              backoffSuggestion.rpe,
         sourceBlockColor: backoffSuggestion.sourceBlockColor,
         // back/backoff weight is CALCULATED from the day's top — it must keep following
         // the top until the athlete writes a weight in this set or confirms it. Only a
@@ -181,7 +195,7 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
         weightDerived:    isBackoffType,
       },
     };
-  });
+  }
 
   const changed = newSets.some((s, i) =>
     JSON.stringify(s?.placeholder) !== JSON.stringify(ex.sets[i]?.placeholder)
