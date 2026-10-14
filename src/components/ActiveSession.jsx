@@ -386,6 +386,16 @@ export default function ActiveSession({
   const [companionPickerExId,   setCompanionPickerExId]   = useState(null);
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
   const [exerciseNoteFor,     setExerciseNoteFor]     = useState(null);
+  // Folded/unfolded Coach text. Plain component state, never persisted: every session
+  // starts folded (the reset effect covers a session swap without unmounting).
+  const [planOpen,        setPlanOpen]        = useState(false);
+  const [openCoachExIds,  setOpenCoachExIds]  = useState(() => new Set());
+  useEffect(() => { setPlanOpen(false); setOpenCoachExIds(new Set()); }, [session?.id]);
+  const toggleCoachEx = (id) => setOpenCoachExIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   // Placeholder-enriched exercises — derived state, never written back to the store.
   const exercisesWithPlaceholders = useMemo(
@@ -798,6 +808,35 @@ export default function ActiveSession({
         </button>
       )}
 
+      {(session.contextNotes?.trim() || session.closingNotes?.trim()) && (
+        <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-950/20 overflow-hidden">
+          <button
+            onClick={() => setPlanOpen(o => !o)}
+            aria-expanded={planOpen}
+            className="w-full min-h-[44px] px-3 flex items-center justify-between text-sm font-bold text-amber-400"
+          >
+            <span>Plan del Coach {planOpen ? '▾' : '▸'}</span>
+            {!planOpen && <span className="text-[11px] font-normal text-amber-700">contexto · cierre</span>}
+          </button>
+          {planOpen && (
+            <div className="px-3 pb-3 text-[13px] leading-relaxed text-slate-200 space-y-2">
+              {session.contextNotes?.trim() && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-0.5">Contexto</div>
+                  <p className="whitespace-pre-wrap">{session.contextNotes.trim()}</p>
+                </div>
+              )}
+              {session.closingNotes?.trim() && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-0.5">Notas de cierre</div>
+                  <p className="whitespace-pre-wrap">{session.closingNotes.trim()}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:items-start">
         {exercisesWithPlaceholders.map((ex, index) => {
           if (!ex) return null;
@@ -816,6 +855,10 @@ export default function ActiveSession({
             ? groupExercises.reduce((max, e) => (e.finishedAt && (!max || e.finishedAt > max)) ? e.finishedAt : max, null)
             : null;
           const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
+          const coachNote     = (ex.notes || '').trim();
+          const coachDecision = Array.isArray(ex.decisionAdaptativa) ? ex.decisionAdaptativa.filter(Boolean) : [];
+          const hasCoachText  = !!coachNote || coachDecision.length > 0;
+          const coachOpen     = hasCoachText && openCoachExIds.has(ex.id);
           const details  = getExerciseDetails(ex.name);
           const exMeta   = getExerciseMeta(ex.name);
           const hasActiveBlock = !!findBlockForExercise({ ...ex, metadata: exMeta }, activeBlocks);
@@ -853,6 +896,16 @@ export default function ActiveSession({
                       </span>
                     </div>
                   <div className="flex items-center shrink-0">
+                    {hasCoachText && (
+                      <button
+                        onClick={() => toggleCoachEx(ex.id)}
+                        aria-expanded={coachOpen}
+                        aria-label="Texto del Coach"
+                        className="relative mr-1 px-2 py-0.5 rounded-full text-[10px] font-bold normal-case tracking-normal text-amber-400 bg-amber-900/30 border border-amber-500/40 before:absolute before:content-[''] before:-inset-x-1.5 before:-inset-y-3"
+                      >
+                        Coach {coachOpen ? '▾' : '▸'}
+                      </button>
+                    )}
                     <div className="flex items-center gap-0.5">
                       <button
                         onClick={() => storeMoveEx(index, -1)}
@@ -1061,6 +1114,25 @@ export default function ActiveSession({
                     </div>
 
                 </div>
+
+                {coachOpen && (
+                  <div className="px-3 py-2.5 bg-amber-950/20 border-b border-amber-500/20 text-[13px] leading-relaxed text-slate-200 space-y-2">
+                    {coachNote && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-0.5">Nota del Coach</div>
+                        <p className="whitespace-pre-wrap">{coachNote}</p>
+                      </div>
+                    )}
+                    {coachDecision.length > 0 && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-0.5">Decisión adaptativa</div>
+                        <ul className="list-disc pl-4 space-y-0.5">
+                          {coachDecision.map((d, di) => <li key={di}>{d}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-1">
                   {safeSets.map((s, i) => {
