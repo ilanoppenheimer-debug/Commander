@@ -3,6 +3,10 @@
 // recomputed; it is data on the side — placeholders and real values don't read it.
 
 const TYPE_LABELS = { warmup: 'W', top: 'Top', back: 'Back', backoff: 'Back', normal: 'Normal', amrap: 'AMRAP', drop: 'Drop', myo: 'Myo' };
+// The chip summarizes only these set types; warm-ups (and drop/myo) keep their plan in
+// set.planned but are not shown there.
+const SUMMARY_TYPES = new Set(['top', 'back', 'backoff', 'normal', 'amrap']);
+const inSummary = (s) => SUMMARY_TYPES.has((s?.type || 'normal').toLowerCase());
 const typeLabel = (t) => TYPE_LABELS[(t || 'normal').toLowerCase()] || (t || 'Normal');
 
 const RANGE = /^(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)$/;
@@ -21,7 +25,7 @@ export const formatPlannedSet = (planned) => {
   return `${head}${rpe}`;
 };
 
-export const hasPlannedSets = (sets) => (Array.isArray(sets) ? sets : []).some(s => s?.planned && formatPlannedSet(s.planned));
+export const hasPlannedSets = (sets) => (Array.isArray(sets) ? sets : []).some(s => inSummary(s) && s?.planned && formatPlannedSet(s.planned));
 
 /**
  * Plan summary grouped by set type, in the routine's order of first appearance:
@@ -31,6 +35,7 @@ export const hasPlannedSets = (sets) => (Array.isArray(sets) ? sets : []).some(s
 export const summarizePlannedSets = (sets) => {
   const groups = [];
   for (const s of (Array.isArray(sets) ? sets : [])) {
+    if (!inSummary(s)) continue;
     const text = formatPlannedSet(s?.planned);
     if (!text) continue;
     const label = typeLabel(s.type);
@@ -51,7 +56,7 @@ const asNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 
  */
 export const planDeviates = (set) => {
   const p = set?.planned;
-  if (!p) return false;
+  if (!p || (set.type || '').toLowerCase() === 'warmup') return false; // no plan suffix for warm-ups
 
   const pw = NUM.test(p.weight || '') ? parseFloat(p.weight) : null;
   const rw = asNum(set.weight);
