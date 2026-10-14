@@ -46,6 +46,10 @@ export const useSessionStore = create((set, get) => ({
       name: routine?.name || 'Entrenamiento Libre',
       routineId: routine?.id ?? null,
       sessionNum: routine?.sessionNum ?? null,
+      // Coach text shown (folded) during the session. Copied from the routine at start, so
+      // routines imported before this existed need no re-import. Warm-up text stays out.
+      contextNotes: routine?.contextNotes || '',
+      closingNotes: routine?.closingNotes || '',
       exercises: routine?.exercises
         ? JSON.parse(JSON.stringify(routine.exercises)).map(ex => ({
             ...ex,
