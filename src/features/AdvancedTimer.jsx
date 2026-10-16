@@ -3,6 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
+import { bgSupport, startPip, startMedia, bgComplete, stopBackground, bgHandlesAlarm, bgMode, getBgStatus, onBgStatus } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -72,6 +73,10 @@ const AdvancedTimer = () => {
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
+  // SPIKE (PiP / media notification): status line + live snapshot for restBackground.js.
+  const [bgStatus, setBgStatus] = useState(getBgStatus());
+  useEffect(() => onBgStatus(setBgStatus), []);
+  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null }));
   modeRef.current = mode;
 
   // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
@@ -135,6 +140,7 @@ const AdvancedTimer = () => {
 
   const dismissAlert = () => {
     stopAlarmLoop();
+    stopBackground();
     setAlertInfo(null);
   };
 
@@ -172,7 +178,7 @@ const AdvancedTimer = () => {
   }, [isActive]);
 
   // Safety net — clears a mid-loop alarm interval if the component ever unmounts.
-  useEffect(() => () => stopAlarmLoop(), []);
+  useEffect(() => () => { stopAlarmLoop(); stopBackground(); }, []);
 
   // ── Completion detection and pre-alert (runs after every tick) ────────────
 
@@ -190,7 +196,9 @@ const AdvancedTimer = () => {
       releaseWakeLock();
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
-      startAlarmLoop();
+      // (Spike: with the media-notification experiment active, the <audio> element plays it.)
+      bgComplete();
+      if (!bgHandlesAlarm()) startAlarmLoop();
       setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
     }
   }); // runs on every render; fine since it checks refs before acting
@@ -282,10 +290,12 @@ const AdvancedTimer = () => {
     setIsActive(false);
     persistTimerState(null);
     releaseWakeLock();
+    stopBackground();
   };
 
   const resetTimer = () => {
     stopAlarmLoop();
+    stopBackground();
     startedAtRef.current     = null;
     accumulatedMsRef.current = 0;
     adjustSecsRef.current    = 0;
@@ -454,6 +464,12 @@ const AdvancedTimer = () => {
   // ── Derived display values ─────────────────────────────────────────────────
 
   const displaySecs = getDisplaySeconds();
+  bgSnapshotRef.current = () => ({
+    remainingSecs: getDisplaySeconds(),
+    totalSecs: Math.max(1, initialTimerSeconds + adjustSecsRef.current),
+    name: sourceRef.current,
+    endsAt: Date.now() + (initialTimerSeconds + adjustSecsRef.current) * 1000 - getElapsedMs(),
+  });
   const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
 
   // No active session -> the rest timer has nothing to time. Hooks above still ran
@@ -484,6 +500,7 @@ const AdvancedTimer = () => {
             )}
           </div>
           <div className="px-4 pb-8">
+            {bgStatus && <div className="text-center text-[11px] font-mono opacity-80 mb-3 whitespace-pre-line">{bgStatus}</div>}
             <div className="text-center text-xs font-bold opacity-70 mb-3">Tocá en cualquier parte para apagar</div>
             <button
               onClick={(e) => { e.stopPropagation(); dismissAlert(); }}
@@ -564,6 +581,30 @@ const AdvancedTimer = () => {
                 <RotateCcw size={24} />
               </button>
             </div>
+
+            {mode === 'timer' && isActive && (
+              <div className="mb-3 space-y-1.5">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => startPip({ getSnapshot: () => bgSnapshotRef.current() })}
+                    className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'pip' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
+                  >
+                    Probar PiP
+                  </button>
+                  <button
+                    onClick={() => startMedia({ getSnapshot: () => bgSnapshotRef.current(), onStop: resetTimer })}
+                    className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'media' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
+                  >
+                    Probar notificación
+                  </button>
+                </div>
+                {(bgStatus || !bgSupport().pip) && (
+                  <p className="text-[10px] leading-snug text-slate-400 whitespace-pre-line">
+                    {bgStatus || `Este navegador no ofrece PiP de video (pip=${String(bgSupport().pip)}).`}
+                  </p>
+                )}
+              </div>
+            )}
 
             {mode === 'timer' && (
               <>
