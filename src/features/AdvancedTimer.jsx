@@ -3,7 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
-import { bgSupport, startPip, startMedia, bgComplete, stopBackground, bgHandlesAlarm, bgMode, getBgStatus, onBgStatus } from './restBackground';
+import { bgSupport, startPip, startMedia, bgComplete, stopBackground, bgHandlesAlarm, bgMode, bgAlarming, getBgStatus, onBgStatus, getAutoMode, setAutoMode } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -76,7 +76,18 @@ const AdvancedTimer = () => {
   // SPIKE (PiP / media notification): status line + live snapshot for restBackground.js.
   const [bgStatus, setBgStatus] = useState(getBgStatus());
   useEffect(() => onBgStatus(setBgStatus), []);
-  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null }));
+  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null, endsAt: Date.now() }));
+  // Mirrors initialTimerSeconds but is also written synchronously by setTimerPreset: the
+  // auto-start runs inside the same tap, before React has re-rendered with the new state.
+  const durationRef = useRef(initialTimerSeconds);
+  useEffect(() => { durationRef.current = initialTimerSeconds; }, [initialTimerSeconds]);
+  const bgActionsRef = useRef({ stop: () => {}, dismiss: () => {} });
+  const [autoMode, setAutoModeState] = useState(getAutoMode());
+  const bgParams = () => ({
+    getSnapshot: () => bgSnapshotRef.current(),
+    onStop: () => bgActionsRef.current.stop(),       // "stop" while counting: skip the rest
+    onDismiss: () => bgActionsRef.current.dismiss(), // pause/stop/close while the alarm sounds
+  });
   modeRef.current = mode;
 
   // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
@@ -348,6 +359,8 @@ const AdvancedTimer = () => {
   };
 
   const setTimerPreset = (secs, next = null, name = null) => {
+    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm held by the spike
+    durationRef.current = secs;
     stopAlarmLoop();
     setAlertInfo(null);
     nextRef.current = next;
@@ -382,6 +395,12 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
+      // SPIKE auto-start: still inside the tap on a set's check button (the event is
+      // dispatched synchronously from its click handler), so audio.play() and
+      // requestPictureInPicture() have their user gesture.
+      const auto = getAutoMode();
+      if (auto === 'media') startMedia(bgParams());
+      else if (auto === 'pip') startPip(bgParams());
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
@@ -464,12 +483,18 @@ const AdvancedTimer = () => {
   // ── Derived display values ─────────────────────────────────────────────────
 
   const displaySecs = getDisplaySeconds();
-  bgSnapshotRef.current = () => ({
-    remainingSecs: getDisplaySeconds(),
-    totalSecs: Math.max(1, initialTimerSeconds + adjustSecsRef.current),
-    name: sourceRef.current,
-    endsAt: Date.now() + (initialTimerSeconds + adjustSecsRef.current) * 1000 - getElapsedMs(),
-  });
+  bgSnapshotRef.current = () => {
+    const total = Math.max(1, durationRef.current + adjustSecsRef.current);
+    const elapsed = getElapsedMs();
+    return {
+      remainingSecs: Math.max(0, Math.ceil(total - elapsed / 1000)),
+      totalSecs: total,
+      name: sourceRef.current,
+      next: nextRef.current,
+      endsAt: Date.now() + total * 1000 - elapsed,
+    };
+  };
+  bgActionsRef.current = { stop: resetTimer, dismiss: dismissAlert };
   const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
 
   // No active session -> the rest timer has nothing to time. Hooks above still ran
@@ -582,23 +607,34 @@ const AdvancedTimer = () => {
               </button>
             </div>
 
-            {mode === 'timer' && isActive && (
+            {mode === 'timer' && (
               <div className="mb-3 space-y-1.5">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => startPip({ getSnapshot: () => bgSnapshotRef.current() })}
-                    className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'pip' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
-                  >
-                    Probar PiP
-                  </button>
-                  <button
-                    onClick={() => startMedia({ getSnapshot: () => bgSnapshotRef.current(), onStop: resetTimer })}
-                    className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'media' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
-                  >
-                    Probar notificación
-                  </button>
-                </div>
-                {(bgStatus || !bgSupport().pip) && (
+                {isActive && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startPip(bgParams())}
+                      className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'pip' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
+                    >
+                      Probar PiP
+                    </button>
+                    <button
+                      onClick={() => startMedia(bgParams())}
+                      className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'media' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
+                    >
+                      Probar notificación
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    const next = { off: 'media', media: 'pip', pip: 'off' }[autoMode] || 'off';
+                    setAutoMode(next); setAutoModeState(next);
+                  }}
+                  className="w-full text-[11px] font-bold px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white transition"
+                >
+                  Inicio automático al completar un set: {{ off: 'apagado', media: 'notificación', pip: 'PiP' }[autoMode]}
+                </button>
+                {(bgStatus || (isActive && !bgSupport().pip)) && (
                   <p className="text-[10px] leading-snug text-slate-400 whitespace-pre-line">
                     {bgStatus || `Este navegador no ofrece PiP de video (pip=${String(bgSupport().pip)}).`}
                   </p>

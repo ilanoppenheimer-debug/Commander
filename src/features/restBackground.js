@@ -1,37 +1,51 @@
 // SPIKE — rest timer outside the app. Two independent experiments behind two buttons in
-// the expanded timer; nothing here runs unless one of them is pressed.
+// the expanded timer (plus an optional auto-start); nothing here runs unless one of them
+// is on.
 //
 //  A) Picture-in-Picture: the timer is drawn on a <canvas>, captureStream() feeds a <video>
 //     and requestPictureInPicture() floats it over other apps.
 //  B) Player notification: a near-silent looping <audio> + Media Session metadata /
-//     position / stop action, so Android treats the page as "playing media".
+//     position / actions, so Android treats the page as "playing media".
 //
 // Both are about one question: does the page keep running (timer ticking, alarm sounding)
 // while the app is in the background or the screen is locked? The module records what it
-// observes (ticks while hidden, lateness of the end) so the result can be read off the
-// status line instead of guessed.
+// observes (ticks while hidden, lateness of the end, which actions arrived) so the result
+// can be read off the status line instead of guessed.
+//
+// Dismissing without opening the app:
+//  - while COUNTING, "pause" is ignored (pausing the silent audio would let Android freeze
+//    the page) and "stop" skips the rest;
+//  - while the ALARM sounds, pause/stop (and closing the PiP window) silence it and
+//    release everything.
 
 const SILENT_AMPLITUDE = 0.003; // ~ -50 dBFS, inaudible on a phone; 0 = digital silence
 // (Chrome decides "audible" from measured output power: digital silence may not count.)
 const ALARM_CAP_MS = 30000;
+const AUTO_KEY = 'restBgAuto';
 
-let state = null; // { mode: 'pip' | 'media', cleanup: [fn], ... }
+let state = null; // { mode: 'pip' | 'media', cleanup: [fn], getSnapshot, actions, alarming, ... }
+const logLines = [];
 let status = '';
 const listeners = new Set();
-const logLines = [];
-// Keeps the last few lines (start, what came back from the background, how late the end
-// was) so they are all readable on return; an empty string clears everything.
+// Keeps the last few lines (start, what came back from the background, which action
+// arrived, how late the end was) so they are all readable on return; '' clears everything.
 const setStatus = (s) => {
-  if (!s) logLines.length = 0; else { logLines.push(s); if (logLines.length > 4) logLines.shift(); }
+  if (!s) logLines.length = 0; else { logLines.push(s); if (logLines.length > 5) logLines.shift(); }
   status = logLines.join('\n');
   listeners.forEach(l => l(status));
 };
 export const getBgStatus = () => status;
 export const onBgStatus = (cb) => { listeners.add(cb); return () => listeners.delete(cb); };
 export const bgMode = () => state?.mode ?? null;
+export const bgAlarming = () => !!state?.alarming;
 // In media mode the alarm is played by the <audio> element itself (the thing Android keeps
 // alive), so the regular WebAudio alarm is skipped to avoid doubling it.
 export const bgHandlesAlarm = () => state?.mode === 'media';
+
+export const getAutoMode = () => {
+  try { const v = localStorage.getItem(AUTO_KEY); return v === 'media' || v === 'pip' ? v : 'off'; } catch { return 'off'; }
+};
+export const setAutoMode = (m) => { try { localStorage.setItem(AUTO_KEY, m); } catch { /* ignore */ } };
 
 export const bgSupport = () => ({
   pip: typeof document !== 'undefined' && !!document.pictureInPictureEnabled && typeof HTMLVideoElement !== 'undefined' && 'requestPictureInPicture' in HTMLVideoElement.prototype,
@@ -45,12 +59,12 @@ const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart
 const clock = (t = Date.now()) => new Date(t).toLocaleTimeString('es-AR', { hour12: false });
 
 // ── Observation: ticks while hidden, lateness of the end ─────────────────────────────
-const startObserver = (snapshot) => {
-  const obs = { ticks: 0, hiddenAt: null, hiddenTicks: 0, expectedEnd: snapshot().endsAt, lastLine: '' };
+const startObserver = (st) => {
+  const obs = { ticks: 0, hiddenAt: null, hiddenTicks: 0, expectedEnd: st.getSnapshot().endsAt, lastLine: '' };
   const tick = setInterval(() => {
     obs.ticks++;
     if (document.visibilityState === 'hidden') obs.hiddenTicks++;
-    const s = snapshot();
+    const s = st.getSnapshot();
     if (s.remainingSecs > 0) obs.expectedEnd = s.endsAt; // follows +/-15 s adjustments
   }, 500);
   const onVis = () => {
@@ -59,7 +73,7 @@ const startObserver = (snapshot) => {
       const secs = Math.round((Date.now() - obs.hiddenAt) / 1000);
       // a 500 ms interval should fire ~2 times per second if the page kept running
       obs.lastLine = `Volví tras ${secs} s: ${obs.hiddenTicks} ticks en segundo plano (esperados ~${secs * 2}).`;
-      setStatus(`${state?.mode === 'pip' ? 'PiP' : 'Media'}: ${obs.lastLine}`);
+      if (state === st) setStatus(`${st.mode === 'pip' ? 'PiP' : 'Media'}: ${obs.lastLine}`);
       obs.hiddenAt = null;
     }
   };
@@ -85,13 +99,87 @@ const silentUrl = () => makeWavUrl(10, 8000, (t) => SILENT_AMPLITUDE * Math.sin(
 // 5 pulses of 880 Hz (0.3 s on, 0.7 s off) — same cadence as playTacticalAlarm
 const alarmUrl = () => makeWavUrl(5, 22050, (t) => ((t % 1) < 0.3 ? 0.8 * Math.sin(2 * Math.PI * 880 * t) : 0));
 
+// ── Notification artwork (the picture shown on the lock screen) ──────────────────────
+const wrapText = (ctx, text, maxWidth) => {
+  const words = String(text).split(/\s+/); const lines = []; let cur = '';
+  for (const w of words) {
+    const t = cur ? `${cur} ${w}` : w;
+    if (ctx.measureText(t).width > maxWidth && cur) { lines.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 3);
+};
+const makeArtwork = ({ done, name }) => {
+  try {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = done ? '#f59e0b' : '#0f172a';
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = done ? '#000' : '#fbbf24';
+    ctx.font = `bold ${done ? 150 : 88}px system-ui, sans-serif`;
+    ctx.fillText(done ? '¡FIN!' : 'DESCANSO', 256, done ? 270 : 230);
+    if (name) {
+      ctx.fillStyle = done ? '#1c1917' : '#cbd5e1';
+      ctx.font = 'bold 40px system-ui, sans-serif';
+      wrapText(ctx, name, 440).forEach((l, i) => ctx.fillText(l, 256, 340 + i * 48));
+    }
+    return c.toDataURL('image/png');
+  } catch { return null; }
+};
+
+const setMetadata = (snap, done) => {
+  if (!bgSupport().mediaSession) return;
+  try {
+    const art = makeArtwork({ done, name: snap.name });
+    const artwork = [
+      ...(art ? [{ src: art, sizes: '512x512', type: 'image/png' }] : []),
+      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: done ? `¡FIN! · ${snap.name || 'Descanso terminado'}` : (snap.name ? `Descanso · ${snap.name}` : 'Descanso'),
+      artist: done ? (snap.next ? `Sigue: ${snap.next}` : 'Descanso terminado') : 'Iron Commander',
+      album: done ? 'Tocá APAGAR en la notificación o abrí la app' : 'Timer de descanso',
+      artwork,
+    });
+  } catch { /* metadata is cosmetic */ }
+};
+
 // ── Release everything ───────────────────────────────────────────────────────────────
-export const stopBackground = () => {
+export const stopBackground = (finalNote = '') => {
   if (!state) return;
   const s = state;
   state = null;
-  for (const fn of s.cleanup.reverse()) { try { fn(); } catch { /* best effort */ } }
-  setStatus('');
+  for (const fn of s.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
+  setStatus(''); setStatus(finalNote);
+};
+
+// ── Media Session actions shared by both experiments ─────────────────────────────────
+const keepPlaying = () => {
+  const el = state?.audio || state?.video;
+  if (el && el.paused) el.play().catch(() => {});
+};
+const installActions = (st) => {
+  if (!bgSupport().mediaSession) return [];
+  const ms = navigator.mediaSession;
+  const onPause = () => {
+    if (state !== st) return;
+    if (st.alarming) { setStatus('Pausa durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { setStatus('Pausa ignorada: la cuenta sigue (el audio no se corta).'); keepPlaying(); }
+  };
+  const onStopAction = () => {
+    if (state !== st) return;
+    if (st.alarming) { setStatus('Stop durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { setStatus('Stop: descanso saltado.'); st.actions.onStop?.(); }
+  };
+  const handlers = { pause: onPause, stop: onStopAction, play: () => { keepPlaying(); } };
+  const registered = [];
+  for (const [a, h] of Object.entries(handlers)) {
+    try { ms.setActionHandler(a, h); registered.push(a); } catch { /* unsupported action */ }
+  }
+  st.cleanup.push(() => { for (const a of registered) { try { ms.setActionHandler(a, null); } catch { /* ignore */ } } });
+  return registered;
 };
 
 // ── A) Picture-in-Picture ────────────────────────────────────────────────────────────
@@ -113,7 +201,15 @@ const drawFrame = (ctx, w, h, { remainingSecs, totalSecs, name }, done) => {
   }
 };
 
-export const startPip = async ({ getSnapshot }) => {
+// Must run inside a user gesture (a tap) — the "Probar PiP" button or, with auto-start on,
+// the tap on a set's check button that dispatches the rest-timer event synchronously.
+export const startPip = async ({ getSnapshot, onStop, onDismiss }) => {
+  // A new rest while the PiP window is already counting: just follow it.
+  if (state?.mode === 'pip' && !state.alarming) {
+    state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
+    setStatus('PiP: descanso nuevo, la ventana sigue abierta.');
+    return true;
+  }
   stopBackground();
   const sup = bgSupport();
   if (!sup.pip || !sup.captureStream) { setStatus(`PiP no disponible (pip=${sup.pip}, captureStream=${sup.captureStream})`); return false; }
@@ -123,16 +219,18 @@ export const startPip = async ({ getSnapshot }) => {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const cleanup = [];
-  const obs = startObserver(getSnapshot);
-  cleanup.push(() => obs.stop());
-  state = { mode: 'pip', cleanup, canvas, ctx, obs, W, H };
+  const st = { mode: 'pip', cleanup, canvas, ctx, W, H, getSnapshot, actions: { onStop, onDismiss }, alarming: false };
+  state = st;
+  st.obs = startObserver(st);
+  cleanup.push(() => st.obs.stop());
 
-  const draw = () => drawFrame(ctx, W, H, getSnapshot(), state?.done === true);
+  const draw = () => drawFrame(ctx, W, H, st.getSnapshot(), st.alarming);
   draw();
   const drawTimer = setInterval(draw, 250);
   cleanup.push(() => clearInterval(drawTimer));
 
   const video = document.createElement('video');
+  st.video = video;
   video.muted = true; video.playsInline = true;
   video.setAttribute('autopictureinpicture', '');
   try { video.autoPictureInPicture = true; } catch { /* attribute only exists in some builds */ }
@@ -142,52 +240,87 @@ export const startPip = async ({ getSnapshot }) => {
   document.body.appendChild(video);
   cleanup.push(() => { stream.getTracks().forEach(t => t.stop()); video.srcObject = null; video.remove(); });
 
+  const registered = installActions(st);
   // Does the browser accept the "enter PiP automatically on leaving" handler at all?
-  let autoNote = 'handler enterpictureinpicture: no soportado';
+  let autoNote = 'enterpictureinpicture: no soportado';
   try {
     navigator.mediaSession.setActionHandler('enterpictureinpicture', () => { video.requestPictureInPicture().catch(() => {}); });
-    autoNote = 'handler enterpictureinpicture: aceptado (¿entra solo al salir? probalo)';
+    autoNote = 'enterpictureinpicture: aceptado (¿entra solo al salir? probalo)';
     cleanup.push(() => { try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); } catch { /* ignore */ } });
   } catch { /* unsupported action name throws */ }
 
   try {
     await video.play();
-    await video.requestPictureInPicture(); // needs the click that called startPip
+    await video.requestPictureInPicture(); // needs the tap that called startPip
   } catch (e) {
     setStatus(`PiP falló: ${e?.name || 'error'} — ${e?.message || ''}`);
-    stopBackground();
+    stopBackground(`PiP falló: ${e?.name || 'error'}`);
     return false;
   }
-  const onLeave = () => { if (!state) return; setStatus('PiP cerrado por el usuario (el timer sigue en la app).'); stopBackground(); };
+
+  // Closing the floating window: with the alarm sounding it is "apagar"; while counting it
+  // only releases the PiP (the timer keeps running in the app). Coming back to the app
+  // through the window (visible page) must not wipe the end alert, so it is told apart.
+  const onLeave = () => {
+    if (state !== st) return;
+    const vis = document.visibilityState;
+    if (st.alarming && vis !== 'visible') {
+      setStatus(`Ventana flotante cerrada durante la alarma (visibilityState=${vis}) → apagada.`);
+      st.actions.onDismiss?.();
+    } else if (st.alarming) {
+      stopBackground('PiP cerrado al volver a la app: la alerta queda en pantalla.');
+    } else {
+      stopBackground(`PiP cerrado (visibilityState=${vis}): el timer sigue en la app.`);
+    }
+  };
   video.addEventListener('leavepictureinpicture', onLeave);
   cleanup.push(() => video.removeEventListener('leavepictureinpicture', onLeave));
   cleanup.push(() => { if (document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {}); });
-  setStatus(`PiP activo. ${autoNote}. Salí de la app y mirá la ventana flotante.`);
+  setStatus(`PiP activo (acciones: ${registered.join('/') || 'ninguna'}; ${autoNote}).`);
   return true;
 };
 
 // ── B) Player notification (silent audio + Media Session) ────────────────────────────
-export const startMedia = async ({ getSnapshot, onStop }) => {
+// Must run inside a user gesture, like startPip.
+export const startMedia = async ({ getSnapshot, onStop, onDismiss }) => {
+  // A new rest while the notification is already counting: refresh it, keep the audio.
+  if (state?.mode === 'media' && !state.alarming) {
+    state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
+    setMetadata(getSnapshot(), false);
+    setStatus('Media: descanso nuevo, notificación actualizada (el audio sigue).');
+    return true;
+  }
   stopBackground();
   const sup = bgSupport();
   const cleanup = [];
-  const obs = startObserver(getSnapshot);
-  cleanup.push(() => obs.stop());
-  state = { mode: 'media', cleanup, obs };
+  const st = { mode: 'media', cleanup, getSnapshot, actions: { onStop, onDismiss }, alarming: false, switching: false };
+  state = st;
+  st.obs = startObserver(st);
+  cleanup.push(() => st.obs.stop());
 
   const sUrl = silentUrl();
   const aUrl = alarmUrl();
   cleanup.push(() => { URL.revokeObjectURL(sUrl); URL.revokeObjectURL(aUrl); });
   const audio = new Audio(sUrl);
   audio.loop = true;
-  state.audio = audio; state.alarmSrc = aUrl;
+  st.audio = audio; st.alarmSrc = aUrl;
   cleanup.push(() => { audio.pause(); audio.removeAttribute('src'); audio.load(); });
 
+  // Android can pause the element on its own (audio focus, a call). During the count that
+  // would let it freeze the page, so resume at once; during the alarm it means "apagar".
+  const onNativePause = () => {
+    if (state !== st || st.switching) return;
+    if (st.alarming) { setStatus('El sistema pausó el audio durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { setStatus('El sistema pausó el audio: reanudado.'); audio.play().catch(() => {}); }
+  };
+  audio.addEventListener('pause', onNativePause);
+  cleanup.push(() => audio.removeEventListener('pause', onNativePause));
+
   try {
-    await audio.play(); // needs the click that called startMedia
+    await audio.play(); // needs the tap that called startMedia
   } catch (e) {
     setStatus(`Audio falló: ${e?.name || 'error'} — ${e?.message || ''}`);
-    stopBackground();
+    stopBackground(`Audio falló: ${e?.name || 'error'}`);
     return false;
   }
 
@@ -195,19 +328,12 @@ export const startMedia = async ({ getSnapshot, onStop }) => {
   if (sup.mediaSession) {
     const ms = navigator.mediaSession;
     const snap = getSnapshot();
-    try {
-      ms.metadata = new MediaMetadata({
-        title: `Descanso · ${snap.name || 'ejercicio'}`,
-        artist: 'Iron Commander',
-        album: 'Timer de descanso',
-        artwork: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
-      });
-      ms.playbackState = 'playing';
-      notes.push('metadata OK');
-    } catch (e) { notes.push(`metadata falló (${e?.name})`); }
+    setMetadata(snap, false);
+    try { ms.playbackState = 'playing'; } catch { /* ignore */ }
+    notes.push('metadata OK');
     const updatePosition = () => {
-      if (!sup.positionState || !state) return;
-      const s = getSnapshot();
+      if (!sup.positionState || state !== st || st.alarming) return;
+      const s = st.getSnapshot();
       const duration = Math.max(1, s.totalSecs);
       const position = Math.min(duration, Math.max(0, duration - s.remainingSecs));
       try { ms.setPositionState({ duration, playbackRate: 1, position }); } catch { /* ignore */ }
@@ -216,43 +342,47 @@ export const startMedia = async ({ getSnapshot, onStop }) => {
     const posTimer = setInterval(updatePosition, 1000);
     cleanup.push(() => clearInterval(posTimer));
     notes.push(sup.positionState ? 'setPositionState OK' : 'sin setPositionState');
-    const stopAction = () => { onStop?.(); };
-    for (const a of ['stop', 'pause']) { try { ms.setActionHandler(a, stopAction); } catch { /* unsupported */ } }
-    try { ms.setActionHandler('play', () => { audio.play().catch(() => {}); }); } catch { /* ignore */ }
+    const registered = installActions(st);
+    notes.push(`acciones registradas: ${registered.join('/') || 'ninguna'}`);
     cleanup.push(() => {
-      for (const a of ['stop', 'pause', 'play']) { try { ms.setActionHandler(a, null); } catch { /* ignore */ } }
       try { ms.setPositionState(); } catch { /* ignore */ }
       try { ms.playbackState = 'none'; ms.metadata = null; } catch { /* ignore */ }
     });
   } else {
     notes.push('sin Media Session');
   }
-  setStatus(`Media activa: ${notes.join(', ')}. Salí de la app: debería aparecer la notificación del reproductor.`);
+  setStatus(`Media activa: ${notes.join(', ')}.`);
   return true;
 };
 
 // ── Timer reached 0 ──────────────────────────────────────────────────────────────────
 export const bgComplete = () => {
   if (!state) return;
-  const late = Date.now() - state.obs.expectedEnd;
+  const st = state;
+  const late = Date.now() - st.obs.expectedEnd;
   const lateTxt = `el fin se detectó a las ${clock()} (${late >= 0 ? '+' : ''}${late} ms vs. lo esperado)`;
-  if (state.mode === 'pip') {
-    state.done = true;
-    drawFrame(state.ctx, state.W, state.H, { remainingSecs: 0, totalSecs: 0, name: 'Descanso terminado' }, true);
+  st.alarming = true;
+  if (st.mode === 'pip') {
+    drawFrame(st.ctx, st.W, st.H, { remainingSecs: 0, totalSecs: 0, name: 'Descanso terminado' }, true);
     setStatus(`PiP: ${lateTxt}. La alarma sale por WebAudio.`);
     return;
   }
-  // media: the alarm goes through the same <audio> element that is keeping the page alive
-  const { audio, alarmSrc } = state;
+  // media: the alarm goes through the same <audio> element that is keeping the page alive,
+  // and the notification flips to "¡FIN!" (title, subtitle with what follows, big picture).
+  const { audio, alarmSrc } = st;
+  const snap = st.getSnapshot();
+  setMetadata(snap, true);
+  try {
+    if (bgSupport().positionState) navigator.mediaSession.setPositionState({ duration: Math.max(1, snap.totalSecs), playbackRate: 1, position: Math.max(1, snap.totalSecs) });
+  } catch { /* ignore */ }
+  st.switching = true;
   try {
     audio.src = alarmSrc;
     audio.loop = true;
     audio.play().catch((e) => setStatus(`Media: la alarma no pudo sonar (${e?.name})`));
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: 'Descanso terminado', artist: 'Iron Commander' });
-    }
   } catch { /* ignore */ }
-  const cap = setTimeout(() => stopBackground(), ALARM_CAP_MS);
-  state.cleanup.push(() => clearTimeout(cap));
+  setTimeout(() => { if (state === st) st.switching = false; }, 300);
+  const cap = setTimeout(() => stopBackground('Alarma de la notificación cortada por el tope de 30 s.'), ALARM_CAP_MS);
+  st.cleanup.push(() => clearTimeout(cap));
   setStatus(`Media: ${lateTxt}. Alarma por <audio> (tope 30 s).`);
 };
