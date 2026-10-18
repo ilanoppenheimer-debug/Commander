@@ -3,7 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
-import { bgSupport, startPip, startMedia, bgComplete, stopBackground, bgHandlesAlarm, bgMode, bgAlarming, getBgStatus, onBgStatus, getAutoMode, setAutoMode } from './restBackground';
+import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming, getBgStatus, onBgStatus } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -82,7 +82,6 @@ const AdvancedTimer = () => {
   const durationRef = useRef(initialTimerSeconds);
   useEffect(() => { durationRef.current = initialTimerSeconds; }, [initialTimerSeconds]);
   const bgActionsRef = useRef({ stop: () => {}, dismiss: () => {} });
-  const [autoMode, setAutoModeState] = useState(getAutoMode());
   const bgParams = () => ({
     getSnapshot: () => bgSnapshotRef.current(),
     onStop: () => bgActionsRef.current.stop(),       // "stop" while counting: skip the rest
@@ -395,12 +394,11 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
-      // SPIKE auto-start: still inside the tap on a set's check button (the event is
-      // dispatched synchronously from its click handler), so audio.play() and
-      // requestPictureInPicture() have their user gesture.
-      const auto = getAutoMode();
-      if (auto === 'media') startMedia(bgParams());
-      else if (auto === 'pip') startPip(bgParams());
+      // SPIKE: notification + PiP start together, still inside the tap on a set's check
+      // button (the event is dispatched synchronously from its click handler), so
+      // audio.play() and requestPictureInPicture() have their user gesture. A PiP that
+      // can't open leaves the notification running, without any visible error.
+      startBackground(bgParams());
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
@@ -607,39 +605,8 @@ const AdvancedTimer = () => {
               </button>
             </div>
 
-            {mode === 'timer' && (
-              <div className="mb-3 space-y-1.5">
-                {isActive && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => startPip(bgParams())}
-                      className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'pip' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
-                    >
-                      Probar PiP
-                    </button>
-                    <button
-                      onClick={() => startMedia(bgParams())}
-                      className={`flex-1 text-[11px] font-bold px-2 py-2 rounded-lg border transition ${bgMode() === 'media' ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'}`}
-                    >
-                      Probar notificación
-                    </button>
-                  </div>
-                )}
-                <button
-                  onClick={() => {
-                    const next = { off: 'media', media: 'pip', pip: 'off' }[autoMode] || 'off';
-                    setAutoMode(next); setAutoModeState(next);
-                  }}
-                  className="w-full text-[11px] font-bold px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white transition"
-                >
-                  Inicio automático al completar un set: {{ off: 'apagado', media: 'notificación', pip: 'PiP' }[autoMode]}
-                </button>
-                {(bgStatus || (isActive && !bgSupport().pip)) && (
-                  <p className="text-[10px] leading-snug text-slate-400 whitespace-pre-line">
-                    {bgStatus || `Este navegador no ofrece PiP de video (pip=${String(bgSupport().pip)}).`}
-                  </p>
-                )}
-              </div>
+            {mode === 'timer' && bgStatus && (
+              <p className="mb-3 text-[10px] leading-snug text-slate-400 whitespace-pre-line">{bgStatus}</p>
             )}
 
             {mode === 'timer' && (

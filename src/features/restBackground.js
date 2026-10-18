@@ -1,11 +1,12 @@
-// SPIKE — rest timer outside the app. Two independent experiments behind two buttons in
-// the expanded timer (plus an optional auto-start); nothing here runs unless one of them
-// is on.
+// SPIKE — rest timer outside the app. On every set completion BOTH start, inside the same
+// tap:
 //
-//  A) Picture-in-Picture: the timer is drawn on a <canvas>, captureStream() feeds a <video>
-//     and requestPictureInPicture() floats it over other apps.
-//  B) Player notification: a near-silent looping <audio> + Media Session metadata /
+//  B) Player notification (always): a near-silent looping <audio> + Media Session metadata /
 //     position / actions, so Android treats the page as "playing media".
+//  A) Picture-in-Picture (best effort): the timer is drawn on a <canvas>, captureStream()
+//     feeds a <video> and requestPictureInPicture() floats it over other apps. If it can't
+//     open (unsupported, rejected, no gesture) the notification simply carries on alone,
+//     without any visible error (the reason goes to console.info).
 //
 // Both are about one question: does the page keep running (timer ticking, alarm sounding)
 // while the app is in the background or the screen is locked? The module records what it
@@ -21,9 +22,8 @@
 const SILENT_AMPLITUDE = 0.003; // ~ -50 dBFS, inaudible on a phone; 0 = digital silence
 // (Chrome decides "audible" from measured output power: digital silence may not count.)
 const ALARM_CAP_MS = 30000;
-const AUTO_KEY = 'restBgAuto';
 
-let state = null; // { mode: 'pip' | 'media', cleanup: [fn], getSnapshot, actions, alarming, ... }
+let state = null; // { mode: 'media', cleanup: [fn], getSnapshot, actions, alarming, pip: {...} | null, ... }
 const logLines = [];
 let status = '';
 const listeners = new Set();
@@ -41,11 +41,6 @@ export const bgAlarming = () => !!state?.alarming;
 // In media mode the alarm is played by the <audio> element itself (the thing Android keeps
 // alive), so the regular WebAudio alarm is skipped to avoid doubling it.
 export const bgHandlesAlarm = () => state?.mode === 'media';
-
-export const getAutoMode = () => {
-  try { const v = localStorage.getItem(AUTO_KEY); return v === 'media' || v === 'pip' ? v : 'off'; } catch { return 'off'; }
-};
-export const setAutoMode = (m) => { try { localStorage.setItem(AUTO_KEY, m); } catch { /* ignore */ } };
 
 export const bgSupport = () => ({
   pip: typeof document !== 'undefined' && !!document.pictureInPictureEnabled && typeof HTMLVideoElement !== 'undefined' && 'requestPictureInPicture' in HTMLVideoElement.prototype,
@@ -73,7 +68,7 @@ const startObserver = (st) => {
       const secs = Math.round((Date.now() - obs.hiddenAt) / 1000);
       // a 500 ms interval should fire ~2 times per second if the page kept running
       obs.lastLine = `Volví tras ${secs} s: ${obs.hiddenTicks} ticks en segundo plano (esperados ~${secs * 2}).`;
-      if (state === st) setStatus(`${st.mode === 'pip' ? 'PiP' : 'Media'}: ${obs.lastLine}`);
+      if (state === st) setStatus(obs.lastLine);
       obs.hiddenAt = null;
     }
   };
@@ -201,36 +196,34 @@ const drawFrame = (ctx, w, h, { remainingSecs, totalSecs, name }, done) => {
   }
 };
 
-// Must run inside a user gesture (a tap) — the "Probar PiP" button or, with auto-start on,
-// the tap on a set's check button that dispatches the rest-timer event synchronously.
-export const startPip = async ({ getSnapshot, onStop, onDismiss }) => {
-  // A new rest while the PiP window is already counting: just follow it.
-  if (state?.mode === 'pip' && !state.alarming) {
-    state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
-    setStatus('PiP: descanso nuevo, la ventana sigue abierta.');
-    return true;
-  }
-  stopBackground();
+// Best effort, attached to the running media state. Must run inside the user gesture that
+// started the rest (the tap on a set's check button).
+const releasePip = (st, note) => {
+  const pip = st.pip;
+  if (!pip) return;
+  st.pip = null;
+  for (const fn of pip.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
+  if (note && state === st) setStatus(note);
+};
+
+const attachPip = async (st) => {
+  if (st.pip) return true; // already open: the next set just keeps it
   const sup = bgSupport();
-  if (!sup.pip || !sup.captureStream) { setStatus(`PiP no disponible (pip=${sup.pip}, captureStream=${sup.captureStream})`); return false; }
+  if (!sup.pip || !sup.captureStream) { console.info('[restBg] PiP no disponible', sup); return false; }
 
   const W = 320, H = 180;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
-  const cleanup = [];
-  const st = { mode: 'pip', cleanup, canvas, ctx, W, H, getSnapshot, actions: { onStop, onDismiss }, alarming: false };
-  state = st;
-  st.obs = startObserver(st);
-  cleanup.push(() => st.obs.stop());
+  const pip = { cleanup: [], draw: null };
+  st.pip = pip;
 
-  const draw = () => drawFrame(ctx, W, H, st.getSnapshot(), st.alarming);
-  draw();
-  const drawTimer = setInterval(draw, 250);
-  cleanup.push(() => clearInterval(drawTimer));
+  pip.draw = () => drawFrame(ctx, W, H, st.getSnapshot(), st.alarming);
+  pip.draw();
+  const drawTimer = setInterval(pip.draw, 250);
+  pip.cleanup.push(() => clearInterval(drawTimer));
 
   const video = document.createElement('video');
-  st.video = video;
   video.muted = true; video.playsInline = true;
   video.setAttribute('autopictureinpicture', '');
   try { video.autoPictureInPicture = true; } catch { /* attribute only exists in some builds */ }
@@ -238,51 +231,51 @@ export const startPip = async ({ getSnapshot, onStop, onDismiss }) => {
   const stream = canvas.captureStream(5);
   video.srcObject = stream;
   document.body.appendChild(video);
-  cleanup.push(() => { stream.getTracks().forEach(t => t.stop()); video.srcObject = null; video.remove(); });
+  pip.cleanup.push(() => { stream.getTracks().forEach(t => t.stop()); video.srcObject = null; video.remove(); });
 
-  const registered = installActions(st);
   // Does the browser accept the "enter PiP automatically on leaving" handler at all?
   let autoNote = 'enterpictureinpicture: no soportado';
   try {
     navigator.mediaSession.setActionHandler('enterpictureinpicture', () => { video.requestPictureInPicture().catch(() => {}); });
-    autoNote = 'enterpictureinpicture: aceptado (¿entra solo al salir? probalo)';
-    cleanup.push(() => { try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); } catch { /* ignore */ } });
+    autoNote = 'enterpictureinpicture: aceptado';
+    pip.cleanup.push(() => { try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); } catch { /* ignore */ } });
   } catch { /* unsupported action name throws */ }
 
   try {
     await video.play();
-    await video.requestPictureInPicture(); // needs the tap that called startPip
+    await video.requestPictureInPicture();
   } catch (e) {
-    setStatus(`PiP falló: ${e?.name || 'error'} — ${e?.message || ''}`);
-    stopBackground(`PiP falló: ${e?.name || 'error'}`);
+    console.info('[restBg] PiP rechazado', e?.name, e?.message);
+    releasePip(st);
     return false;
   }
+  if (state !== st || st.pip !== pip) { releasePip(st); return false; } // the rest ended meanwhile
 
-  // Closing the floating window: with the alarm sounding it is "apagar"; while counting it
-  // only releases the PiP (the timer keeps running in the app). Coming back to the app
-  // through the window (visible page) must not wipe the end alert, so it is told apart.
+  // Closing the floating window: with the alarm sounding it is "apagar" (everything is
+  // released); while counting it only drops the PiP (notification and timer carry on).
+  // Coming back to the app through the window (visible page) must not wipe the end alert.
   const onLeave = () => {
-    if (state !== st) return;
+    if (state !== st || st.pip !== pip) return;
     const vis = document.visibilityState;
     if (st.alarming && vis !== 'visible') {
       setStatus(`Ventana flotante cerrada durante la alarma (visibilityState=${vis}) → apagada.`);
       st.actions.onDismiss?.();
     } else if (st.alarming) {
-      stopBackground('PiP cerrado al volver a la app: la alerta queda en pantalla.');
+      releasePip(st, 'PiP cerrado al volver a la app: la alerta queda en pantalla.');
     } else {
-      stopBackground(`PiP cerrado (visibilityState=${vis}): el timer sigue en la app.`);
+      releasePip(st, `PiP cerrado (visibilityState=${vis}): sigue la notificación.`);
     }
   };
   video.addEventListener('leavepictureinpicture', onLeave);
-  cleanup.push(() => video.removeEventListener('leavepictureinpicture', onLeave));
-  cleanup.push(() => { if (document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {}); });
-  setStatus(`PiP activo (acciones: ${registered.join('/') || 'ninguna'}; ${autoNote}).`);
+  pip.cleanup.push(() => video.removeEventListener('leavepictureinpicture', onLeave));
+  pip.cleanup.push(() => { if (document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {}); });
+  setStatus(`PiP abierto (${autoNote}).`);
   return true;
 };
 
 // ── B) Player notification (silent audio + Media Session) ────────────────────────────
-// Must run inside a user gesture, like startPip.
-export const startMedia = async ({ getSnapshot, onStop, onDismiss }) => {
+// Must run inside the user gesture that started the rest.
+const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   // A new rest while the notification is already counting: refresh it, keep the audio.
   if (state?.mode === 'media' && !state.alarming) {
     state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
@@ -297,6 +290,7 @@ export const startMedia = async ({ getSnapshot, onStop, onDismiss }) => {
   state = st;
   st.obs = startObserver(st);
   cleanup.push(() => st.obs.stop());
+  cleanup.push(() => releasePip(st));
 
   const sUrl = silentUrl();
   const aUrl = alarmUrl();
@@ -317,7 +311,7 @@ export const startMedia = async ({ getSnapshot, onStop, onDismiss }) => {
   cleanup.push(() => audio.removeEventListener('pause', onNativePause));
 
   try {
-    await audio.play(); // needs the tap that called startMedia
+    await audio.play(); // needs the tap that started the rest
   } catch (e) {
     setStatus(`Audio falló: ${e?.name || 'error'} — ${e?.message || ''}`);
     stopBackground(`Audio falló: ${e?.name || 'error'}`);
@@ -355,6 +349,17 @@ export const startMedia = async ({ getSnapshot, onStop, onDismiss }) => {
   return true;
 };
 
+// Entry point, called from the tap on a set's "complete": the notification (audio + Media
+// Session) and the PiP window start together. Both sync parts run before any await, so both
+// keep the tap's user activation; a PiP that can't open leaves the notification running.
+export const startBackground = async (params) => {
+  const mediaP = startMediaCore(params);
+  const st = state;
+  const pipP = st ? attachPip(st) : Promise.resolve(false);
+  const [mediaOk] = await Promise.all([mediaP, pipP]);
+  return mediaOk;
+};
+
 // ── Timer reached 0 ──────────────────────────────────────────────────────────────────
 export const bgComplete = () => {
   if (!state) return;
@@ -362,11 +367,7 @@ export const bgComplete = () => {
   const late = Date.now() - st.obs.expectedEnd;
   const lateTxt = `el fin se detectó a las ${clock()} (${late >= 0 ? '+' : ''}${late} ms vs. lo esperado)`;
   st.alarming = true;
-  if (st.mode === 'pip') {
-    drawFrame(st.ctx, st.W, st.H, { remainingSecs: 0, totalSecs: 0, name: 'Descanso terminado' }, true);
-    setStatus(`PiP: ${lateTxt}. La alarma sale por WebAudio.`);
-    return;
-  }
+  st.pip?.draw(); // the floating window flips to ¡FIN! at once
   // media: the alarm goes through the same <audio> element that is keeping the page alive,
   // and the notification flips to "¡FIN!" (title, subtitle with what follows, big picture).
   const { audio, alarmSrc } = st;
@@ -384,5 +385,5 @@ export const bgComplete = () => {
   setTimeout(() => { if (state === st) st.switching = false; }, 300);
   const cap = setTimeout(() => stopBackground('Alarma de la notificación cortada por el tope de 30 s.'), ALARM_CAP_MS);
   st.cleanup.push(() => clearTimeout(cap));
-  setStatus(`Media: ${lateTxt}. Alarma por <audio> (tope 30 s).`);
+  setStatus(`${lateTxt}. Alarma por <audio> (tope 30 s).`);
 };
