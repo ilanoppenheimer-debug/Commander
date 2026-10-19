@@ -3,6 +3,7 @@ import { setSetting, deleteSetting } from '../db/repository';
 import { SET_TYPES } from '../constants/gymConstants';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { clearRestTimerStorage } from '../utils/restTimerStorage';
+import { stopBackground } from '../features/restBackground';
 import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
 
 let _debounceTimer = null;
@@ -41,6 +42,7 @@ export const useSessionStore = create((set, get) => ({
     // must not attach to this session's reused exercise ids.
     clearAllTimedSetTimers();
     clearRestTimerStorage();
+    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
     const session = {
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
@@ -312,6 +314,7 @@ export const useSessionStore = create((set, get) => ({
   finishSession: () => {
     clearAllTimedSetTimers();
     clearRestTimerStorage();
+    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
     set({ session: null });
     persistToDb(null);
   },
@@ -319,6 +322,7 @@ export const useSessionStore = create((set, get) => ({
   discardSession: () => {
     clearAllTimedSetTimers();
     clearRestTimerStorage();
+    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
     set({ session: null });
     persistToDb(null);
   },

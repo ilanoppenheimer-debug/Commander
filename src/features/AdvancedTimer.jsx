@@ -3,6 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
+import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -72,6 +73,19 @@ const AdvancedTimer = () => {
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
+  // Rest timer outside the app (PiP + media notification, features/restBackground.js):
+  // live snapshot of the countdown for it to draw/report.
+  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null }));
+  // Mirrors initialTimerSeconds but is also written synchronously by setTimerPreset: the
+  // auto-start runs inside the same tap, before React has re-rendered with the new state.
+  const durationRef = useRef(initialTimerSeconds);
+  useEffect(() => { durationRef.current = initialTimerSeconds; }, [initialTimerSeconds]);
+  const bgActionsRef = useRef({ stop: () => {}, dismiss: () => {} });
+  const bgParams = () => ({
+    getSnapshot: () => bgSnapshotRef.current(),
+    onStop: () => bgActionsRef.current.stop(),       // "stop" while counting: skip the rest
+    onDismiss: () => bgActionsRef.current.dismiss(), // pause/stop/close while the alarm sounds
+  });
   modeRef.current = mode;
 
   // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
@@ -135,6 +149,7 @@ const AdvancedTimer = () => {
 
   const dismissAlert = () => {
     stopAlarmLoop();
+    stopBackground();
     setAlertInfo(null);
   };
 
@@ -172,7 +187,7 @@ const AdvancedTimer = () => {
   }, [isActive]);
 
   // Safety net — clears a mid-loop alarm interval if the component ever unmounts.
-  useEffect(() => () => stopAlarmLoop(), []);
+  useEffect(() => () => { stopAlarmLoop(); stopBackground(); }, []);
 
   // ── Completion detection and pre-alert (runs after every tick) ────────────
 
@@ -190,7 +205,9 @@ const AdvancedTimer = () => {
       releaseWakeLock();
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
-      startAlarmLoop();
+      // (With the background notification active, its <audio> element plays the alarm.)
+      bgComplete();
+      if (!bgHandlesAlarm()) startAlarmLoop();
       setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
     }
   }); // runs on every render; fine since it checks refs before acting
@@ -282,10 +299,12 @@ const AdvancedTimer = () => {
     setIsActive(false);
     persistTimerState(null);
     releaseWakeLock();
+    stopBackground();
   };
 
   const resetTimer = () => {
     stopAlarmLoop();
+    stopBackground();
     startedAtRef.current     = null;
     accumulatedMsRef.current = 0;
     adjustSecsRef.current    = 0;
@@ -338,6 +357,8 @@ const AdvancedTimer = () => {
   };
 
   const setTimerPreset = (secs, next = null, name = null) => {
+    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm held by the background notification
+    durationRef.current = secs;
     stopAlarmLoop();
     setAlertInfo(null);
     nextRef.current = next;
@@ -372,6 +393,11 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
+      // Notification + PiP start together, still inside the tap on a set's check
+      // button (the event is dispatched synchronously from its click handler), so
+      // audio.play() and requestPictureInPicture() have their user gesture. A PiP that
+      // can't open leaves the notification running, without any visible error.
+      startBackground(bgParams());
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
@@ -454,6 +480,17 @@ const AdvancedTimer = () => {
   // ── Derived display values ─────────────────────────────────────────────────
 
   const displaySecs = getDisplaySeconds();
+  bgSnapshotRef.current = () => {
+    const total = Math.max(1, durationRef.current + adjustSecsRef.current);
+    const elapsed = getElapsedMs();
+    return {
+      remainingSecs: Math.max(0, Math.ceil(total - elapsed / 1000)),
+      totalSecs: total,
+      name: sourceRef.current,
+      next: nextRef.current,
+    };
+  };
+  bgActionsRef.current = { stop: resetTimer, dismiss: dismissAlert };
   const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
 
   // No active session -> the rest timer has nothing to time. Hooks above still ran
