@@ -1,4 +1,4 @@
-import { vibrateAlarm, stopVibration } from '../services/audioService';
+import { vibrateAlarm, stopVibration, ALARM_TONE } from '../services/audioService';
 
 // Rest timer outside the app. On every set completion BOTH start, inside the same tap:
 //
@@ -58,8 +58,14 @@ const makeWavUrl = (seconds, sampleRate, sampleAt) => {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 };
 const silentUrl = () => makeWavUrl(10, 8000, (t) => SILENT_AMPLITUDE * Math.sin(2 * Math.PI * 30 * t));
-// 5 pulses of 880 Hz (0.3 s on, 0.7 s off) — same cadence as playTacticalAlarm
-const alarmUrl = () => makeWavUrl(5, 22050, (t) => ((t % 1) < 0.3 ? 0.8 * Math.sin(2 * Math.PI * 880 * t) : 0));
+// Same pulses as playTacticalAlarm (tone, envelope and peak come from ALARM_TONE).
+const alarmUrl = () => makeWavUrl(ALARM_TONE.pulses * ALARM_TONE.interval, 22050, (t) => {
+  const i = Math.floor(t / ALARM_TONE.interval);
+  const tt = t - i * ALARM_TONE.interval;
+  if (tt >= ALARM_TONE.duration) return 0;
+  const env = Math.min(1, tt / ALARM_TONE.attack, (ALARM_TONE.duration - tt) / ALARM_TONE.release);
+  return ALARM_TONE.peak * env * Math.sin(2 * Math.PI * ALARM_TONE.freqs[i % ALARM_TONE.freqs.length] * tt);
+});
 
 // ── Notification artwork (the picture shown on the lock screen) ──────────────────────
 const wrapText = (ctx, text, maxWidth) => {

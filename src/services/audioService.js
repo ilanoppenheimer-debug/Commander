@@ -15,7 +15,7 @@ const getCtx = () => {
   } catch { return null; }
 };
 
-const beep = (ctx, bus, freq, start, duration, vol = 0.3) => {
+const beep = (ctx, bus, freq, start, duration, vol = 0.3, attack = 0.02, release = 0.05) => {
   try {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -24,8 +24,8 @@ const beep = (ctx, bus, freq, start, duration, vol = 0.3) => {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, start);
     gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(vol, start + 0.02);
-    gain.gain.linearRampToValueAtTime(vol, start + duration - 0.05);
+    gain.gain.linearRampToValueAtTime(vol, start + attack);
+    gain.gain.linearRampToValueAtTime(vol, start + duration - release);
     gain.gain.linearRampToValueAtTime(0, start + duration);
     osc.start(start);
     osc.stop(start + duration);
@@ -46,6 +46,21 @@ const ALARM_PULSE_COUNT = 5;
 const ALARM_PULSE_INTERVAL = 1.0;
 const ALARM_PULSE_DURATION = 0.3;
 
+// The alarm tone. Phone speakers are weak below ~1 kHz and the ear is most sensitive at
+// 2-4 kHz, so the pulses alternate 2.4 / 3.2 kHz; the 5 ms attack makes each beep cut
+// through (and the 15 ms release avoids a click); the peak is near full scale because the
+// web can't touch the media volume, so the signal itself has to be as loud as it can be.
+// Shared with the background <audio> alarm (features/restBackground.js) so both sound alike.
+export const ALARM_TONE = {
+  freqs: [2400, 3200],
+  peak: 0.9,
+  attack: 0.005,
+  release: 0.015,
+  pulses: ALARM_PULSE_COUNT,
+  interval: ALARM_PULSE_INTERVAL,
+  duration: ALARM_PULSE_DURATION,
+};
+
 // Vibrate pattern synced to the same 5 pulses: 300ms on (matches ALARM_PULSE_DURATION)
 // / 700ms off (fills out the 1s interval), ending on an "on" segment.
 const ALARM_VIBRATE_PATTERN = [300, 700, 300, 700, 300, 700, 300, 700, 300];
@@ -57,7 +72,7 @@ export const playTacticalAlarm = () => {
       const t = ctx.currentTime;
       const bus = newBus(ctx, ALARM_PULSE_COUNT * ALARM_PULSE_INTERVAL);
       for (let i = 0; i < ALARM_PULSE_COUNT; i++) {
-        beep(ctx, bus, 880, t + i * ALARM_PULSE_INTERVAL, ALARM_PULSE_DURATION, 0.35);
+        beep(ctx, bus, ALARM_TONE.freqs[i % ALARM_TONE.freqs.length], t + i * ALARM_PULSE_INTERVAL, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
       }
     }
     if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN);
