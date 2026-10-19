@@ -4,6 +4,7 @@ import { SET_TYPES } from '../constants/gymConstants';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { clearRestTimerStorage } from '../utils/restTimerStorage';
 import { stopBackground } from '../features/restBackground';
+import { releaseAllWakeLocks } from '../utils/wakeLock';
 import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
 
 let _debounceTimer = null;
@@ -26,6 +27,9 @@ export const useSessionStore = create((set, get) => ({
   // True once the saved session (if any) has been loaded — consumers that must not act on
   // the initial null (the rest timer's restore) wait for it.
   hydrated: false,
+  // Bumped by startSession only (never persisted, not part of `session`): App watches it to
+  // show the "raise the media volume" hint once per started session, not on a reload.
+  volumeHintNonce: 0,
 
   hydrateFromDb: async () => {
     try {
@@ -43,6 +47,7 @@ export const useSessionStore = create((set, get) => ({
     clearAllTimedSetTimers();
     clearRestTimerStorage();
     stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     const session = {
       id: `session-${Date.now()}`,
       name: routine?.name || 'Entrenamiento Libre',
@@ -64,7 +69,7 @@ export const useSessionStore = create((set, get) => ({
       briefing: null,
       subjectiveState: '',
     };
-    set({ session });
+    set({ session, volumeHintNonce: get().volumeHintNonce + 1 });
     persistToDb(session);
   },
 
@@ -315,6 +320,7 @@ export const useSessionStore = create((set, get) => ({
     clearAllTimedSetTimers();
     clearRestTimerStorage();
     stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     set({ session: null });
     persistToDb(null);
   },
@@ -323,6 +329,7 @@ export const useSessionStore = create((set, get) => ({
     clearAllTimedSetTimers();
     clearRestTimerStorage();
     stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     set({ session: null });
     persistToDb(null);
   },

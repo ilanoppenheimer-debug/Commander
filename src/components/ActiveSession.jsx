@@ -34,7 +34,7 @@ import {
   calculateBackoffSuggestion,
   findTopSetInExercise,
 } from "../utils/blocksMath";
-import { getExerciseMeta, saveExerciseMeta, getMeasurement, getCompanion, setMeasurement, setCompanion } from "../constants/exerciseMetadata";
+import { getExerciseMeta, saveExerciseMeta, getMeasurement, getCompanion, setMeasurement, setCompanion, getTimedMode, setTimedMode } from "../constants/exerciseMetadata";
 import { TAG_LABELS } from "../constants/blockTemplates";
 
 import InputGroup from "./ui/InputGroup";
@@ -388,6 +388,8 @@ export default function ActiveSession({
   const [showCreateBlockModal, setShowCreateBlockModal] = useState(false);
   // Folded "Objetivo" summaries (the Coach's plan per set). Component state only: every
   // session starts folded, nothing is persisted.
+  // Bumped when the timed-set mode (exerciseMetadata, localStorage) changes, to re-render.
+  const [, setMetaNonce] = useState(0);
   const [openObjExIds, setOpenObjExIds] = useState(() => new Set());
   useEffect(() => { setOpenObjExIds(new Set()); }, [session?.id]);
   const toggleObjEx = (id) => setOpenObjExIds(prev => {
@@ -1176,7 +1178,11 @@ export default function ActiveSession({
                           set={s}
                           setIndex={i + 1}
                           exerciseId={ex.id}
+                          exerciseName={ex.name}
                           companion={getCompanion(ex.name)}
+                          timedMode={getTimedMode(ex.name) || 'timer'}
+                          showModeToggle={Number(s.targetSeconds) > 0}
+                          onTimedModeChange={(m) => { setTimedMode(ex.name, m); setMetaNonce(n => n + 1); }}
                           onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
                           onUpdateField={(field, value) => storeUpdateSet(ex.id, i, field, value)}
                           onCycleType={() => storeCycleType(ex.id, i)}

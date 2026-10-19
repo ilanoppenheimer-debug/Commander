@@ -91,6 +91,28 @@ export const stopVibration = () => {
   try { if (navigator.vibrate) navigator.vibrate(0); } catch {}
 };
 
+// Short "you reached the target" signal for a hold timer (not the rest alarm): two
+// quick tones from the alarm family (2.4 then 3.2 kHz, same attack/release/peak), well
+// under a second, plus a short vibration. Plays once; the caller decides when.
+const HOLD_BEEP_DURATION = 0.16;
+const HOLD_BEEP_GAP = 0.08;
+const HOLD_VIBRATE_PATTERN = [140, 70, 140];
+export const playHoldTargetBeep = () => {
+  try {
+    const ctx = getCtx();
+    if (ctx) {
+      const t = ctx.currentTime;
+      const bus = newBus(ctx, 2 * HOLD_BEEP_DURATION + HOLD_BEEP_GAP);
+      ALARM_TONE.freqs.forEach((f, i) => {
+        beep(ctx, bus, f, t + i * (HOLD_BEEP_DURATION + HOLD_BEEP_GAP), HOLD_BEEP_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
+      });
+    }
+    if (navigator.vibrate) navigator.vibrate(HOLD_VIBRATE_PATTERN);
+  } catch {
+    try { if (navigator.vibrate) navigator.vibrate(HOLD_VIBRATE_PATTERN); } catch {}
+  }
+};
+
 export const playPreAlert = () => {
   try {
     const ctx = getCtx();
