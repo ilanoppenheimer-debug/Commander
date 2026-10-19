@@ -3,7 +3,7 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
-import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming, getBgStatus, onBgStatus } from './restBackground';
+import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -73,10 +73,9 @@ const AdvancedTimer = () => {
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
-  // SPIKE (PiP / media notification): status line + live snapshot for restBackground.js.
-  const [bgStatus, setBgStatus] = useState(getBgStatus());
-  useEffect(() => onBgStatus(setBgStatus), []);
-  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null, endsAt: Date.now() }));
+  // Rest timer outside the app (PiP + media notification, features/restBackground.js):
+  // live snapshot of the countdown for it to draw/report.
+  const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null }));
   // Mirrors initialTimerSeconds but is also written synchronously by setTimerPreset: the
   // auto-start runs inside the same tap, before React has re-rendered with the new state.
   const durationRef = useRef(initialTimerSeconds);
@@ -206,7 +205,7 @@ const AdvancedTimer = () => {
       releaseWakeLock();
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
-      // (Spike: with the media-notification experiment active, the <audio> element plays it.)
+      // (With the background notification active, its <audio> element plays the alarm.)
       bgComplete();
       if (!bgHandlesAlarm()) startAlarmLoop();
       setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
@@ -358,7 +357,7 @@ const AdvancedTimer = () => {
   };
 
   const setTimerPreset = (secs, next = null, name = null) => {
-    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm held by the spike
+    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm held by the background notification
     durationRef.current = secs;
     stopAlarmLoop();
     setAlertInfo(null);
@@ -394,7 +393,7 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
-      // SPIKE: notification + PiP start together, still inside the tap on a set's check
+      // Notification + PiP start together, still inside the tap on a set's check
       // button (the event is dispatched synchronously from its click handler), so
       // audio.play() and requestPictureInPicture() have their user gesture. A PiP that
       // can't open leaves the notification running, without any visible error.
@@ -489,7 +488,6 @@ const AdvancedTimer = () => {
       totalSecs: total,
       name: sourceRef.current,
       next: nextRef.current,
-      endsAt: Date.now() + total * 1000 - elapsed,
     };
   };
   bgActionsRef.current = { stop: resetTimer, dismiss: dismissAlert };
@@ -523,7 +521,6 @@ const AdvancedTimer = () => {
             )}
           </div>
           <div className="px-4 pb-8">
-            {bgStatus && <div className="text-center text-[11px] font-mono opacity-80 mb-3 whitespace-pre-line">{bgStatus}</div>}
             <div className="text-center text-xs font-bold opacity-70 mb-3">Tocá en cualquier parte para apagar</div>
             <button
               onClick={(e) => { e.stopPropagation(); dismissAlert(); }}
@@ -604,10 +601,6 @@ const AdvancedTimer = () => {
                 <RotateCcw size={24} />
               </button>
             </div>
-
-            {mode === 'timer' && bgStatus && (
-              <p className="mb-3 text-[10px] leading-snug text-slate-400 whitespace-pre-line">{bgStatus}</p>
-            )}
 
             {mode === 'timer' && (
               <>

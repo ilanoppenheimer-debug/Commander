@@ -67,6 +67,15 @@ export const playTacticalAlarm = () => {
   }
 };
 
+// Vibration alone (same pattern as the alarm), for callers that play the alarm sound some
+// other way (the background <audio> path in features/restBackground.js).
+export const vibrateAlarm = () => {
+  try { if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN); } catch {}
+};
+export const stopVibration = () => {
+  try { if (navigator.vibrate) navigator.vibrate(0); } catch {}
+};
+
 export const playPreAlert = () => {
   try {
     const ctx = getCtx();

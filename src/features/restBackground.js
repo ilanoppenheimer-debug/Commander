@@ -1,45 +1,38 @@
-// SPIKE — rest timer outside the app. On every set completion BOTH start, inside the same
-// tap:
+import { vibrateAlarm, stopVibration } from '../services/audioService';
+
+// Rest timer outside the app. On every set completion BOTH start, inside the same tap:
 //
-//  B) Player notification (always): a near-silent looping <audio> + Media Session metadata /
-//     position / actions, so Android treats the page as "playing media".
-//  A) Picture-in-Picture (best effort): the timer is drawn on a <canvas>, captureStream()
-//     feeds a <video> and requestPictureInPicture() floats it over other apps. If it can't
-//     open (unsupported, rejected, no gesture) the notification simply carries on alone,
-//     without any visible error (the reason goes to console.info).
-//
-// Both are about one question: does the page keep running (timer ticking, alarm sounding)
-// while the app is in the background or the screen is locked? The module records what it
-// observes (ticks while hidden, lateness of the end, which actions arrived) so the result
-// can be read off the status line instead of guessed.
+//  - Player notification (always): a near-silent looping <audio> + Media Session metadata /
+//    position / actions, so Android treats the page as "playing media" and keeps it alive
+//    with the app in the background or the screen locked.
+//  - Picture-in-Picture (best effort): the timer is drawn on a <canvas>, captureStream()
+//    feeds a <video> and requestPictureInPicture() floats it over other apps. If it can't
+//    open (unsupported, rejected, no gesture) the notification carries on alone, without a
+//    visible error (the reason goes to console.info). Android closes the PiP when the
+//    screen locks and it can't be reopened without a gesture: the notification covers that.
 //
 // Dismissing without opening the app:
 //  - while COUNTING, "pause" is ignored (pausing the silent audio would let Android freeze
 //    the page) and "stop" skips the rest;
 //  - while the ALARM sounds, pause/stop (and closing the PiP window) silence it and
 //    release everything.
+//
+// Everything lives in memory (module state + blob URLs); nothing is written to storage.
 
-const SILENT_AMPLITUDE = 0.003; // ~ -50 dBFS, inaudible on a phone; 0 = digital silence
-// (Chrome decides "audible" from measured output power: digital silence may not count.)
+// Amplitud del audio "silencioso": NO es 0 a propósito. Chrome decide si una página está
+// reproduciendo audio midiendo la potencia real de la salida; con silencio digital exacto
+// (muestras en 0) puede no contarla como audible y Android vuelve a congelar la página con
+// la pantalla bloqueada. 0.003 (~ -50 dBFS, un seno de 30 Hz que los parlantes de un celular
+// ni reproducen) es inaudible y alcanzó en las pruebas en un Android real.
+const SILENT_AMPLITUDE = 0.003;
 const ALARM_CAP_MS = 30000;
+const ALARM_VIBRATE_REPEAT_MS = 5000;
 
 let state = null; // { mode: 'media', cleanup: [fn], getSnapshot, actions, alarming, pip: {...} | null, ... }
-const logLines = [];
-let status = '';
-const listeners = new Set();
-// Keeps the last few lines (start, what came back from the background, which action
-// arrived, how late the end was) so they are all readable on return; '' clears everything.
-const setStatus = (s) => {
-  if (!s) logLines.length = 0; else { logLines.push(s); if (logLines.length > 5) logLines.shift(); }
-  status = logLines.join('\n');
-  listeners.forEach(l => l(status));
-};
-export const getBgStatus = () => status;
-export const onBgStatus = (cb) => { listeners.add(cb); return () => listeners.delete(cb); };
-export const bgMode = () => state?.mode ?? null;
+const note = (msg) => console.info('[restBg]', msg);
 export const bgAlarming = () => !!state?.alarming;
-// In media mode the alarm is played by the <audio> element itself (the thing Android keeps
-// alive), so the regular WebAudio alarm is skipped to avoid doubling it.
+// With the notification active the alarm is played by the <audio> element itself (the thing
+// Android keeps alive), so the regular WebAudio alarm is skipped to avoid doubling it.
 export const bgHandlesAlarm = () => state?.mode === 'media';
 
 export const bgSupport = () => ({
@@ -47,35 +40,9 @@ export const bgSupport = () => ({
   captureStream: typeof HTMLCanvasElement !== 'undefined' && 'captureStream' in HTMLCanvasElement.prototype,
   mediaSession: typeof navigator !== 'undefined' && 'mediaSession' in navigator,
   positionState: typeof navigator !== 'undefined' && !!navigator.mediaSession && 'setPositionState' in navigator.mediaSession,
-  autoPipAttr: typeof HTMLVideoElement !== 'undefined' && 'autoPictureInPicture' in HTMLVideoElement.prototype,
 });
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
-const clock = (t = Date.now()) => new Date(t).toLocaleTimeString('es-AR', { hour12: false });
-
-// ── Observation: ticks while hidden, lateness of the end ─────────────────────────────
-const startObserver = (st) => {
-  const obs = { ticks: 0, hiddenAt: null, hiddenTicks: 0, expectedEnd: st.getSnapshot().endsAt, lastLine: '' };
-  const tick = setInterval(() => {
-    obs.ticks++;
-    if (document.visibilityState === 'hidden') obs.hiddenTicks++;
-    const s = st.getSnapshot();
-    if (s.remainingSecs > 0) obs.expectedEnd = s.endsAt; // follows +/-15 s adjustments
-  }, 500);
-  const onVis = () => {
-    if (document.visibilityState === 'hidden') { obs.hiddenAt = Date.now(); obs.hiddenTicks = 0; return; }
-    if (obs.hiddenAt) {
-      const secs = Math.round((Date.now() - obs.hiddenAt) / 1000);
-      // a 500 ms interval should fire ~2 times per second if the page kept running
-      obs.lastLine = `Volví tras ${secs} s: ${obs.hiddenTicks} ticks en segundo plano (esperados ~${secs * 2}).`;
-      if (state === st) setStatus(obs.lastLine);
-      obs.hiddenAt = null;
-    }
-  };
-  document.addEventListener('visibilitychange', onVis);
-  obs.stop = () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVis); };
-  return obs;
-};
 
 // ── Tiny WAV synth (no dependencies) ─────────────────────────────────────────────────
 const makeWavUrl = (seconds, sampleRate, sampleAt) => {
@@ -147,7 +114,7 @@ export const stopBackground = (finalNote = '') => {
   const s = state;
   state = null;
   for (const fn of s.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
-  setStatus(''); setStatus(finalNote);
+  if (finalNote) note(finalNote);
 };
 
 // ── Media Session actions shared by both experiments ─────────────────────────────────
@@ -160,13 +127,13 @@ const installActions = (st) => {
   const ms = navigator.mediaSession;
   const onPause = () => {
     if (state !== st) return;
-    if (st.alarming) { setStatus('Pausa durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else { setStatus('Pausa ignorada: la cuenta sigue (el audio no se corta).'); keepPlaying(); }
+    if (st.alarming) { note('Pausa durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { note('Pausa ignorada: la cuenta sigue (el audio no se corta).'); keepPlaying(); }
   };
   const onStopAction = () => {
     if (state !== st) return;
-    if (st.alarming) { setStatus('Stop durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else { setStatus('Stop: descanso saltado.'); st.actions.onStop?.(); }
+    if (st.alarming) { note('Stop durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { note('Stop: descanso saltado.'); st.actions.onStop?.(); }
   };
   const handlers = { pause: onPause, stop: onStopAction, play: () => { keepPlaying(); } };
   const registered = [];
@@ -203,7 +170,7 @@ const releasePip = (st, note) => {
   if (!pip) return;
   st.pip = null;
   for (const fn of pip.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
-  if (note && state === st) setStatus(note);
+  if (note && state === st) note(note);
 };
 
 const attachPip = async (st) => {
@@ -258,7 +225,7 @@ const attachPip = async (st) => {
     if (state !== st || st.pip !== pip) return;
     const vis = document.visibilityState;
     if (st.alarming && vis !== 'visible') {
-      setStatus(`Ventana flotante cerrada durante la alarma (visibilityState=${vis}) → apagada.`);
+      note(`Ventana flotante cerrada durante la alarma (visibilityState=${vis}) → apagada.`);
       st.actions.onDismiss?.();
     } else if (st.alarming) {
       releasePip(st, 'PiP cerrado al volver a la app: la alerta queda en pantalla.');
@@ -269,7 +236,7 @@ const attachPip = async (st) => {
   video.addEventListener('leavepictureinpicture', onLeave);
   pip.cleanup.push(() => video.removeEventListener('leavepictureinpicture', onLeave));
   pip.cleanup.push(() => { if (document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {}); });
-  setStatus(`PiP abierto (${autoNote}).`);
+  note(`PiP abierto (${autoNote}).`);
   return true;
 };
 
@@ -280,7 +247,7 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   if (state?.mode === 'media' && !state.alarming) {
     state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
     setMetadata(getSnapshot(), false);
-    setStatus('Media: descanso nuevo, notificación actualizada (el audio sigue).');
+    note('Media: descanso nuevo, notificación actualizada (el audio sigue).');
     return true;
   }
   stopBackground();
@@ -288,8 +255,6 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   const cleanup = [];
   const st = { mode: 'media', cleanup, getSnapshot, actions: { onStop, onDismiss }, alarming: false, switching: false };
   state = st;
-  st.obs = startObserver(st);
-  cleanup.push(() => st.obs.stop());
   cleanup.push(() => releasePip(st));
 
   const sUrl = silentUrl();
@@ -304,8 +269,8 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   // would let it freeze the page, so resume at once; during the alarm it means "apagar".
   const onNativePause = () => {
     if (state !== st || st.switching) return;
-    if (st.alarming) { setStatus('El sistema pausó el audio durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else { setStatus('El sistema pausó el audio: reanudado.'); audio.play().catch(() => {}); }
+    if (st.alarming) { note('El sistema pausó el audio durante la alarma → apagada.'); st.actions.onDismiss?.(); }
+    else { note('El sistema pausó el audio: reanudado.'); audio.play().catch(() => {}); }
   };
   audio.addEventListener('pause', onNativePause);
   cleanup.push(() => audio.removeEventListener('pause', onNativePause));
@@ -313,7 +278,7 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   try {
     await audio.play(); // needs the tap that started the rest
   } catch (e) {
-    setStatus(`Audio falló: ${e?.name || 'error'} — ${e?.message || ''}`);
+    note(`Audio falló: ${e?.name || 'error'} — ${e?.message || ''}`);
     stopBackground(`Audio falló: ${e?.name || 'error'}`);
     return false;
   }
@@ -345,7 +310,7 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   } else {
     notes.push('sin Media Session');
   }
-  setStatus(`Media activa: ${notes.join(', ')}.`);
+  note(`Media activa: ${notes.join(', ')}.`);
   return true;
 };
 
@@ -364,8 +329,6 @@ export const startBackground = async (params) => {
 export const bgComplete = () => {
   if (!state) return;
   const st = state;
-  const late = Date.now() - st.obs.expectedEnd;
-  const lateTxt = `el fin se detectó a las ${clock()} (${late >= 0 ? '+' : ''}${late} ms vs. lo esperado)`;
   st.alarming = true;
   st.pip?.draw(); // the floating window flips to ¡FIN! at once
   // media: the alarm goes through the same <audio> element that is keeping the page alive,
@@ -380,10 +343,16 @@ export const bgComplete = () => {
   try {
     audio.src = alarmSrc;
     audio.loop = true;
-    audio.play().catch((e) => setStatus(`Media: la alarma no pudo sonar (${e?.name})`));
+    audio.play().catch((e) => note(`Media: la alarma no pudo sonar (${e?.name})`));
   } catch { /* ignore */ }
   setTimeout(() => { if (state === st) st.switching = false; }, 300);
   const cap = setTimeout(() => stopBackground('Alarma de la notificación cortada por el tope de 30 s.'), ALARM_CAP_MS);
   st.cleanup.push(() => clearTimeout(cap));
-  setStatus(`${lateTxt}. Alarma por <audio> (tope 30 s).`);
+  // Vibration parity with the foreground alarm (playTacticalAlarm vibrates; the <audio>
+  // path doesn't). Chrome only honours it while the page is visible, so this is the
+  // in-app case; in the background the sound and the notification carry the alert.
+  vibrateAlarm();
+  const vib = setInterval(vibrateAlarm, ALARM_VIBRATE_REPEAT_MS);
+  st.cleanup.push(() => { clearInterval(vib); stopVibration(); });
+  note('fin del descanso: alarma por <audio> (tope 30 s)');
 };
