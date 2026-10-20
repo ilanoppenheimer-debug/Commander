@@ -212,6 +212,17 @@ export function getCompanion(name) {
   return getExerciseMeta(name).companion; // undefined | 'difficulty' | 'hr'
 }
 
+// How the hold timer of a timed set is shown for this exercise: 'timer' (counts down
+// from the set's targetSeconds, then "+N") or 'stopwatch' (counts up). Optional, absent
+// until the athlete picks one — the caller falls back to 'timer' when a set has a target.
+export function setTimedMode(name, value) {
+  saveExerciseMeta(name, { timedMode: value });
+}
+
+export function getTimedMode(name) {
+  return getExerciseMeta(name).timedMode; // undefined | 'timer' | 'stopwatch'
+}
+
 // Sort criterion for the "Mis 1RM" list — a display setting, not per-exercise data, so
 // it lives under its own key rather than inside the per-name metadata object.
 const SORT_1RM_KEY = 'ironCmdrExMeta1RMSort';

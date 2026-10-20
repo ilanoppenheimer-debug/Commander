@@ -3,6 +3,9 @@ import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
+import { acquireWakeLock, releaseWakeLock as releaseWakeLockOwner } from '../utils/wakeLock';
+
+const REST_LOCK_OWNER = 'rest-timer';
 import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
@@ -68,8 +71,6 @@ const AdvancedTimer = () => {
   const sourceRef          = useRef(null);  // exercise whose set started the running rest
   const [sourceName, setSourceName] = useState(null);
   const [corner, setCorner] = useState('br');
-  const wakeLockRef        = useRef(null);
-  const modeRef            = useRef('stopwatch');
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
@@ -86,7 +87,6 @@ const AdvancedTimer = () => {
     onStop: () => bgActionsRef.current.stop(),       // "stop" while counting: skip the rest
     onDismiss: () => bgActionsRef.current.dismiss(), // pause/stop/close while the alarm sounds
   });
-  modeRef.current = mode;
 
   // Alarm repeat loop — separate mechanism from completedRef, which keeps meaning
   // "the timer has finished" for the rest of the component regardless of whether the
@@ -155,28 +155,10 @@ const AdvancedTimer = () => {
 
   // ── Screen Wake Lock ─────────────────────────────────────────────────────────
   // Keeps the screen on while a REST timer is counting down, so the app stays in the
-  // foreground and the alert can actually be seen/heard. The browser drops the lock when
-  // the tab is hidden; the visibilitychange handler asks for it again if the timer is
-  // still running. Silently does nothing where the API doesn't exist.
-
-  const requestWakeLock = async () => {
-    try {
-      if (!('wakeLock' in navigator) || wakeLockRef.current) return;
-      const sentinel = await navigator.wakeLock.request('screen');
-      wakeLockRef.current = sentinel;
-      console.info('[restTimer] wake lock acquired');
-      sentinel.addEventListener?.('release', () => {
-        if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
-        console.info('[restTimer] wake lock released');
-      });
-    } catch { /* denied / unsupported: not worth breaking the timer */ }
-  };
-
-  const releaseWakeLock = () => {
-    const sentinel = wakeLockRef.current;
-    wakeLockRef.current = null;
-    if (sentinel) { try { Promise.resolve(sentinel.release()).catch(() => {}); } catch { /* ignore */ } }
-  };
+  // foreground and the alert can actually be seen/heard. Shared util: it re-requests the
+  // lock when the tab becomes visible again while somebody still holds it.
+  const requestWakeLock = () => acquireWakeLock(REST_LOCK_OWNER);
+  const releaseWakeLock = () => releaseWakeLockOwner(REST_LOCK_OWNER);
 
   // ── Interval — ticks every 250ms while active ──────────────────────────────
 
@@ -218,9 +200,6 @@ const AdvancedTimer = () => {
     const handler = () => {
       if (document.visibilityState === 'visible') {
         setTick(t => t + 1);
-        // The browser releases the wake lock when the tab is hidden: ask again if a rest
-        // timer is still counting down.
-        if (modeRef.current === 'timer' && startedAtRef.current && !completedRef.current) requestWakeLock();
       }
     };
     document.addEventListener('visibilitychange', handler);

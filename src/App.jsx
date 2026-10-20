@@ -535,10 +535,22 @@ function AppMain() {
     })();
   }, [isMigrating]);
 
-  const showNotify = (msg, type = 'info') => {
+  // One toast slot: a new message cancels the previous message's timeout (it used to close
+  // the new toast early). `duration` in ms; tapping the toast closes it.
+  const notifyTimeoutRef = useRef(null);
+  const showNotify = (msg, type = 'info', duration = 3000) => {
+    clearTimeout(notifyTimeoutRef.current);
     setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3000);
+    notifyTimeoutRef.current = setTimeout(() => setNotification(null), duration);
   };
+
+  // Reminder at the start of every session (not on reload): the alarm plays on the media
+  // channel and the web can't read or set the system volume, so it is always shown.
+  const volumeHintNonce = useSessionStore(s => s.volumeHintNonce);
+  useEffect(() => {
+    if (volumeHintNonce > 0) showNotify('🔊 Subí el volumen multimedia: la alarma usa ese canal', 'info', 5000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [volumeHintNonce]);
 
   // ── Derived safe refs ──────────────────────────────────────────────────────
   const safeRoutines   = useMemo(() => Array.isArray(dbRoutines)        ? dbRoutines.filter(Boolean)        : [], [dbRoutines]);
@@ -854,7 +866,7 @@ function AppMain() {
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-accent-500 selection:text-slate-900 overflow-hidden flex flex-col relative">
 
       {notification && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in-down flex items-center gap-2 ${notification.type === 'error' ? 'bg-red-600 text-white' : notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-800 border border-sky-500 text-sky-400'}`}>
+        <div onClick={() => { clearTimeout(notifyTimeoutRef.current); setNotification(null); }} className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-max max-w-[90vw] cursor-pointer px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in-down flex items-center gap-2 ${notification.type === 'error' ? 'bg-red-600 text-white' : notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-800 border border-sky-500 text-sky-400'}`}>
           <Info size={14} />
           {notification.msg}
         </div>

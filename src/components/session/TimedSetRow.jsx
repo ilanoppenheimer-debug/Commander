@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle, Pencil } from 'lucide-react';
+import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle, Pencil, Maximize2 } from 'lucide-react';
 import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
 import { SecondsNumPad } from '../keypad/SecondsNumPad';
 import { timerKey } from '../../utils/timedSetTimerStorage';
+import { acquireWakeLock, releaseWakeLock } from '../../utils/wakeLock';
+import { playHoldTargetBeep } from '../../services/audioService';
+import { TimedHoldOverlay } from './TimedHoldOverlay';
 
 // Duplicated from SetRow.jsx rather than imported — SetRow.jsx is not touched in this
 // phase (explicit constraint), so its unexported local constants aren't reachable here.
@@ -63,7 +66,8 @@ const hasRealValue = (v) => {
  * borde aceptado, no hay id de set más estable para anclar esto hoy.
  */
 export const TimedSetRow = ({
-  set, setIndex, exerciseId, companion,
+  set, setIndex, exerciseId, exerciseName, companion,
+  timedMode = 'stopwatch', showModeToggle = false, onTimedModeChange,
   onToggleCompleted, onUpdateField, onCycleType, onDelete, onSaveNote,
 }) => {
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -78,6 +82,19 @@ export const TimedSetRow = ({
 
   const startedAtRef = useRef(null); // ms; fijo desde el tap de play hasta stop/cancel
   const storageKey = timerKey(exerciseId, setIndex);
+
+  // Full-screen view of the hold (countdown + running). Presentation only: the state
+  // machine, the persisted timestamps and the ■ logic below are the row's, unchanged.
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  // Screen stays on while the hold runs (overlay open OR minimized): acquired when the
+  // countdown starts, released on stop / cancel / complete / unmount (and by the store
+  // when the session ends).
+  const lockOwner = `timedset:${storageKey}`;
+  useEffect(() => () => releaseWakeLock(lockOwner), [lockOwner]);
+  // The target beep fires once, only when the page is visible, and only for a crossing
+  // seen live: switching to "temporizador" after the target, or coming back from the
+  // background past it, shows +N without a late beep.
+  const armedRef = useRef(false);
 
   const isDone   = !!set?.completed;
   const type     = set?.type && set.type !== 'normal' ? set.type : null;
@@ -115,6 +132,8 @@ export const TimedSetRow = ({
         const elapsed = (Date.now() - stored.startedAt) / 1000;
         setPhase(elapsed < COUNTDOWN_SECONDS ? 'countdown' : 'running');
         setTick(t => t + 1);
+        acquireWakeLock(lockOwner);
+        setOverlayOpen(true); // a reload mid-hold reopens the full-screen view with the real time
       }
     } catch {
       clearPersisted();
@@ -153,9 +172,26 @@ export const TimedSetRow = ({
   const startTimer = () => {
     const startedAt = Date.now();
     startedAtRef.current = startedAt;
+    armedRef.current = false;
     setPhase('countdown');
     persistTimer(startedAt);
+    acquireWakeLock(lockOwner);
+    setOverlayOpen(true);
   };
+
+  const targetSecs = Number(set?.targetSeconds) > 0 ? Number(set.targetSeconds) : 0;
+  const holdMode = targetSecs > 0 && timedMode === 'timer' ? 'timer' : 'stopwatch';
+
+  // Beep on crossing the target in timer mode (see armedRef above).
+  useEffect(() => {
+    if (phase !== 'running' || holdMode !== 'timer') { armedRef.current = false; return; }
+    const secs = getRunningSeconds();
+    if (secs < targetSecs) { armedRef.current = true; return; }
+    if (armedRef.current) {
+      armedRef.current = false;
+      if (secs - targetSecs <= 1 && document.visibilityState === 'visible') playHoldTargetBeep();
+    }
+  });
 
   const handleControlTap = () => {
     if (phase === 'idle') {
@@ -167,13 +203,15 @@ export const TimedSetRow = ({
       startTimer();
       return;
     }
-    if (phase === 'countdown') { startedAtRef.current = null; setPhase('idle'); clearPersisted(); return; } // cancel
+    if (phase === 'countdown') { startedAtRef.current = null; setPhase('idle'); clearPersisted(); releaseWakeLock(lockOwner); setOverlayOpen(false); return; } // cancel
     if (phase === 'running') {
       const secs = getRunningSeconds(); // reads startedAtRef.current — must run before it's nulled below
       persistTimer(startedAtRef.current, Date.now()); // keeps pending alive across a remount, see restore effect
       setPendingSeconds(secs);
       startedAtRef.current = null;
       setPhase('pending');
+      releaseWakeLock(lockOwner);
+      setOverlayOpen(false);
       return;
     }
     if (phase === 'pending') {
@@ -185,6 +223,7 @@ export const TimedSetRow = ({
   };
 
   const handleDisplayTap = () => {
+    if (phase === 'countdown' || phase === 'running') { setOverlayOpen(true); return; } // reopen the full-screen view
     if (phase === 'pending') {
       // Confirma — la celda grande es el target obvio para "aceptar lo que veo".
       onUpdateField('seconds', String(pendingSeconds));
@@ -232,6 +271,8 @@ export const TimedSetRow = ({
       startedAtRef.current = null;
       setPhase('idle');
       clearPersisted();
+      releaseWakeLock(lockOwner);
+      setOverlayOpen(false);
     }
     onToggleCompleted();
   };
@@ -245,7 +286,11 @@ export const TimedSetRow = ({
   if (phase === 'countdown') {
     secondsContent = <span className="text-accent-400 font-black text-lg tabular-nums">{getCountdownLeft()}</span>;
   } else if (phase === 'running') {
-    secondsContent = <span className="text-accent-400 font-bold tabular-nums">{formatSeconds(getRunningSeconds())}</span>;
+    secondsContent = (
+      <span className="flex items-center gap-1 text-accent-400 font-bold tabular-nums">
+        {formatSeconds(getRunningSeconds())}<Maximize2 size={10} className="text-slate-500" aria-hidden="true" />
+      </span>
+    );
   } else if (phase === 'pending') {
     secondsContent = (
       <span className="text-slate-500 italic font-normal text-xs">{formatSeconds(pendingSeconds)}</span>
@@ -400,6 +445,22 @@ export const TimedSetRow = ({
       >
         <XIcon size={15} />
       </button>
+
+      {overlayOpen && (phase === 'countdown' || phase === 'running') && (
+        <TimedHoldOverlay
+          exerciseName={exerciseName}
+          setIndex={setIndex}
+          phase={phase}
+          countdownLeft={getCountdownLeft()}
+          elapsedSeconds={getRunningSeconds()}
+          targetSeconds={targetSecs}
+          mode={holdMode}
+          showToggle={showModeToggle && targetSecs > 0}
+          onModeChange={(m) => onTimedModeChange?.(m)}
+          onStop={handleControlTap}
+          onMinimize={() => setOverlayOpen(false)}
+        />
+      )}
 
       {showNoteModal && (
         <NoteModal
