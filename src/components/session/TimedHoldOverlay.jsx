@@ -91,7 +91,7 @@ export const TimedHoldOverlay = ({
         }`}
       >
         {isCountdown ? 'CANCELAR' : 'DETENER'}
-        {!isCountdown && <span className="text-[13px] font-semibold tracking-normal opacity-80">guarda {mmss(elapsedSeconds)}</span>}
+        {!isCountdown && <span className="text-[13px] font-semibold tracking-normal opacity-80">detiene en {mmss(elapsedSeconds)}</span>}
       </button>
     </div>,
     document.body,
