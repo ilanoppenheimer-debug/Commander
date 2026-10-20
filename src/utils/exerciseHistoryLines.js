@@ -89,6 +89,15 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
   return byKey;
 };
 
+// Longest hold (seconds) of the exercise's most recent appearance, or 0. The MAX of that
+// session, not its last set: the last one is usually the most fatigued. Same identity
+// grouping and work-set filter as the Coach context, because it reuses collectAppearances.
+export const lastLoggedSeconds = (history, name) => {
+  const key = normalizeExerciseName(name);
+  const latest = collectAppearances(history, { include: (ex) => normalizeExerciseName(ex.name) === key }).get(key)?.[0];
+  return latest ? Math.max(0, ...latest.sets.map(s => num(s.seconds))) : 0;
+};
+
 // "47.5×10@7.5, 47.5×10@8 (15-sep, TORSO A)"
 // `equipmentLabel` (optional) goes last inside the parens: "(15-sep, TORSO A, mancuerna)".
 export const formatAppearance = (app, companion, equipmentLabel) => {

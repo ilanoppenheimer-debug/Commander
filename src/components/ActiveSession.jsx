@@ -52,6 +52,7 @@ import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
+import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -1180,8 +1181,8 @@ export default function ActiveSession({
                           exerciseId={ex.id}
                           exerciseName={ex.name}
                           companion={getCompanion(ex.name)}
-                          timedMode={getTimedMode(ex.name) || 'timer'}
-                          showModeToggle={Number(s.targetSeconds) > 0}
+                          timedMode={getTimedMode(ex.name) || (Number(s.targetSeconds) > 0 ? 'timer' : 'stopwatch')}
+                          getHistorySeconds={() => lastLoggedSeconds(history, ex.name)}
                           onTimedModeChange={(m) => { setTimedMode(ex.name, m); setMetaNonce(n => n + 1); }}
                           onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
                           onUpdateField={(field, value) => storeUpdateSet(ex.id, i, field, value)}

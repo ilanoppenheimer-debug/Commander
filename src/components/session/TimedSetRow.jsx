@@ -24,6 +24,9 @@ const TYPE_LABELS = {
 };
 
 const COUNTDOWN_SECONDS = 5;
+const DEFAULT_TARGET_SECONDS = 30; // no Coach target and no history
+const MIN_TARGET_SECONDS = 5;      // floor of the (adjusted) hold target
+const ADJUST_STEP = 15;
 
 const DIFFICULTY_LEVELS = [
   { value: '1', className: 'bg-emerald-500 border-emerald-400' },
@@ -67,7 +70,7 @@ const hasRealValue = (v) => {
  */
 export const TimedSetRow = ({
   set, setIndex, exerciseId, exerciseName, companion,
-  timedMode = 'stopwatch', showModeToggle = false, onTimedModeChange,
+  timedMode = 'stopwatch', getHistorySeconds, onTimedModeChange,
   onToggleCompleted, onUpdateField, onCycleType, onDelete, onSaveNote,
 }) => {
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -95,6 +98,21 @@ export const TimedSetRow = ({
   // seen live: switching to "temporizador" after the target, or coming back from the
   // background past it, shows +N without a late beep.
   const armedRef = useRef(false);
+  // Target of THIS hold: the Coach's targetSeconds, else the longest hold of the exercise's
+  // last logged appearance (history), else 30 s; plus the athlete's -15/+15 adjustment.
+  // Computed when the hold starts (or is restored) and then frozen; the adjustment lives
+  // in the hold's own storage key and dies with it — it never touches set.planned,
+  // targetSeconds or the history.
+  const baseRef = useRef({ secs: DEFAULT_TARGET_SECONDS, source: 'default' });
+  const adjustRef = useRef(0);
+  const [adjust, setAdjustState] = useState(0);
+  const computeBase = () => {
+    const coach = Number(set?.targetSeconds);
+    if (coach > 0) return { secs: coach, source: 'coach' };
+    const hist = Number(getHistorySeconds?.());
+    if (hist > 0) return { secs: hist, source: 'history' };
+    return { secs: DEFAULT_TARGET_SECONDS, source: 'default' };
+  };
 
   const isDone   = !!set?.completed;
   const type     = set?.type && set.type !== 'normal' ? set.type : null;
@@ -109,7 +127,13 @@ export const TimedSetRow = ({
   // stoppedAt is only written when the timer moves into 'pending' — its presence is
   // what tells the restore effect below which phase to reconstruct.
   const persistTimer = (startedAt, stoppedAt) => {
-    try { localStorage.setItem(storageKey, JSON.stringify(stoppedAt ? { startedAt, stoppedAt } : { startedAt })); } catch {}
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        startedAt,
+        ...(stoppedAt ? { stoppedAt } : {}),
+        ...(adjustRef.current ? { targetAdjust: adjustRef.current } : {}),
+      }));
+    } catch {}
   };
   const clearPersisted = () => {
     try { localStorage.removeItem(storageKey); } catch {}
@@ -129,6 +153,9 @@ export const TimedSetRow = ({
         setPhase('pending');
       } else if (stored?.startedAt) {
         startedAtRef.current = stored.startedAt;
+        baseRef.current = computeBase();
+        adjustRef.current = Number(stored.targetAdjust) || 0;
+        setAdjustState(adjustRef.current);
         const elapsed = (Date.now() - stored.startedAt) / 1000;
         setPhase(elapsed < COUNTDOWN_SECONDS ? 'countdown' : 'running');
         setTick(t => t + 1);
@@ -173,14 +200,26 @@ export const TimedSetRow = ({
     const startedAt = Date.now();
     startedAtRef.current = startedAt;
     armedRef.current = false;
+    baseRef.current = computeBase();
+    adjustRef.current = 0;
+    setAdjustState(0);
     setPhase('countdown');
     persistTimer(startedAt);
     acquireWakeLock(lockOwner);
     setOverlayOpen(true);
   };
 
-  const targetSecs = Number(set?.targetSeconds) > 0 ? Number(set.targetSeconds) : 0;
-  const holdMode = targetSecs > 0 && timedMode === 'timer' ? 'timer' : 'stopwatch';
+  const targetSecs = Math.max(MIN_TARGET_SECONDS, baseRef.current.secs + adjust);
+  const holdMode = timedMode === 'timer' ? 'timer' : 'stopwatch';
+
+  // -15 / +15 on the target of this hold, never below MIN_TARGET_SECONDS (the stored
+  // adjustment is clamped, so +15 from the floor really adds 15).
+  const handleAdjust = (delta) => {
+    const next = Math.max(adjustRef.current + delta, MIN_TARGET_SECONDS - baseRef.current.secs);
+    adjustRef.current = next;
+    setAdjustState(next);
+    if (startedAtRef.current) persistTimer(startedAtRef.current);
+  };
 
   // Beep on crossing the target in timer mode (see armedRef above).
   useEffect(() => {
@@ -454,8 +493,12 @@ export const TimedSetRow = ({
           countdownLeft={getCountdownLeft()}
           elapsedSeconds={getRunningSeconds()}
           targetSeconds={targetSecs}
+          targetSource={baseRef.current.source}
+          adjust={adjust}
+          adjustStep={ADJUST_STEP}
+          onAdjust={handleAdjust}
           mode={holdMode}
-          showToggle={showModeToggle && targetSecs > 0}
+          showToggle
           onModeChange={(m) => onTimedModeChange?.(m)}
           onStop={handleControlTap}
           onMinimize={() => setOverlayOpen(false)}
