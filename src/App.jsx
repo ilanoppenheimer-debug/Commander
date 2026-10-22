@@ -536,11 +536,13 @@ function AppMain() {
   }, [isMigrating]);
 
   // One toast slot: a new message cancels the previous message's timeout (it used to close
-  // the new toast early). `duration` in ms; tapping the toast closes it.
+  // the new toast early). The 3rd arg is the duration in ms, or `{ duration, action }` where
+  // `action: { label, onClick }` adds a button (e.g. "DESHACER"); tapping the text closes it.
   const notifyTimeoutRef = useRef(null);
-  const showNotify = (msg, type = 'info', duration = 3000) => {
+  const showNotify = (msg, type = 'info', opts = 3000) => {
+    const { duration = 3000, action = null } = typeof opts === 'number' ? { duration: opts } : (opts || {});
     clearTimeout(notifyTimeoutRef.current);
-    setNotification({ msg, type });
+    setNotification({ msg, type, action });
     notifyTimeoutRef.current = setTimeout(() => setNotification(null), duration);
   };
 
@@ -869,6 +871,20 @@ function AppMain() {
         <div onClick={() => { clearTimeout(notifyTimeoutRef.current); setNotification(null); }} className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-max max-w-[90vw] cursor-pointer px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in-down flex items-center gap-2 ${notification.type === 'error' ? 'bg-red-600 text-white' : notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-800 border border-sky-500 text-sky-400'}`}>
           <Info size={14} />
           {notification.msg}
+          {notification.action && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                clearTimeout(notifyTimeoutRef.current);
+                setNotification(null);
+                notification.action.onClick();
+              }}
+              className="-my-2 -mr-2 ml-1 min-h-[44px] min-w-[88px] px-3 rounded-full text-[11px] font-black tracking-wider uppercase text-white bg-sky-600 hover:bg-sky-500 active:bg-sky-700"
+            >
+              {notification.action.label}
+            </button>
+          )}
         </div>
       )}
 

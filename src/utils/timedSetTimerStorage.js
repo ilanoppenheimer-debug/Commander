@@ -39,3 +39,19 @@ export const shiftTimedSetTimersAfterRemoval = (exerciseId, removedIdx, setCount
     }
   } catch { /* non-blocking */ }
 };
+
+// Undo of a removal: a set was put back at 0-based `insertedIdx` (the exercise now has
+// `setCount` sets), so every later set's timer slides one index UP — the exact inverse of
+// shiftTimedSetTimersAfterRemoval, keeping running/pending timers on the set they belong
+// to. The restored set itself gets no timer (a deleted hold is not brought back).
+export const shiftTimedSetTimersAfterInsertion = (exerciseId, insertedIdx, setCount) => {
+  try {
+    for (let i = setCount - 1; i > insertedIdx; i--) {
+      const from = timerKey(exerciseId, i);
+      const to = timerKey(exerciseId, i + 1);
+      const value = localStorage.getItem(from);
+      localStorage.removeItem(from);
+      if (value != null) localStorage.setItem(to, value);
+    }
+  } catch { /* non-blocking */ }
+};

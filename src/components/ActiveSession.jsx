@@ -345,6 +345,7 @@ export default function ActiveSession({
   const storeAddSet      = useSessionStore(s => s.addSet);
   const storeUpdateSet   = useSessionStore(s => s.updateSet);
   const storeRemoveSet         = useSessionStore(s => s.removeSet);
+  const storeUndoDelete        = useSessionStore(s => s.undoLastDelete);
   const storeToggleCompleted   = useSessionStore(s => s.toggleSetCompleted);
   const storeCycleType         = useSessionStore(s => s.cycleSetType);
   const storeFinishEx          = useSessionStore(s => s.finishExercise);
@@ -491,6 +492,63 @@ export default function ActiveSession({
     if (field === 'weight') editedDerivedWeightRef.current.add(`${exId}:${setIdx}`);
     storeUpdateSet(exId, setIdx, field, value);
   }, [storeUpdateSet]);
+
+  // editedDerivedWeightRef is keyed by position, so a delete/undo that shifts sets must
+  // shift its keys too — otherwise the flag ends up on a different set and either freezes a
+  // restored back-off weight or un-freezes another one.
+  const dropEditedDerived = (exId, idx) => {
+    const cur = editedDerivedWeightRef.current;
+    const prefix = `${exId}:`;
+    const next = new Set();
+    for (const k of cur) {
+      if (!k.startsWith(prefix)) { next.add(k); continue; }
+      const i = Number(k.slice(prefix.length));
+      if (i < idx) next.add(k);
+      else if (i > idx) next.add(`${prefix}${i - 1}`);
+    }
+    editedDerivedWeightRef.current = next;
+  };
+  const insertEditedDerived = (exId, idx, wasEdited) => {
+    const cur = editedDerivedWeightRef.current;
+    const prefix = `${exId}:`;
+    const next = new Set();
+    for (const k of cur) {
+      if (!k.startsWith(prefix)) { next.add(k); continue; }
+      const i = Number(k.slice(prefix.length));
+      next.add(i >= idx ? `${prefix}${i + 1}` : k);
+    }
+    if (wasEdited) next.add(`${prefix}${idx}`);
+    editedDerivedWeightRef.current = next;
+  };
+
+  const handleDeleteSet = (ex, i) => {
+    const wasEdited = editedDerivedWeightRef.current.has(`${ex.id}:${i}`);
+    const rec = storeRemoveSet(ex.id, i);
+    if (!rec) return;
+    dropEditedDerived(ex.id, i);
+    showNotify?.('Serie borrada', 'info', {
+      duration: 8000,
+      action: {
+        label: 'Deshacer',
+        onClick: () => { if (storeUndoDelete(rec.token)) insertEditedDerived(ex.id, i, wasEdited); },
+      },
+    });
+  };
+
+  const handleDeleteExercise = (ex) => {
+    const prefix = `${ex.id}:`;
+    const stashed = [...editedDerivedWeightRef.current].filter(k => k.startsWith(prefix));
+    const rec = storeRemoveEx(ex.id);
+    if (!rec) return;
+    stashed.forEach(k => editedDerivedWeightRef.current.delete(k));
+    showNotify?.(`Ejercicio borrado · ${ex.name}`, 'info', {
+      duration: 8000,
+      action: {
+        label: 'Deshacer',
+        onClick: () => { if (storeUndoDelete(rec.token)) stashed.forEach(k => editedDerivedWeightRef.current.add(k)); },
+      },
+    });
+  };
 
   const getPreviousPerformance = (exName) => {
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
@@ -953,7 +1011,7 @@ export default function ActiveSession({
                         </button>
                       )}
                       <button
-                        onClick={() => storeRemoveEx(ex.id)}
+                        onClick={() => handleDeleteExercise(ex)}
                         className="p-1.5 rounded text-slate-600 hover:text-red-500 hover:bg-slate-700"
                       >
                         <Trash2 size={14} />
@@ -1187,7 +1245,7 @@ export default function ActiveSession({
                           onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
                           onUpdateField={(field, value) => storeUpdateSet(ex.id, i, field, value)}
                           onCycleType={() => storeCycleType(ex.id, i)}
-                          onDelete={() => storeRemoveSet(ex.id, i)}
+                          onDelete={() => handleDeleteSet(ex, i)}
                           onSaveNote={(text) => storeUpdateSet(ex.id, i, 'notes', text)}
                         />
                       );
@@ -1200,7 +1258,7 @@ export default function ActiveSession({
                         onToggleCompleted={() => handleCompleteSet(ex, i)}
                         onTapField={(field) => openKeypad(ex.id, i, field, s)}
                         onCycleType={() => storeCycleType(ex.id, i)}
-                        onDelete={() => storeRemoveSet(ex.id, i)}
+                        onDelete={() => handleDeleteSet(ex, i)}
                         onSaveNote={(text) => storeUpdateSet(ex.id, i, 'notes', text)}
                         barUnit={barUnit}
                       />

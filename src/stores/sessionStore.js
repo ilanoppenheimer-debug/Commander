@@ -5,9 +5,10 @@ import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { clearRestTimerStorage } from '../utils/restTimerStorage';
 import { stopBackground } from '../features/restBackground';
 import { releaseAllWakeLocks } from '../utils/wakeLock';
-import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
+import { clearAllTimedSetTimers, clearTimedSetTimersForExercise, shiftTimedSetTimersAfterInsertion, shiftTimedSetTimersAfterRemoval } from '../utils/timedSetTimerStorage';
 
 let _debounceTimer = null;
+let _deleteToken = 0;
 
 const persistToDb = (session) => {
   clearTimeout(_debounceTimer);
@@ -30,6 +31,9 @@ export const useSessionStore = create((set, get) => ({
   // Bumped by startSession only (never persisted, not part of `session`): App watches it to
   // show the "raise the media volume" hint once per started session, not on a reload.
   volumeHintNonce: 0,
+  // The single undoable delete (a set or a whole exercise); a new delete replaces it. Not
+  // persisted and not part of `session` — it only lives while the toast is on screen.
+  lastDeleted: null,
 
   hydrateFromDb: async () => {
     try {
@@ -69,7 +73,7 @@ export const useSessionStore = create((set, get) => ({
       briefing: null,
       subjectiveState: '',
     };
-    set({ session, volumeHintNonce: get().volumeHintNonce + 1 });
+    set({ session, volumeHintNonce: get().volumeHintNonce + 1, lastDeleted: null });
     persistToDb(session);
   },
 
@@ -133,14 +137,24 @@ export const useSessionStore = create((set, get) => ({
   removeExercise: (exId) => {
     const s = get().session;
     if (!s) return;
+    const index = s.exercises.findIndex(e => e.id === exId);
+    if (index < 0) return;
+    const record = {
+      token: ++_deleteToken,
+      kind: 'exercise',
+      index,
+      exercise: s.exercises[index],
+      phaseEnabled: s.phaseEnabledExIds.includes(exId),
+    };
     clearTimedSetTimersForExercise(exId);
     const next = {
       ...s,
       exercises: s.exercises.filter(e => e.id !== exId),
       phaseEnabledExIds: s.phaseEnabledExIds.filter(id => id !== exId),
     };
-    set({ session: next });
+    set({ session: next, lastDeleted: record });
     persistToDb(next);
+    return record;
   },
 
   moveExercise: (index, direction) => {
@@ -197,7 +211,10 @@ export const useSessionStore = create((set, get) => ({
   removeSet: (exId, idx) => {
     const s = get().session;
     if (!s) return;
-    shiftTimedSetTimersAfterRemoval(exId, idx, s.exercises.find(e => e.id === exId)?.sets?.length ?? 0);
+    const ex = s.exercises.find(e => e.id === exId);
+    if (!ex || !Array.isArray(ex.sets) || idx < 0 || idx >= ex.sets.length) return;
+    const record = { token: ++_deleteToken, kind: 'set', exId, idx, set: ex.sets[idx] };
+    shiftTimedSetTimersAfterRemoval(exId, idx, ex.sets.length);
     const next = {
       ...s,
       exercises: s.exercises.map(e => {
@@ -207,8 +224,41 @@ export const useSessionStore = create((set, get) => ({
         return { ...e, sets: newSets };
       }),
     };
-    set({ session: next });
+    set({ session: next, lastDeleted: record });
     persistToDb(next);
+    return record;
+  },
+
+  // Puts back what the last delete took out, byte-for-byte (the stored set / exercise
+  // object itself), at its old position. State only: it never goes through
+  // handleCompleteSet, so a restored completed set does not start a rest timer or emit any
+  // completion event. A running hold is not restored — its timer key was removed on delete.
+  // Returns the record that was restored (or null if the token is stale / target is gone).
+  undoLastDelete: (token) => {
+    const { session: s, lastDeleted: rec } = get();
+    if (!s || !rec || rec.token !== token) return null;
+    let next;
+    if (rec.kind === 'exercise') {
+      if (s.exercises.some(e => e.id === rec.exercise.id)) return null;
+      const exercises = [...s.exercises];
+      exercises.splice(Math.min(rec.index, exercises.length), 0, rec.exercise);
+      next = {
+        ...s,
+        exercises,
+        phaseEnabledExIds: rec.phaseEnabled ? [...s.phaseEnabledExIds, rec.exercise.id] : s.phaseEnabledExIds,
+      };
+    } else {
+      const ex = s.exercises.find(e => e.id === rec.exId);
+      if (!ex) return null;
+      const sets = [...(Array.isArray(ex.sets) ? ex.sets : [])];
+      const at = Math.min(rec.idx, sets.length);
+      sets.splice(at, 0, rec.set);
+      shiftTimedSetTimersAfterInsertion(rec.exId, at, sets.length);
+      next = { ...s, exercises: s.exercises.map(e => (e.id === rec.exId ? { ...e, sets } : e)) };
+    }
+    set({ session: next, lastDeleted: null });
+    persistToDb(next);
+    return rec;
   },
 
   toggleSetCompleted: (exId, idx) => {
@@ -321,7 +371,7 @@ export const useSessionStore = create((set, get) => ({
     clearRestTimerStorage();
     stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
     releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
-    set({ session: null });
+    set({ session: null, lastDeleted: null });
     persistToDb(null);
   },
 
@@ -330,7 +380,7 @@ export const useSessionStore = create((set, get) => ({
     clearRestTimerStorage();
     stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
     releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
-    set({ session: null });
+    set({ session: null, lastDeleted: null });
     persistToDb(null);
   },
 }));
