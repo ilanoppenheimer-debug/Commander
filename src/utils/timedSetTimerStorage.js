@@ -55,3 +55,16 @@ export const shiftTimedSetTimersAfterInsertion = (exerciseId, insertedIdx, setCo
     }
   } catch { /* non-blocking */ }
 };
+
+// Is any timed-set hold running right now (countdown or counting, open or minimized)?
+// A key with `startedAt` and no `stoppedAt` is a live hold; one with `stoppedAt` is a
+// stopped hold waiting for its confirm, which is not "running". One timer at a time: a
+// running hold means no rest timer starts.
+export const isTimedHoldRunning = () => {
+  try {
+    return allTimerKeys().some(k => {
+      const v = JSON.parse(localStorage.getItem(k) || 'null');
+      return !!v?.startedAt && !v?.stoppedAt;
+    });
+  } catch { return false; }
+};
