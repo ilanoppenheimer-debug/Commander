@@ -4,6 +4,7 @@ import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
 import { SecondsNumPad } from '../keypad/SecondsNumPad';
 import { timerKey } from '../../utils/timedSetTimerStorage';
+import { isMaxPlan, plannedRangeLabel } from '../../utils/timedPlan';
 import { acquireWakeLock, releaseWakeLock } from '../../utils/wakeLock';
 import { playHoldTargetBeep } from '../../services/audioService';
 import { TimedHoldOverlay } from './TimedHoldOverlay';
@@ -27,6 +28,8 @@ const COUNTDOWN_SECONDS = 5;
 const DEFAULT_TARGET_SECONDS = 30; // no Coach target and no history
 const MIN_TARGET_SECONDS = 5;      // floor of the (adjusted) hold target
 const ADJUST_STEP = 15;
+const ADJUST_STEP_LONG = 60;       // from LONG_STEP_FROM on, the ± buttons move a minute
+const LONG_STEP_FROM = 180;
 
 const DIFFICULTY_LEVELS = [
   { value: '1', className: 'bg-emerald-500 border-emerald-400' },
@@ -205,12 +208,21 @@ export const TimedSetRow = ({
     setAdjustState(0);
     setPhase('countdown');
     persistTimer(startedAt);
+    // One timer at a time: starting a hold silently cancels a running (or finished and
+    // still alarming) rest timer.
+    window.dispatchEvent(new CustomEvent('iron-cmdr:cancel-rest-timer'));
     acquireWakeLock(lockOwner);
     setOverlayOpen(true);
   };
 
   const targetSecs = Math.max(MIN_TARGET_SECONDS, baseRef.current.secs + adjust);
-  const holdMode = timedMode === 'timer' ? 'timer' : 'stopwatch';
+  // "máx" has no target to count down to: always a stopwatch, whatever mode the exercise
+  // remembers (the overlay hides the toggle for it).
+  const isMax = isMaxPlan(set?.planned?.reps);
+  const holdMode = !isMax && timedMode === 'timer' ? 'timer' : 'stopwatch';
+  // A Coach range ("30-40 s", "1-2 min") is shown as written; the hold counts to its lower end.
+  const targetLabel = baseRef.current.source === 'coach' ? plannedRangeLabel(set?.planned?.reps) : null;
+  const adjustStep = targetSecs >= LONG_STEP_FROM ? ADJUST_STEP_LONG : ADJUST_STEP;
 
   // -15 / +15 on the target of this hold, never below MIN_TARGET_SECONDS (the stored
   // adjustment is clamped, so +15 from the floor really adds 15).
@@ -495,10 +507,11 @@ export const TimedSetRow = ({
           targetSeconds={targetSecs}
           targetSource={baseRef.current.source}
           adjust={adjust}
-          adjustStep={ADJUST_STEP}
+          adjustStep={adjustStep}
+          targetLabel={targetLabel}
           onAdjust={handleAdjust}
           mode={holdMode}
-          showToggle
+          showToggle={!isMax}
           onModeChange={(m) => onTimedModeChange?.(m)}
           onStop={handleControlTap}
           onMinimize={() => setOverlayOpen(false)}

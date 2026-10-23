@@ -381,8 +381,17 @@ const AdvancedTimer = () => {
       clearTimeout(autoCloseTimer);
       autoCloseTimer = setTimeout(() => setIsExpanded(false), 3000);
     };
+    // One timer at a time: a timed-set hold that starts cancels the rest timer — running or
+    // already finished with its alarm/alert up — silently (no alarm, no end-of-rest overlay).
+    // resetTimer also releases the rest wake lock and the background notification/PiP.
+    const cancelHandler = () => { clearTimeout(autoCloseTimer); setIsExpanded(false); resetTimer(); };
     window.addEventListener('iron-cmdr:start-rest-timer', handler);
-    return () => { window.removeEventListener('iron-cmdr:start-rest-timer', handler); clearTimeout(autoCloseTimer); };
+    window.addEventListener('iron-cmdr:cancel-rest-timer', cancelHandler);
+    return () => {
+      window.removeEventListener('iron-cmdr:start-rest-timer', handler);
+      window.removeEventListener('iron-cmdr:cancel-rest-timer', cancelHandler);
+      clearTimeout(autoCloseTimer);
+    };
   }, []);
 
   // ── Corner positioning / drag ──────────────────────────────────────────────

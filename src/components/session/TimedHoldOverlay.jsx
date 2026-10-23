@@ -12,17 +12,20 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStar
  */
 export const TimedHoldOverlay = ({
   exerciseName, setIndex, phase, countdownLeft, elapsedSeconds, targetSeconds,
-  targetSource, adjust = 0, adjustStep = 15, onAdjust,
+  targetSource, targetLabel = null, adjust = 0, adjustStep = 15, onAdjust,
   mode, showToggle, onModeChange, onStop, onMinimize,
 }) => {
   const target = Number(targetSeconds) > 0 ? Number(targetSeconds) : 0;
   // "obj 0:45 (+15) · último registro": the adjustment so far and where the base came from
   // (nothing extra when it is the Coach's own target).
-  const objLabel = target ? `obj ${mmss(target)}` : null;
+  const objLabel = target ? `obj ${targetLabel || mmss(target)}` : null;
   const objExtra = [
-    adjust ? `(${adjust > 0 ? '+' : '−'}${Math.abs(adjust)})` : null,
+    adjust ? `(${adjust > 0 ? '+' : '−'}${Math.abs(adjust) % 60 === 0 ? `${Math.abs(adjust) / 60} min` : Math.abs(adjust)})` : null,
   ].filter(Boolean).join(' ');
   const objSource = targetSource === 'history' ? 'último registro' : targetSource === 'default' ? 'por defecto' : null;
+  const longStep = adjustStep >= 60;
+  const stepText = longStep ? `${adjustStep / 60} minuto${adjustStep >= 120 ? 's' : ''}` : `${adjustStep} segundos`;
+  const stepShort = longStep ? `${adjustStep / 60} min` : adjustStep;
   const isCountdown = phase === 'countdown';
   const timerMode = mode === 'timer' && target > 0;
   const over = !isCountdown && timerMode && elapsedSeconds >= target;
@@ -102,10 +105,10 @@ export const TimedHoldOverlay = ({
           <button
             key={delta}
             onClick={() => onAdjust?.(delta)}
-            aria-label={`${delta > 0 ? 'Sumar' : 'Restar'} ${adjustStep} segundos al objetivo`}
+            aria-label={`${delta > 0 ? 'Sumar' : 'Restar'} ${stepText} al objetivo`}
             className="flex h-16 flex-1 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-[26px] font-black tabular-nums text-slate-200 active:bg-slate-800"
           >
-            {delta > 0 ? '+' : '−'}{adjustStep}
+            {delta > 0 ? '+' : '−'}{stepShort}
           </button>
         ))}
       </div>

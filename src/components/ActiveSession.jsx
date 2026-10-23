@@ -53,6 +53,8 @@ import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
+import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
+import { isMaxPlan } from "../utils/timedPlan";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
@@ -648,7 +650,7 @@ export default function ActiveSession({
     const lastSet = safeSets.length > 0 ? safeSets[safeSets.length - 1] : null;
     const isTimed = getMeasurement(ex?.name) === 'time';
     storeAddSet(exId, isTimed
-      ? { seconds: '', companionValue: '', type: lastSet?.type || 'normal', completed: false }
+      ? { seconds: '', companionValue: '', type: lastSet?.type || 'normal', completed: false, ...(Number(lastSet?.targetSeconds) > 0 ? { targetSeconds: lastSet.targetSeconds } : {}) }
       : { weight: '', reps: '', rpe: '', type: lastSet?.type || 'normal', completed: false }
     );
   };
@@ -686,7 +688,8 @@ export default function ActiveSession({
 
     if (!wasCompleted) {
       if (navigator.vibrate) navigator.vibrate(50);
-      if (isLastInSupersetGroup(ex, exercises)) {
+      // One timer at a time: with a hold running (open or minimized) no rest timer starts.
+      if (isLastInSupersetGroup(ex, exercises) && !isTimedHoldRunning()) {
         const restSecs = ex.restSeconds ?? 90;
         window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
           detail: { seconds: restSecs, exerciseName: ex.name, next: describeNextSet(ex, setIdx, exercises) }
@@ -709,7 +712,8 @@ export default function ActiveSession({
 
     if (!wasCompleted) {
       if (navigator.vibrate) navigator.vibrate(50);
-      if (isLastInSupersetGroup(ex, exercises)) {
+      // One timer at a time: with a hold running (open or minimized) no rest timer starts.
+      if (isLastInSupersetGroup(ex, exercises) && !isTimedHoldRunning()) {
         const restSecs = ex.restSeconds ?? 90;
         window.dispatchEvent(new CustomEvent('iron-cmdr:start-rest-timer', {
           detail: { seconds: restSecs, exerciseName: ex.name, next: describeNextSet(ex, setIdx, exercises) }
@@ -1239,7 +1243,7 @@ export default function ActiveSession({
                           exerciseId={ex.id}
                           exerciseName={ex.name}
                           companion={getCompanion(ex.name)}
-                          timedMode={getTimedMode(ex.name) || (Number(s.targetSeconds) > 0 ? 'timer' : 'stopwatch')}
+                          timedMode={isMaxPlan(s.planned?.reps) ? 'stopwatch' : (getTimedMode(ex.name) || (Number(s.targetSeconds) > 0 ? 'timer' : 'stopwatch'))}
                           getHistorySeconds={() => lastLoggedSeconds(history, ex.name)}
                           onTimedModeChange={(m) => { setTimedMode(ex.name, m); setMetaNonce(n => n + 1); }}
                           onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
