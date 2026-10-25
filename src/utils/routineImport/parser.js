@@ -38,7 +38,7 @@
 
 import { TAG_OPTIONS } from '../../constants/blockTemplates';
 import { getMeasurement } from '../../constants/exerciseMetadata';
-import { isMaxPlan } from '../timedPlan';
+import { isMaxPlan, isMaxTimePlan } from '../timedPlan';
 
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
@@ -507,6 +507,11 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
       set.reps = repsTrimmed;
     } else if (/^\d+-\d+$/.test(repsTrimmed)) {
       // (see set.planned)
+    } else if (isMaxTimePlan(repsTrimmed)) {
+      // "máx s": an explicit time max. Same duration signal as "36s" (_rawReps: it makes a
+      // new exercise auto-detect as Tiempo and keeps its sibling plain "máx" sets timed),
+      // but no target — parseRestSeconds finds no number. Never AMRAP.
+      set._rawReps = repsTrimmed;
     } else if (isMaxPlan(repsTrimmed)) {
       // "máx": no target. What it means (open-ended hold vs. as many reps as possible)
       // depends on the exercise's measurement, which the row doesn't know — parseExerciseBlock

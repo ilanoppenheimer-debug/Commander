@@ -4,7 +4,8 @@
 // import by the parser (lower end of a range).
 
 const TIME_RE = /^(\d+)(?:\s*[-–—]\s*(\d+))?\s*(s|seg|sec|min)$/i;
-const MAX_RE = /^m[aá]x\.?$/i;
+const MAX_RE = /^m[aá]x\.?(?:\s*(?:s|seg|sec))?$/i;
+const MAX_TIME_RE = /^m[aá]x\.?\s*(?:s|seg|sec)$/i;
 
 // → { lo, hi, isRange, unit: 's'|'min', loText, hiText } (lo/hi in seconds) | null
 export const parsePlannedTime = (text) => {
@@ -17,8 +18,13 @@ export const parsePlannedTime = (text) => {
   return { lo, hi, isRange: m[2] != null, unit, loText: m[1], hiText: m[2] ?? m[1] };
 };
 
-// "máx" / "max" / "MAX": the open-ended set — no target, always a stopwatch.
+// "máx" / "max" / "MAX" ("máx s", "max seg": same, with the unit): the open-ended set —
+// no target, always a stopwatch.
 export const isMaxPlan = (text) => MAX_RE.test(String(text ?? '').trim());
+
+// "máx s" / "máx seg" / "max s": the Coach says explicitly it is a TIME max. The importer
+// never turns it into AMRAP, whatever the exercise's measurement.
+export const isMaxTimePlan = (text) => MAX_TIME_RE.test(String(text ?? '').trim());
 
 // "30-40 s" / "1-2 min" for a ranged plan, else null (single values show as mm:ss).
 export const plannedRangeLabel = (text) => {
