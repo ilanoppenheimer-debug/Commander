@@ -37,6 +37,8 @@
  */
 
 import { TAG_OPTIONS } from '../../constants/blockTemplates';
+import { getMeasurement } from '../../constants/exerciseMetadata';
+import { isMaxPlan, isMaxTimePlan } from '../timedPlan';
 
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
@@ -52,7 +54,7 @@ const SESSION_NAME_RED_FLAG_WORDS = ['bloque', 'fase', 'tramo', 'semana', 'calib
 // Narrow shape guard for the "reps no parseable" branch below — deliberately stricter
 // than parseRestSeconds' bare-number fallback (which would wrongly accept a plain
 // number here). Only a value with an explicit s/seg/sec/min unit counts as duration-shaped.
-const TIME_SHAPE_PATTERN = /^\d+\s*(s|seg|sec|min)\b/i;
+const TIME_SHAPE_PATTERN = /^\d+(?:\s*[-–—]\s*\d+)?\s*(s|seg|sec|min)\b/i;
 
 // ── Block YAML helpers ────────────────────────────────────────────────────────
 
@@ -382,6 +384,26 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
 
   const sets = parseSetsTable(tableMatch[1], idx, warnings);
 
+  // "máx" in the Reps column. In a TIMED exercise (a sibling set is duration-shaped, or the
+  // exercise is already stored as time) it stays as the plan text: no target, the hold opens
+  // as a stopwatch. Anywhere else it means "as many reps as possible", which the app already
+  // models as the AMRAP set type — so it is imported as AMRAP (the plan text "máx" is kept).
+  // Known blind spot: an all-"máx" exercise that is new and time-measured has no signal in
+  // the file; the warning tells the athlete what happened so they can fix it.
+  const maxSets = sets.filter(s => s._rawMax);
+  if (maxSets.length > 0) {
+    const isTimed = sets.some(s => s._rawReps) || getMeasurement(name) === 'time';
+    if (!isTimed) {
+      let converted = 0;
+      for (const s of maxSets) {
+        if (s.type === 'normal') { s.type = 'amrap'; converted++; }
+      }
+      warnings.push(converted > 0
+        ? `"máx" en "${name}" se importó como AMRAP (${converted} set${converted > 1 ? 's' : ''}). Si es un ejercicio de tiempo, marcá su medición como "Tiempo" y volvé a importar`
+        : `Reps no parseables: "máx" en "${name}" (set que no es normal) — queda sin reps`);
+    }
+  }
+
   // Adaptive decision
   const decisionMatch = content.match(/^##\s*Decisi[oó]n adaptativa\s*\n([\s\S]*?)(?=\n## |\n# |$)/m);
   let decisionAdaptativa = null;
@@ -485,18 +507,25 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
       set.reps = repsTrimmed;
     } else if (/^\d+-\d+$/.test(repsTrimmed)) {
       // (see set.planned)
+    } else if (isMaxTimePlan(repsTrimmed)) {
+      // "máx s": an explicit time max. Same duration signal as "36s" (_rawReps: it makes a
+      // new exercise auto-detect as Tiempo and keeps its sibling plain "máx" sets timed),
+      // but no target — parseRestSeconds finds no number. Never AMRAP.
+      set._rawReps = repsTrimmed;
+    } else if (isMaxPlan(repsTrimmed)) {
+      // "máx": no target. What it means (open-ended hold vs. as many reps as possible)
+      // depends on the exercise's measurement, which the row doesn't know — parseExerciseBlock
+      // resolves it once all sets are parsed. `_` marks it parser-internal.
+      set._rawMax = true;
+    } else if (TIME_SHAPE_PATTERN.test(repsTrimmed)) {
+      // A valid duration ("25s", "10min", "30-40s", "1-2min") is not a warning. The raw
+      // value is stashed here (instead of trying to correlate it back out of `warnings`
+      // later) because parseExerciseBlock already attaches this returned set to the right
+      // ex.name/ex.sets. `_` marks it parser-internal: convertImportedToRoutine builds the
+      // persisted set from an explicit field whitelist, so this never leaks into saved data.
+      set._rawReps = repsTrimmed;
     } else {
       warnings.push(`Reps no parseables: "${reps}"`);
-      // Preserve the raw value only when it's duration-shaped ("25s", "10min") — the
-      // warning text carries no exercise reference, but parseExerciseBlock already
-      // attaches this returned set to the right ex.name/ex.sets, so stashing it here
-      // (instead of trying to correlate it back out of `warnings` later) is the only
-      // non-fragile path. `_` marks it parser-internal: convertImportedToRoutine builds
-      // the persisted set from an explicit field whitelist, so this never leaks into
-      // saved data on its own.
-      if (TIME_SHAPE_PATTERN.test(repsTrimmed)) {
-        set._rawReps = repsTrimmed;
-      }
     }
   }
 
@@ -540,12 +569,13 @@ export const parseRestSeconds = (str) => {
   // same duration vocabulary TIME_SHAPE_PATTERN already treats as time-shaped, so a
   // "30seg"/"30sec" reps-column value (used for targetSeconds) parses here too instead
   // of silently returning null.
+  // A range ("30-40s", "1-2min") is a target of its lower end.
+  const range = t.match(/^(\d+)\s*[-–—]\s*\d+\s*(s(?:eg|ec)?|min)\b/);
+  if (range) return parseInt(range[1], 10) * (range[2] === 'min' ? 60 : 1);
   const sMatch = t.match(/^(\d+)\s*s(?:eg|ec)?\b/);
   if (sMatch) return parseInt(sMatch[1], 10);
   const minMatch = t.match(/^(\d+)\s*min\b/);
   if (minMatch) return parseInt(minMatch[1], 10) * 60;
-  const rangeMin = t.match(/^(\d+)\s*-\s*(\d+)\s*min\b/);
-  if (rangeMin) return parseInt(rangeMin[1], 10) * 60;
   const num = t.match(/^(\d+)\b/);
   if (num) return parseInt(num[1], 10);
   return null;

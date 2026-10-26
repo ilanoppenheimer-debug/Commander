@@ -2,6 +2,8 @@
 // the YAML table had it: "100", "5", "7–8", "35s"). Written once at import and never
 // recomputed; it is data on the side — placeholders and real values don't read it.
 
+import { parsePlannedTime, isMaxPlan } from './timedPlan';
+
 const TYPE_LABELS = { warmup: 'W', top: 'Top', back: 'Back', backoff: 'Back', normal: 'Normal', amrap: 'AMRAP', drop: 'Drop', myo: 'Myo' };
 // The chip summarizes only these set types; warm-ups (and drop/myo) keep their plan in
 // set.planned but are not shown there.
@@ -11,7 +13,6 @@ const typeLabel = (t) => TYPE_LABELS[(t || 'normal').toLowerCase()] || (t || 'No
 
 const RANGE = /^(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)$/;
 const NUM = /^\d+(?:\.\d+)?$/;
-const SECS = /^(\d+)\s*(?:s|seg|sec)$/i;
 
 // "100×5 @7–8" · "5 reps @8" (no planned weight: the app derives it) · "35s"
 export const formatPlannedSet = (planned) => {
@@ -19,7 +20,7 @@ export const formatPlannedSet = (planned) => {
   const w = planned.weight || '';
   const r = planned.reps || '';
   const rpe = planned.rpeText ? ` @${planned.rpeText}` : '';
-  if (SECS.test(r) || /^\d+\s*min$/i.test(r)) return `${r}${rpe}`;
+  if (parsePlannedTime(r) || isMaxPlan(r)) return `${r}${rpe}`; // time plans: no "reps" suffix
   if (!w && !r) return rpe.trim();
   const head = w ? `${w}×${r || '?'}` : `${r} reps`;
   return `${head}${rpe}`;
@@ -69,9 +70,13 @@ export const planDeviates = (set) => {
     if (rm && (rr < parseFloat(rm[1]) || rr > parseFloat(rm[2]))) return true;
   }
 
-  const secs = SECS.exec(p.reps || '');
+  // Time plan ("36s", "10min", "30-40s", "1-2min"): a range is on plan when the real time
+  // falls inside it; a single value allows half a second. "máx" has nothing to compare.
+  const tp = parsePlannedTime(p.reps);
   const rs = asNum(set.seconds);
-  if (secs && rs != null && rs > 0 && Math.abs(parseInt(secs[1], 10) - rs) > 0.5) return true;
+  if (tp && rs != null && rs > 0) {
+    if (tp.isRange ? (rs < tp.lo || rs > tp.hi) : Math.abs(tp.lo - rs) > 0.5) return true;
+  }
 
   const rrpe = asNum(set.rpe);
   if (rrpe != null && rrpe > 0 && p.rpeText) {
