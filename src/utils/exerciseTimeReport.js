@@ -23,7 +23,8 @@ const fmtPerSet = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
  * One timed appearance per (session, exercise), or null when it can't be measured.
  * Duration = this exercise's finishedAt minus the finishedAt of the exercise right
  * BEFORE it in the session's list (or session.startTime for the first one) — the same
- * interval the session report's "Tiempo:" line prints. List order is trusted as
+ * interval the session report's "Tiempo:" line prints for a loose exercise (a superset
+ * gets one group line there instead, and none here). List order is trusted as
  * execution order. Dropped, never guessed: exercises with no finishedAt, supersets
  * (members share one stamp, so their interval is meaningless), and any whose
  * predecessor has no finishedAt (its interval would swallow the predecessor's work).
