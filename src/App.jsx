@@ -53,6 +53,7 @@ import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
 import CoachContextModal from "./components/import/CoachContextModal";
 import { getSessionTypeBreakdown } from "./utils/routineImport/contextGenerator";
+import { closeLastExercise } from "./utils/closeLastExercise";
 import { BlockColorDot } from "./components/blocks/BlockColorDot";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
@@ -679,15 +680,16 @@ function AppMain() {
       }
     } catch { /* non-blocking — blockIds stays [] */ }
 
+    const completedAt = new Date().toISOString();
     const completedSession = {
       historyId: `hist-${Date.now()}`,
       name: sessionName || 'Entrenamiento Libre',
-      completedAt: new Date().toISOString(),
+      completedAt,
       ...(session?.startTime ? {
         startTime: session.startTime,
         durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000),
       } : {}),
-      exercises: safeFinalExercises,
+      exercises: closeLastExercise(safeFinalExercises, completedAt), // the last exercise/group closes with the session
       routineId: session?.routineId ?? null,
       blockIds,
       sessionNum: session?.sessionNum ?? null,
