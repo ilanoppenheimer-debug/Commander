@@ -130,6 +130,8 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     }
   }
 
+  const supersetTimeDone = new Set(); // supersets whose single "Tiempo" line is already out
+
   for (const [i, ex] of exercises.entries()) {
     // The exercise's own tag (persisted at save time, self-contained — a later edit
     // to the exercise's global tag doesn't rewrite old exports) wins. Falls back to
@@ -216,7 +218,26 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
       lines.push(`  Nota set ${num}: "${s.notes.trim()}"`);
     }
 
-    if (ex.finishedAt) {
+    // Time. A superset closes as a unit (finishSupersetGroup stamps every member with the
+    // same finishedAt), so a per-exercise "Tiempo" would hand the whole group's time to its
+    // first member and 0 to the rest: it gets ONE line, on the first member that is printed,
+    // measured from the close of the exercise before the group. Loose exercises are
+    // unchanged. Either way a missing close (own, group's or the previous one) means no
+    // line — nothing is estimated.
+    const group = ex.supersetId ? exercises.filter(e => e.supersetId === ex.supersetId) : [];
+    if (group.length > 1) {
+      if (!supersetTimeDone.has(ex.supersetId)) {
+        supersetTimeDone.add(ex.supersetId);
+        const firstIdx = exercises.indexOf(group[0]);
+        const prevRef = firstIdx > 0 ? exercises[firstIdx - 1]?.finishedAt : session.startTime;
+        const closes = group.map(e => e.finishedAt);
+        if (prevRef && closes.every(Boolean)) {
+          const end = Math.max(...closes.map(c => new Date(c).getTime()));
+          const mins = Math.round((end - new Date(prevRef)) / 60000);
+          if (mins > 0) lines.push(`  Tiempo superset ${supersetLetters.get(ex.supersetId)} (${group.length} ejercicios): ${mins} min`);
+        }
+      }
+    } else if (ex.finishedAt) {
       const prevRef = i > 0 ? exercises[i - 1]?.finishedAt : session.startTime;
       if (prevRef) {
         const mins = Math.round((new Date(ex.finishedAt) - new Date(prevRef)) / 60000);
