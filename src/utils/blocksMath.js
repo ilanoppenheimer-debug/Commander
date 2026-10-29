@@ -2,7 +2,7 @@ import { computeExercise1RM, RPE_CHART } from './strengthMath';
 
 const ROUND_INCREMENTS = {
   barbell: 2.5, smith: 2.5, dumbbell: 1, cable: 2.5,
-  machine: 5, kettlebell: 2, bodyweight: 1, other: 2.5,
+  machine: 5, kettlebell: 2, bodyweight: 1, landmine: 2.5, band: 1, other: 2.5,
 };
 
 export const roundToEquipment = (weight, equipment) => {
@@ -73,7 +73,7 @@ export const calculateTopSetSuggestion = (exercise, history, block) => {
     Math.min(oneRMData.current1RM * 1.05, rawWeight)
   );
 
-  const finalWeight = roundToEquipment(clamped, exercise.equipment || 'barbell');
+  const finalWeight = roundToEquipment(clamped, exercise.equipment);
 
   console.debug('[blocksMath TOP]', {
     exercise: exercise.name,
@@ -138,7 +138,7 @@ export const calculateBackoffSuggestion = (topSet, topSuggestion, block, exercis
   const backoffReps   = clampReps(referenceReps + repsAdjust);
   let backoffRpe      = clampRpe(referenceRpe - 0.5);
 
-  const finalWeight = roundToEquipment(backoffWeight, exercise?.equipment || 'barbell');
+  const finalWeight = roundToEquipment(backoffWeight, exercise?.equipment);
 
   // Same weight (or more) after the top can't be easier than the top: never below its RPE.
   if (finalWeight >= referenceWeight && referenceRpe > 0) backoffRpe = Math.max(backoffRpe, clampRpe(referenceRpe));

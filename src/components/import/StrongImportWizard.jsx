@@ -19,6 +19,8 @@ const EQUIPMENT_OPTIONS = [
   { id: 'cable', label: 'Polea' },
   { id: 'machine', label: 'Máquina' },
   { id: 'bodyweight', label: 'Peso Corporal' },
+  { id: 'landmine', label: 'Landmine' },
+  { id: 'band', label: 'Banda elástica' },
   { id: 'cardio', label: 'Cardio' },
   { id: 'other', label: 'Otro' },
 ];
@@ -168,7 +170,7 @@ function StepMapping({ unknowns, customMappings, setCustomMappings }) {
                 {['map', 'custom', 'ignore'].map(type => (
                   <button
                     key={type}
-                    onClick={() => setDecision(exerciseRaw, { type, name: '', equipment: 'other' })}
+                    onClick={() => setDecision(exerciseRaw, { type, name: '', equipment: '' })}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
                       decision?.type === type
                         ? 'bg-accent-600 border-accent-500 text-black'
@@ -207,6 +209,7 @@ function StepMapping({ unknowns, customMappings, setCustomMappings }) {
                     onChange={(e) => setDecision(exerciseRaw, { ...decision, equipment: e.target.value })}
                     className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-accent-500"
                   >
+                    <option value="">Sin definir</option>
                     {EQUIPMENT_OPTIONS.map(eq => <option key={eq.id} value={eq.id}>{eq.label}</option>)}
                   </select>
                 </div>
@@ -567,9 +570,9 @@ export default function StrongImportWizard({ onClose, onGoToHistory }) {
       if (decision.type === 'ignore') {
         out[exerciseRaw] = { ignore: true };
       } else if (decision.type === 'map' && decision.name) {
-        out[exerciseRaw] = { name: decision.name, equipment: 'other' };
+        out[exerciseRaw] = { name: decision.name, equipment: null };
       } else if (decision.type === 'custom' && decision.name) {
-        out[exerciseRaw] = { name: decision.name, equipment: decision.equipment || 'other' };
+        out[exerciseRaw] = { name: decision.name, equipment: decision.equipment || null };
       }
     }
     return out;

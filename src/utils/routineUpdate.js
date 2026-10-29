@@ -100,7 +100,7 @@ export const updateRoutineFromSession = async (routineId, session) => {
       updatedExercises.push({
         exerciseId: sessionEx.exerciseId,
         name:       sessionEx.name,
-        equipment:  sessionEx.equipment || 'barbell',
+        equipment:  sessionEx.equipment ?? null,
         sets: sessionSets.map(s => ({
           weight: Number(s.weight),
           reps:   Number(s.reps),

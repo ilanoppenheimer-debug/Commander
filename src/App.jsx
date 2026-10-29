@@ -269,7 +269,7 @@ const FullSettingsModal = ({
                       weight: { ...(prev?.weight || {}), [equip]: { ...cur, [size]: val } }
                     }));
                   };
-                  const equipLabel = { barbell: 'Barra', dumbbell: 'Mancuernas', cable: 'Polea', machine: 'Máquina', kettlebell: 'Kettlebell', bodyweight: 'Peso corporal', smith: 'Multipower', other: 'Otro' }[equip] || equip;
+                  const equipLabel = { barbell: 'Barra', dumbbell: 'Mancuernas', cable: 'Polea', machine: 'Máquina', kettlebell: 'Kettlebell', bodyweight: 'Peso corporal', smith: 'Multipower', landmine: 'Landmine', band: 'Banda elástica', other: 'Otro' }[equip] || equip;
                   return (
                     <div key={equip} className="bg-slate-800 rounded-xl border border-slate-700 p-3">
                       <div className="flex items-center justify-between mb-2">
@@ -792,7 +792,7 @@ function AppMain() {
   const generateAIRoutine = async () => {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
-    const prompt = `Genera plantilla de gimnasio: "${aiPrompt}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "barbell", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Máximo 6 ejercicios. Opciones de equipo: barbell, dumbbell, bodyweight, machine, cable.`;
+    const prompt = `Genera plantilla de gimnasio: "${aiPrompt}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "<una de las opciones>", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Máximo 6 ejercicios. Opciones de equipo: barbell, dumbbell, bodyweight, machine, cable.`;
     try {
       const textResponse = await callGeminiAPI(prompt);
       const cleanJson = textResponse.replace(/```json|```/g, '').trim();
@@ -802,7 +802,7 @@ function AppMain() {
         id: `ai-${Date.now()}`,
         name: `${parsedData.name || 'Plantilla IA'} ✨`,
         lastPerformed: null,
-        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment || 'barbell', id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({ ...s, type: 'normal' })) : [] }))
+        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment ?? null, id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({ ...s, type: 'normal' })) : [] }))
       };
       await saveRoutine(newRoutine);
       setShowAIModal(false);
@@ -819,7 +819,7 @@ function AppMain() {
   const handleSmartImport = async () => {
     if (!importText.trim()) return;
     setIsImporting(true);
-    const prompt = `Parser plantilla de gym. Texto crudo: "${importText}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "barbell", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Opciones equipo: barbell, dumbbell, bodyweight, machine, cable.`;
+    const prompt = `Parser plantilla de gym. Texto crudo: "${importText}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "<una de las opciones>", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Opciones equipo: barbell, dumbbell, bodyweight, machine, cable.`;
     try {
       const textResponse = await callGeminiAPI(prompt);
       let parsedData;
@@ -830,7 +830,7 @@ function AppMain() {
         const lines = importText.split('\n').filter(l => l.trim().length > 3);
         parsedData = {
           name: "Plantilla Importada (Recuperada)",
-          exercises: lines.map(l => ({ name: l.split(/[,|-]/)[0].trim().substring(0, 30), equipment: 'barbell', sets: [{ weight: 0, reps: 10, rpe: 8, type: 'normal' }] }))
+          exercises: lines.map(l => ({ name: l.split(/[,|-]/)[0].trim().substring(0, 30), equipment: null, sets: [{ weight: 0, reps: 10, rpe: 8, type: 'normal' }] }))
         };
       }
       const safeExercises = Array.isArray(parsedData.exercises) ? parsedData.exercises : [];
@@ -838,7 +838,7 @@ function AppMain() {
         id: `import-${Date.now()}`,
         name: parsedData.name || 'Plantilla Importada',
         lastPerformed: null,
-        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment || 'barbell', id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets : [] }))
+        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment ?? null, id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets : [] }))
       };
       await saveRoutine(newRoutine);
       setShowImportModal(false);

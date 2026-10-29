@@ -2,6 +2,7 @@ import { formatSetSummary } from './formatters';
 import { normalizeExerciseName } from './exerciseName';
 import { computeExercise1RM } from './strengthMath';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { isComparable1RMEquipment } from '../constants/gymConstants';
 
 // ONE formatter for "what did I do on this exercise, session by session". Used by the
 // Coach context ("Últimos registros por ejercicio") and by "Enviar al Coach" in the
@@ -130,6 +131,7 @@ export const formatLatestEntry = (apps, companion) => {
 const EQUIPMENT_SHORT = {
   barbell: 'barra', dumbbell: 'mancuerna', machine: 'máquina', cable: 'polea',
   smith: 'multipower', kettlebell: 'kettlebell', bodyweight: 'peso corporal',
+  landmine: 'landmine', band: 'banda elástica',
 };
 
 /**
@@ -137,7 +139,7 @@ const EQUIPMENT_SHORT = {
  * variants are one exercise), same line format as the Coach context. Returns null when
  * there is nothing logged.
  *  - Equipment is printed on each line only when the sent appearances disagree.
- *  - The 1RM line only for barbell/dumbbell (same criterion as the session report) and
+ *  - The 1RM line only for barbell/dumbbell/smith (isComparable1RMEquipment, same criterion as the session report) and
  *    only when computeExercise1RM has a value.
  */
 export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
@@ -156,7 +158,7 @@ export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
   const out = [`Historial de ${display}${variants.length ? ` (también registrado como: ${variants.join(', ')})` : ''}`];
 
   const equipment = equipOf(apps[0]);
-  if (equipment === 'barbell' || equipment === 'dumbbell') {
+  if (isComparable1RMEquipment(equipment)) {
     const orm = computeExercise1RM(display, history, { weeksBack: 12 });
     if (orm.current1RM != null && orm.sampleSize >= 1) {
       out.push(`1RM estimado: ${Math.round(orm.current1RM * 2) / 2} kg (N=${orm.sampleSize}, últimas 12 semanas) — referencia, no máximo del día`);

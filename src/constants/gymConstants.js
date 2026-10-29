@@ -129,7 +129,15 @@ export const EQUIPMENT_TYPES = [
   { id: "cable", label: "Polea" },
   { id: "smith", label: "Multipower" },
   { id: "kettlebell", label: "Kettlebell" },
+  { id: "landmine", label: "Landmine" },
+  { id: "band", label: "Banda elástica" },
 ];
+
+// Implements whose load is external and comparable from one session to the next, so a 1RM
+// estimate means something. Everything else (bodyweight, bands, landmine, machines,
+// cables, "other") and an exercise with no implement defined (null) gets no 1RM.
+export const COMPARABLE_1RM_EQUIPMENT = ['barbell', 'dumbbell', 'smith'];
+export const isComparable1RMEquipment = (eq) => COMPARABLE_1RM_EQUIPMENT.includes(eq);
 
 export const DEFAULT_MODES = [
   { id: "standard", label: "Modo Libre", rpe: "-", repRange: "-", sets: "-", weightMod: 1.0, color: "text-slate-400", desc: "Registro manual sin asistencia." },

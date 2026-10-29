@@ -34,7 +34,8 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
 
   const [name, setName] = useState(existingName || '');
   const [muscleGroup, setMuscleGroup] = useState('');
-  const [equipment, setEquipment] = useState('barbell');
+  // No preselected implement: creating requires choosing one. '' = sin definir.
+  const [equipment, setEquipment] = useState('');
   const [bilateral, setBilateral] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [movementPattern, setMovementPattern] = useState(null);
@@ -92,13 +93,22 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   }, [name, allExerciseNames, isEdit, canRename, existingName]);
 
   const isRenameAttempt = canRename && name.trim() && name.trim() !== existingName;
+  // Editing an exercise that never had an implement may stay that way (equipment is then
+  // simply not written); creating one must pick it.
   const canSave = isEdit
-    ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup && equipment
+    ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup
     : !duplicate.exact && name.trim() && muscleGroup && equipment;
 
+  // Keys with no value are left OUT, not set to undefined: saveExerciseMeta merges
+  // {...stored, ...data}, so an undefined key would erase what is already stored.
   const buildMeta = () => ({
     muscleGroup,
-    equipment,
+    ...(equipment ? {
+      equipment,
+      equipmentOverride: true,
+      equipmentAssignedAt: new Date().toISOString(),
+      equipmentAssignedBy: 'user-manual',
+    } : {}),
     bilateral,
     movementPattern,
     stability,
@@ -107,14 +117,10 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     enjoyment,
     feelConnection,
     notes,
-    isCustom: !isEdit,
-    createdAt: isEdit ? undefined : new Date().toISOString(),
+    ...(isEdit ? {} : { isCustom: true, createdAt: new Date().toISOString() }),
     muscleGroupOverride: true,
     muscleGroupAssignedAt: new Date().toISOString(),
     muscleGroupAssignedBy: 'user-manual',
-    equipmentOverride: true,
-    equipmentAssignedAt: new Date().toISOString(),
-    equipmentAssignedBy: 'user-manual',
   });
 
   const handleSave = async () => {

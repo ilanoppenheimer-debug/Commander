@@ -40,7 +40,7 @@ import { TAG_OPTIONS } from '../../constants/blockTemplates';
 import { getMeasurement } from '../../constants/exerciseMetadata';
 import { isMaxPlan, isMaxTimePlan } from '../timedPlan';
 
-const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'other'];
+const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'landmine', 'band', 'other'];
 const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
 
 // Session name convention: only the rotation day (PIERNA A, TORSO B, ...) — block,
@@ -414,11 +414,13 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
       .filter(l => l.length > 0);
   }
 
-  const equipment = VALID_EQUIPMENT.includes(metadata.equipo) ? metadata.equipo : 'barbell';
+  // No equipo, or one the app doesn't know, is "sin definir" (null) — never a guessed
+  // barbell: a made-up implement would split or pollute the exercise's numbers later.
+  const equipment = VALID_EQUIPMENT.includes(metadata.equipo) ? metadata.equipo : null;
   if (metadata.equipo && !VALID_EQUIPMENT.includes(metadata.equipo)) {
-    warnings.push(`Equipo desconocido "${metadata.equipo}" en "${name}", default barbell`);
+    warnings.push(`Equipo desconocido "${metadata.equipo}" en "${name}" — queda sin definir`);
   } else if (!metadata.equipo) {
-    warnings.push(`Ejercicio "${name}" sin equipo — se asume barbell`);
+    warnings.push(`Ejercicio "${name}" sin equipo — queda sin definir (el Coach debe declararlo)`);
   }
 
   const tagValue = metadata.tag;
