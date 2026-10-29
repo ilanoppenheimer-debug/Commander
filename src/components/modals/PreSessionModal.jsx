@@ -5,6 +5,7 @@ import ExerciseSelectorModal from './ExerciseSelectorModal';
 import { CustomNumPad } from '../keypad/CustomNumPad';
 import { SetRow } from '../session/SetRow';
 import { formatNumber } from '../keypad/keypadConfig';
+import { getExerciseMeta } from '../../constants/exerciseMetadata';
 
 export default function PreSessionModal({ routine, onStart, onCancel, customExercises, addCustomExercise, removeCustomExercise }) {
   const [draft, setDraft] = useState(() => ({
@@ -79,7 +80,7 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
       exercises: [...prev.exercises, {
         id: `pre-${Date.now()}`,
         name,
-        equipment: 'barbell',
+        equipment: getExerciseMeta(name)?.equipment ?? null,
         restSeconds: 90,
         sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }],
       }],
@@ -222,7 +223,7 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
           onClose={closeKp}
           set={kpSet}
           exerciseName={kpEx?.name || ''}
-          equipment={kpEx?.equipment || 'barbell'}
+          equipment={kpEx?.equipment ?? null}
           exerciseMeta={null}
           globalOverrides={{}}
           activeField={kp.activeField}

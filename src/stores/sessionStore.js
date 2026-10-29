@@ -113,9 +113,9 @@ export const useSessionStore = create((set, get) => ({
     const newId = Date.now();
     // Explicit equipment (e.g. from a Coach import) wins. Otherwise fall back to
     // whatever the user last configured for this exercise — metadata is a default,
-    // not an imposition — before finally defaulting to barbell.
-    const resolvedEquipment = equipment || getExerciseMeta(name)?.equipment || 'barbell';
-    const restDefaults = { barbell: 180, smith: 180, dumbbell: 120, kettlebell: 120, machine: 90, cable: 90, bodyweight: 60 };
+    // not an imposition. No metadata either: null ("sin definir"), never a guessed barbell.
+    const resolvedEquipment = equipment || getExerciseMeta(name)?.equipment || null;
+    const restDefaults = { barbell: 180, smith: 180, dumbbell: 120, kettlebell: 120, landmine: 120, machine: 90, cable: 90, bodyweight: 60, band: 60 };
     const newEx = { id: newId, name, equipment: resolvedEquipment, restSeconds: restDefaults[resolvedEquipment] ?? 90, sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
     const next = {
       ...s,

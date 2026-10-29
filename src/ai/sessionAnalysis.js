@@ -1,6 +1,7 @@
 import { calculate1RM } from "../utils/strengthMath";
 import { sameExercise } from "../utils/exerciseName";
 import { getExerciseMeta } from "../constants/exerciseMetadata";
+import { isComparable1RMEquipment } from "../constants/gymConstants";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -84,14 +85,14 @@ export const findPRs = (currentExercises, history) => {
     }
 
     // 1RM PR only where the load is external and comparable — same criterion as the
-    // export (barbell/dumbbell). In bodyweight the estimate is computed off the added
+    // export (barbell/dumbbell/smith). In bodyweight the estimate is computed off the added
     // load alone, ignoring the athlete's bodyweight, so a session with more added load
     // than a previous lighter one can look like a strength PR that never happened. The
     // "weight" PR above is unaffected: it's the real number typed, consistent with
     // itself session to session.
     const equipment = ex.equipment || getExerciseMeta(ex.name)?.equipment || null;
     if (
-      (equipment === "barbell" || equipment === "dumbbell") &&
+      isComparable1RMEquipment(equipment) &&
       current.best1RM > hist.best1RM &&
       hist.best1RM > 0
     ) {

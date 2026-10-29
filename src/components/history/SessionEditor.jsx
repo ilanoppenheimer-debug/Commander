@@ -16,14 +16,14 @@ function sessReducer(state, action) {
     case 'ADD_EXERCISE': {
       // getExerciseMeta first, 'other'/no tag only as fallback when nothing is known —
       // not the first thing tried. Same silent-default pattern already closed for
-      // equipment ('barbell'), accessory, and the 90s rest default.
+      // equipment, accessory, and the 90s rest default.
       const meta = getExerciseMeta(action.name);
       return {
         ...state,
         exercises: [...state.exercises, {
           id: `edit-ex-${Date.now()}-${Math.random()}`,
           name: action.name,
-          equipment: meta.equipment || 'other',
+          equipment: meta.equipment ?? null,
           tag: meta.defaultTag || null,
           sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', notes: '' }],
         }],
@@ -44,7 +44,7 @@ function sessReducer(state, action) {
           ex.id !== action.exId ? ex : {
             ...ex,
             name: action.newName,
-            equipment: meta.equipment || 'other',
+            equipment: meta.equipment ?? null,
             tag: meta.defaultTag || null,
           }
         ),

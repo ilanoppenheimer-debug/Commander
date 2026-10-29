@@ -15,7 +15,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
     return {
       id: impEx.id || `imp-ex-${Date.now()}-${idx}`,
       name: resolvedName,
-      equipment: impEx.equipment || 'barbell',
+      equipment: impEx.equipment ?? null, // null = sin definir (never a guessed barbell)
       tag: impEx.tagSuggested || null,
       restSeconds: impEx.restSeconds || 90,
       ...(impEx.backoffPct != null ? { backoffPct: impEx.backoffPct } : {}),

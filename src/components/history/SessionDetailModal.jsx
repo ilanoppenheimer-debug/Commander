@@ -78,7 +78,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
       exercises: exercises.map((ex, i) => ({
         id: `ex-${i}-${Date.now()}`,
         name: ex.name,
-        equipment: ex.equipment || 'other',
+        equipment: ex.equipment ?? null,
         sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({
           weight: 0,
           reps: s.reps || 0,

@@ -5,6 +5,8 @@ export const DEFAULT_INCREMENTS_BY_EQUIPMENT = {
   cable:      { weight: { small: 2.5, large: 5,  options: [1.25, 2.5, 5, 10] } },
   machine:    { weight: { small: 5,   large: 10, options: [2.5, 5, 10, 20] } },
   kettlebell: { weight: { small: 2,   large: 4,  options: [2, 4, 8, 12] } },
+  landmine:   { weight: { small: 2.5, large: 5,  options: [1.25, 2.5, 5, 10, 20] } },
+  band:       { weight: { small: 1,   large: 2.5,options: [0.5, 1, 2.5, 5] } },
   bodyweight: { weight: { small: 1,   large: 2.5,options: [0.5, 1, 2.5, 5, 10] } },
   other:      { weight: { small: 2.5, large: 5,  options: [1.25, 2.5, 5, 10] } },
 };
@@ -17,9 +19,9 @@ export const getIncrementsFor = (field, equipment, exerciseMeta = null, globalOv
   if (field === 'reps') return exerciseMeta?.customIncrements?.reps || globalOverrides?.reps || REPS_INCREMENTS;
 
   if (exerciseMeta?.customIncrements?.weight) return exerciseMeta.customIncrements.weight;
-  const eq = equipment || 'barbell';
-  if (globalOverrides?.weight?.[eq]) return globalOverrides.weight[eq];
-  return DEFAULT_INCREMENTS_BY_EQUIPMENT[eq]?.weight || DEFAULT_INCREMENTS_BY_EQUIPMENT.other.weight;
+  // No implement defined (null): the generic table, no per-implement overrides.
+  if (equipment && globalOverrides?.weight?.[equipment]) return globalOverrides.weight[equipment];
+  return DEFAULT_INCREMENTS_BY_EQUIPMENT[equipment]?.weight || DEFAULT_INCREMENTS_BY_EQUIPMENT.other.weight;
 };
 
 export const applyDelta = (currentValue, delta, field = 'weight') => {

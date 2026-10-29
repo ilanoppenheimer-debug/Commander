@@ -1034,10 +1034,11 @@ export default function ActiveSession({
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <div className="relative">
                           <select
-                            value={ex.equipment || "barbell"}
-                            onChange={(e) => storeUpdateEx(ex.id, { equipment: e.target.value })}
-                            className="appearance-none bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border border-slate-600 focus:outline-none focus:border-accent-500 cursor-pointer"
+                            value={ex.equipment || ""}
+                            onChange={(e) => storeUpdateEx(ex.id, { equipment: e.target.value || null })}
+                            className={`appearance-none bg-slate-800 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border focus:outline-none focus:border-accent-500 cursor-pointer ${ex.equipment ? 'text-slate-300 border-slate-600' : 'text-amber-300 border-amber-500/60'}`}
                           >
+                            <option value="">Sin definir</option>
                             {EQUIPMENT_TYPES.map((eq) => (
                               <option key={eq.id} value={eq.id}>{eq.label}</option>
                             ))}
@@ -1400,7 +1401,7 @@ export default function ActiveSession({
             onClose={closeKeypad}
             set={kpSet}
             exerciseName={kpEx.name}
-            equipment={kpEx.equipment || 'barbell'}
+            equipment={kpEx.equipment ?? null}
             exerciseMeta={null}
             globalOverrides={globalIncrementOverrides}
             activeField={keypadState.activeField}

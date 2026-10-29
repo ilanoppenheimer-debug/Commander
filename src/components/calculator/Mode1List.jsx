@@ -5,6 +5,7 @@ import {
   getExerciseMeta, getTracked1RM, setTracked1RM, hasAnyTracked1RMSelection,
   getSort1RMCriterion, setSort1RMCriterion,
 } from '../../constants/exerciseMetadata';
+import { isComparable1RMEquipment } from '../../constants/gymConstants';
 import { Exercise1RMCard } from './Exercise1RMCard';
 import { Exercise1RMDetail } from './Exercise1RMDetail';
 import { TimeframeSelector } from './TimeframeSelector';
@@ -21,10 +22,10 @@ const SORT_CRITERIA = [
   { id: 'recent', label: 'Recientes' },
 ];
 
-// Same criterion as the export: only barbell/dumbbell load is comparable session to
+// Same criterion as the export (isComparable1RMEquipment): only barbell/dumbbell/smith load is comparable session to
 // session. Used ONLY as a display-time default before the user has picked anything —
 // never written to metadata, so it costs nothing to change later.
-const isComparableEquipment = (eq) => eq === 'barbell' || eq === 'dumbbell';
+const isComparableEquipment = isComparable1RMEquipment;
 
 const sortByCriterion = (list, criterion) => {
   const copy = [...list];
