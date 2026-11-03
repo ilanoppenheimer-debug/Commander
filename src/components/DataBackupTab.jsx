@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { buildFilename } from '../utils/downloadNaming';
 import StrongImportWizard from './import/StrongImportWizard';
+import TaxonomyMigrationPanel from './TaxonomyMigrationPanel';
 import Modal from './ui/Modal';
 import {
   signInToGoogle, signOutFromGoogle, isSignedIn, getSignedInEmail,
@@ -291,6 +292,9 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
           </label>
         </div>
       </section>
+
+      {/* One-off exercise taxonomy cleanup (phase 2) — never runs by itself */}
+      <TaxonomyMigrationPanel showNotify={showNotify} />
 
       {/* Counters */}
       {counts && (
