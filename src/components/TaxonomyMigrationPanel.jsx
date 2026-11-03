@@ -14,6 +14,52 @@ const FAIL_MESSAGES = {
   'post-check-failed': 'La verificación posterior falló. Restaurá el backup descargado.',
 };
 
+// Names the mapping knows nothing about (live data can have sessions logged after the mapping was
+// reviewed). They are left exactly as they are and do NOT block anything — but they must be seen.
+function UnmatchedNames({ plan }) {
+  const hist = [...plan.report.unmatched];
+  const routines = plan.routines.unmatched;
+  const meta = plan.metadata.unmatched;
+  const total = hist.length + routines.length + meta.length;
+  if (!total) {
+    return (
+      <div className="flex items-center gap-2 text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg px-3 py-2">
+        <CheckCircle2 size={14} className="shrink-0" /> Todos los nombres del historial y de las rutinas tienen regla en el mapeo.
+      </div>
+    );
+  }
+  return (
+    <div data-testid="unmatched" className="text-[11px] text-amber-200 bg-amber-950/40 border border-amber-500/60 rounded-lg px-3 py-2 space-y-2">
+      <div className="flex items-start gap-2 font-bold text-amber-300">
+        <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+        <span>{total} nombre(s) SIN regla en el mapeo: quedan como están (no bloquea). Revisalos antes de aplicar.</span>
+      </div>
+      {hist.length > 0 && (
+        <div>
+          <div className="font-bold uppercase tracking-wider text-[10px] text-amber-400">Historial ({hist.length})</div>
+          <ul className="space-y-0.5">
+            {hist.map(([name, u]) => (
+              <li key={name}><b>{name}</b> · {u.n} aparición(es) · {u.first === u.last ? u.first : `${u.first} → ${u.last}`} · {Object.entries(u.eq).map(([e, c]) => `${e} ${c}`).join(', ')}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {routines.length > 0 && (
+        <div>
+          <div className="font-bold uppercase tracking-wider text-[10px] text-amber-400">Rutinas ({routines.length})</div>
+          <ul className="space-y-0.5">{routines.map(([name, c]) => <li key={name}><b>{name}</b> · en {c} ejercicio(s) de rutina</li>)}</ul>
+        </div>
+      )}
+      {meta.length > 0 && (
+        <div>
+          <div className="font-bold uppercase tracking-wider text-[10px] text-amber-400">Metadata ({meta.length})</div>
+          <ul className="space-y-0.5">{meta.map(k => <li key={k}><b>{k}</b> · clave sin relación con el mapeo</li>)}</ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Datos → one-off cleanup of the exercise taxonomy (phase 2). Never runs by itself: review the
  * changes, download a backup (the rollback), then apply. Everything it does is planned by the
@@ -48,7 +94,8 @@ export default function TaxonomyMigrationPanel({ showNotify }) {
   };
 
   const apply = async () => {
-    if (!window.confirm('Se van a renombrar ejercicios, corregir implementos y borrar 5 sesiones duplicadas verificadas. El backup descargado es tu rollback. ¿Aplicar?')) return;
+    const dup = state.plan?.history.removed.length || 0;
+    if (!window.confirm(`Se van a renombrar ejercicios, corregir implementos${dup ? ` y borrar ${dup} sesión(es) duplicada(s) verificada(s)` : ''}. El backup descargado es tu rollback. ¿Aplicar?`)) return;
     setBusy(true);
     const r = await applyTaxonomyMigration({ backupDownloaded: !!downloaded });
     setBusy(false);
@@ -73,6 +120,8 @@ export default function TaxonomyMigrationPanel({ showNotify }) {
         <button onClick={review} disabled={state.loading || busy} className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 transition border border-slate-600">
           {state.loading ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} Revisar cambios
         </button>
+
+        {plan && <UnmatchedNames plan={plan} />}
 
         {plan && plan.noop && (
           <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg px-3 py-2">
@@ -99,11 +148,6 @@ export default function TaxonomyMigrationPanel({ showNotify }) {
             {!plan.verification.ok && (
               <div className="flex items-start gap-2 text-xs text-red-300 bg-red-950/30 border border-red-600/40 rounded-lg px-3 py-2">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" /> La verificación falló: {plan.verification.problems.slice(0, 3).join('; ')}
-              </div>
-            )}
-            {plan.report.unmatched.size > 0 && (
-              <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-600/40 rounded-lg px-3 py-2">
-                Sin regla (quedan como están): {[...plan.report.unmatched.keys()].join(', ')}
               </div>
             )}
             <details className="text-[11px] text-slate-300">
