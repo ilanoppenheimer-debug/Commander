@@ -42,6 +42,9 @@ export const planTaxonomyMigration = (input, now = new Date().toISOString()) => 
   const rules = TAXONOMY_RULES.map(r => ({ ...r, changed: 0, fix: (r.fix || []).map(f => ({ ...f, hit: 0 })) }));
   const bySource = new Map();
   for (const r of rules) for (const n of r.from) bySource.set(norm(n), r);
+  // Variant names the mapping PRODUCES are already final: a name that is only ever a target (e.g.
+  // "Press Inclinado") is known — left alone and never reported as "sin regla" on a second pass.
+  const finalVariants = new Set(rules.map(r => norm(r.to)));
 
   // ---- 1. duplicated sessions: removed only when verifiably identical to the kept one
   const removedIds = new Set(); const dupReport = [];
@@ -67,6 +70,14 @@ export const planTaxonomyMigration = (input, now = new Date().toISOString()) => 
     const exercises = (s.exercises || []).map(ex => {
       appearances++;
       const rule = bySource.get(norm(ex.name));
+      if (!rule && finalVariants.has(norm(ex.name))) {
+        const pv = perVariant.get(ex.name) || { src: new Map(), after: new Map(), n: 0, first: day(s), last: day(s) };
+        pv.n++; pv.src.set(ex.name, (pv.src.get(ex.name) || 0) + 1);
+        const ek = ex.equipment ?? '(sin definir)'; pv.after.set(ek, (pv.after.get(ek) || 0) + 1);
+        if (day(s) < pv.first) pv.first = day(s); if (day(s) > pv.last) pv.last = day(s);
+        perVariant.set(ex.name, pv);
+        return ex;
+      }
       if (!rule) {
         const u = unmatched.get(ex.name) || { n: 0, first: day(s), last: day(s), eq: {} };
         u.n++; if (day(s) < u.first) u.first = day(s); if (day(s) > u.last) u.last = day(s);
@@ -99,7 +110,7 @@ export const planTaxonomyMigration = (input, now = new Date().toISOString()) => 
     let touched = false;
     const exercises = (r.exercises || []).map(e => {
       const rule = bySource.get(norm(e.name));
-      if (!rule) { routineUnmatched.set(e.name, (routineUnmatched.get(e.name) || 0) + 1); return e; }
+      if (!rule) { if (!finalVariants.has(norm(e.name))) routineUnmatched.set(e.name, (routineUnmatched.get(e.name) || 0) + 1); return e; }
       if (rule.to === e.name) return e;
       touched = true; routinesRenamed++; return { ...e, name: rule.to };
     });
