@@ -39,9 +39,9 @@ export const calculateTopSetSuggestion = (exercise, history, block) => {
   if (!exercise || !block || !block.params) return null;
 
   // Try 12-week window first, then full history
-  let oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: 12 });
+  let oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: 12, equipment: exercise.equipment || null });
   if (!oneRMData?.current1RM || oneRMData.current1RM <= 0) {
-    oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: null });
+    oneRMData = computeExercise1RM(exercise.name, history, { weeksBack: null, equipment: exercise.equipment || null });
   }
   if (!oneRMData?.current1RM || oneRMData.current1RM <= 0) return null;
 

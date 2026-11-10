@@ -2,11 +2,12 @@ import React, { useMemo, useState } from "react";
 import { X, TrendingUp, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import { calculate1RM } from "../../utils/strengthMath";
-import { sameExercise } from "../../utils/exerciseName";
+import { makeVariantMatcher } from "../../utils/exerciseVariant";
 import { formatNum } from "../../utils/weightUtils";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
-const TrendModal = ({ exName, history, barUnit, onClose }) => {
+// equipment (optional): variant to chart; null/absent = by name only (all implements).
+const TrendModal = ({ exName, equipment = null, history, barUnit, onClose }) => {
   // Opened from several places (App, 1RM detail) with no notify prop: feedback is local.
   const [feedback, setFeedback] = useState(null);
   const handleSendToCoach = async () => {
@@ -18,6 +19,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
   };
   const chartData = useMemo(() => {
     if (!exName || !Array.isArray(history)) return [];
+    const isVariant = makeVariantMatcher(exName, equipment);
 
     const dataPoints = [];
     const sortedHistory = [...history].sort(
@@ -28,9 +30,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
       if (!session || !Array.isArray(session.exercises)) return;
 
       const exData = session.exercises.find(
-        (e) =>
-          e &&
-          sameExercise(e.name, exName)
+        (e) => e && isVariant(e)
       );
 
       if (exData && Array.isArray(exData.sets) && exData.sets.length > 0) {
@@ -64,7 +64,7 @@ const TrendModal = ({ exName, history, barUnit, onClose }) => {
     });
 
     return dataPoints;
-  }, [history, exName]);
+  }, [history, exName, equipment]);
 
   const renderChart = () => {
     if (chartData.length < 2) {

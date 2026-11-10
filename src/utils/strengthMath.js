@@ -1,4 +1,5 @@
-import { sameExercise, buildDisplayNameIndex } from './exerciseName';
+import { buildDisplayNameIndex } from './exerciseName';
+import { makeVariantMatcher } from './exerciseVariant';
 
 export const FORMULAS = {
   epley: (w, r) => w * (1 + r / 30),
@@ -104,9 +105,12 @@ export const isPredictiveSet = (set, exerciseMaxWeight) => {
 /**
  * Calcula el 1RM estimado actual de un ejercicio desde el historial.
  * weeksBack=null → usa todo el historial.
+ * options.equipment: implemento a considerar (nombre + implemento). Sin él (o null =
+ * "sin definir") se calcula solo por nombre, como siempre. Ver exerciseVariant.js.
  */
 export const computeExercise1RM = (exerciseName, history, options = {}) => {
-  const { weeksBack = 12 } = options;
+  const { weeksBack = 12, equipment = null } = options;
+  const isVariant = makeVariantMatcher(exerciseName, equipment);
 
   if (!Array.isArray(history) || history.length === 0) {
     return { current1RM: null, topSets: [], sampleSize: 0 };
@@ -122,7 +126,7 @@ export const computeExercise1RM = (exerciseName, history, options = {}) => {
     if (cutoffDate && new Date(session.completedAt) < cutoffDate) return;
     const exercises = Array.isArray(session.exercises) ? session.exercises : [];
     exercises.forEach(ex => {
-      if (!ex || !sameExercise(ex.name, exerciseName)) return;
+      if (!ex || !isVariant(ex)) return;
       const sets = Array.isArray(ex.sets) ? ex.sets : [];
       sets.forEach(set => {
         allSetsRaw.push({ ...set, _date: session.completedAt, _sessionId: session.historyId || session.id });
@@ -178,7 +182,8 @@ export const computeExercise1RM = (exerciseName, history, options = {}) => {
  * Returns: { reps: string, rpe: string } o null si no hay ningún set usable.
  */
 export const getLastLoggedSet = (exerciseName, history, options = {}) => {
-  const { weeksBack = 12 } = options;
+  const { weeksBack = 12, equipment = null } = options;
+  const isVariant = makeVariantMatcher(exerciseName, equipment);
 
   if (!Array.isArray(history) || history.length === 0) return null;
 
@@ -192,7 +197,7 @@ export const getLastLoggedSet = (exerciseName, history, options = {}) => {
     if (cutoffDate && new Date(session.completedAt) < cutoffDate) return;
     const exercises = Array.isArray(session.exercises) ? session.exercises : [];
     exercises.forEach(ex => {
-      if (!ex || !sameExercise(ex.name, exerciseName)) return;
+      if (!ex || !isVariant(ex)) return;
       const sets = Array.isArray(ex.sets) ? ex.sets : [];
       sets.forEach(set => {
         if (!set) return;

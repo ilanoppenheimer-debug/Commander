@@ -1,24 +1,24 @@
 import React, { useState, useMemo } from "react";
 import { X, BarChart2, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
-import { sameExercise } from "../../utils/exerciseName";
+import { makeVariantMatcher } from "../../utils/exerciseVariant";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
-const ExerciseHistoryModal = ({ exName, history, onClose, barUnit, showNotify }) => {
+// equipment (optional): variant to show; null/absent = by name only (all implements).
+const ExerciseHistoryModal = ({ exName, equipment = null, history, onClose, barUnit, showNotify }) => {
   const [limit, setLimit] = useState(5);
 
   const pastPerformances = useMemo(() => {
     if (!Array.isArray(history)) return [];
 
     const matches = [];
+    const isVariant = makeVariantMatcher(exName, equipment);
 
     history.forEach((session) => {
       if (!session) return;
 
       const exData = (session.exercises || []).find(
-        (e) =>
-          e &&
-          sameExercise(e.name, exName)
+        (e) => e && isVariant(e)
       );
 
       if (exData && Array.isArray(exData.sets) && exData.sets.length > 0) {
@@ -31,7 +31,7 @@ const ExerciseHistoryModal = ({ exName, history, onClose, barUnit, showNotify })
     });
 
     return matches.slice(0, limit === "all" ? undefined : limit);
-  }, [history, exName, limit]);
+  }, [history, exName, equipment, limit]);
 
   // Always the last 6 appearances, regardless of the 5/10/todas selector: this text is
   // for the Coach, not for the screen.
