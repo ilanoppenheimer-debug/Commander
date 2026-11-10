@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Timer, Pause, Play, RotateCcw, X, BellRing } from 'lucide-react';
+import { Timer, Pause, Play, RotateCcw, X, BellRing, Square } from 'lucide-react';
 import { playTacticalAlarm, playPreAlert, stopAlarm } from '../services/audioService';
 import { useSessionStore } from '../stores/sessionStore';
 import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage';
@@ -480,6 +480,10 @@ const AdvancedTimer = () => {
   };
   bgActionsRef.current = { stop: resetTimer, dismiss: dismissAlert };
   const alertRed = isActive && mode === 'timer' && displaySecs <= 10;
+  // The last 10 s (same moment as the pre-alert beep): a one-tap way to end the rest early.
+  const showEndNow = alertRed && displaySecs > 0 && !alertInfo;
+  // A rest in progress (running or paused part-way): "Reiniciar" in the expanded view reads "Terminar descanso".
+  const restInProgress = mode === 'timer' && (isActive || accumulatedMsRef.current > 0);
 
   // No active session -> the rest timer has nothing to time. Hooks above still ran
   // (Rules of Hooks), only the render is skipped.
@@ -581,13 +585,23 @@ const AdvancedTimer = () => {
               >
                 {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
               </button>
-              <button
-                onClick={resetTimer}
-                className="p-4 rounded-full bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
-                aria-label="Reiniciar"
-              >
-                <RotateCcw size={24} />
-              </button>
+              {restInProgress ? (
+                <button
+                  onClick={() => { resetTimer(); setIsExpanded(false); }}
+                  className="h-14 px-5 rounded-full bg-slate-800 text-slate-200 hover:text-white border border-slate-600 transition flex items-center gap-2 font-extrabold text-sm"
+                  aria-label="Terminar descanso"
+                >
+                  <Square size={16} fill="currentColor" /> Terminar descanso
+                </button>
+              ) : (
+                <button
+                  onClick={resetTimer}
+                  className="p-4 rounded-full bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+                  aria-label="Reiniciar"
+                >
+                  <RotateCcw size={24} />
+                </button>
+              )}
             </div>
 
             {mode === 'timer' && (
@@ -648,6 +662,24 @@ const AdvancedTimer = () => {
             {formatTime(displaySecs)}
           </span>
         </div>
+        {showEndNow && (
+          // Next to the bubble, on the side facing the screen. It sits inside the draggable
+          // container, so its pointer events stop here: no drag, no expand.
+          <button
+            type="button"
+            data-testid="timer-end-now"
+            aria-label="Terminar descanso"
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); resetTimer(); }}
+            className={`absolute top-1/2 -translate-y-1/2 min-h-[44px] min-w-[88px] px-4 rounded-full bg-amber-500 text-black font-black text-[13px] shadow-lg active:scale-95 transition ${corner.endsWith('l') ? 'left-full ml-2' : 'right-full mr-2'}`}
+          >
+            Terminar
+          </button>
+        )}
         {sourceName && mode === 'timer' && (isActive || accumulatedMsRef.current > 0) && (
           <div
             data-testid="timer-source"
