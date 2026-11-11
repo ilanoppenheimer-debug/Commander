@@ -53,6 +53,7 @@ import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
+import { currentEquipment, makeVariantMatcher } from "../utils/exerciseVariant";
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
@@ -108,12 +109,13 @@ function recalculatePlaceholdersForExercise(ex, history, activeBlocks) {
   const exMeta = getExerciseMeta(ex.name);
   const exerciseForCalc = { ...ex, metadata: exMeta };
   const block = findBlockForExercise(exerciseForCalc, Array.isArray(activeBlocks) ? activeBlocks : []);
-  const topHistorical = getTopHistoricalSet(ex.name, history);
+  const equipment = currentEquipment(ex);
+  const topHistorical = getTopHistoricalSet(ex.name, history, { equipment });
   // Fallback for the first set when getTopHistoricalSet found nothing (bodyweight
   // exercises never have a weight for isPredictiveSet to accept) — never overrides
   // topHistorical, and never touches the session-memory (findLastTypedBefore) path
   // above, which already returns before either of these is ever consulted.
-  const lastLogged = topHistorical ? null : getLastLoggedSet(ex.name, history);
+  const lastLogged = topHistorical ? null : getLastLoggedSet(ex.name, history, { equipment });
   const topSet = findTopSetInExercise(ex);
   const hasExplicitTop = ex.sets.some(s => (s?.type || '').toLowerCase() === 'top');
 
@@ -552,14 +554,13 @@ export default function ActiveSession({
     });
   };
 
-  const getPreviousPerformance = (exName) => {
+  const getPreviousPerformance = (exName, equipment = null) => {
+    const isVariant = makeVariantMatcher(exName, equipment);
     if (!exName || !Array.isArray(history) || history.length === 0) return null;
     for (let i = 0; i < history.length; i++) {
       const pastSession = history[i];
       if (!pastSession || !Array.isArray(pastSession.exercises)) continue;
-      const pastEx = pastSession.exercises.find(
-        (e) => e && sameExercise(e.name, exName)
-      );
+      const pastEx = pastSession.exercises.find((e) => e && isVariant(e));
       if (pastEx && Array.isArray(pastEx.sets) && pastEx.sets.length > 0) {
         const maxSet = pastEx.sets.reduce((max, cur) => {
           const cw = parseFloat(cur?.weight) || 0;
@@ -750,6 +751,7 @@ export default function ActiveSession({
       {selectedExHistory && (
         <ExerciseHistoryModal
           exName={selectedExHistory}
+          equipment={currentEquipment(exercises.find(e => sameExercise(e.name, selectedExHistory)))}
           history={history}
           barUnit={barUnit}
           showNotify={showNotify}
@@ -937,7 +939,7 @@ export default function ActiveSession({
           const details  = getExerciseDetails(ex.name);
           const exMeta   = getExerciseMeta(ex.name);
           const hasActiveBlock = !!findBlockForExercise({ ...ex, metadata: exMeta }, activeBlocks);
-          const prevPerformance = hasActiveBlock ? null : getPreviousPerformance(ex.name);
+          const prevPerformance = hasActiveBlock ? null : getPreviousPerformance(ex.name, currentEquipment(ex));
 
           return (
             <div key={ex.id || index} className={`relative pl-4 ${isInSuperset ? 'lg:col-span-2' : ''}`}>
@@ -1245,7 +1247,7 @@ export default function ActiveSession({
                           exerciseName={ex.name}
                           companion={getCompanion(ex.name)}
                           timedMode={isMaxPlan(s.planned?.reps) ? 'stopwatch' : (getTimedMode(ex.name) || (Number(s.targetSeconds) > 0 ? 'timer' : 'stopwatch'))}
-                          getHistorySeconds={() => lastLoggedSeconds(history, ex.name)}
+                          getHistorySeconds={() => lastLoggedSeconds(history, ex.name, currentEquipment(ex))}
                           onTimedModeChange={(m) => { setTimedMode(ex.name, m); setMetaNonce(n => n + 1); }}
                           onToggleCompleted={() => handleCompleteTimedSet(ex, i)}
                           onUpdateField={(field, value) => storeUpdateSet(ex.id, i, field, value)}

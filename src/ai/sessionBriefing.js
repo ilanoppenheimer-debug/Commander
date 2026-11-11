@@ -4,20 +4,19 @@
 // deleted, in case AI returns with a different role (pattern detection, not
 // proposing workouts).
 import { callGeminiAPI } from "../services/aiService";
-import { sameExercise } from "../utils/exerciseName";
+import { makeVariantMatcher } from "../utils/exerciseVariant";
 import { localDateStr } from "../utils/localDate";
 
 const MAX_HISTORY_PER_EXERCISE = 5;
 
-const summarizeExerciseHistory = (exerciseName, history) => {
+const summarizeExerciseHistory = (exerciseName, history, equipment = null) => {
   if (!exerciseName || !Array.isArray(history)) return [];
+  const isVariant = makeVariantMatcher(exerciseName, equipment);
   const rows = [];
 
   for (const session of history) {
     if (rows.length >= MAX_HISTORY_PER_EXERCISE) break;
-    const ex = (session.exercises || []).find(
-      (e) => sameExercise(e?.name, exerciseName)
-    );
+    const ex = (session.exercises || []).find((e) => isVariant(e));
     if (!ex || !Array.isArray(ex.sets)) continue;
 
     const tops = ex.sets.reduce(
@@ -50,7 +49,7 @@ const buildSystemContext = ({ mode, exercises, history, athleteProfile }) => {
   const exerciseSummaries = (exercises || [])
     .filter((e) => e?.name)
     .map((e) => {
-      const past = summarizeExerciseHistory(e.name, history);
+      const past = summarizeExerciseHistory(e.name, history, e.equipment || null);
       const pastText =
         past.length > 0
           ? past

@@ -1,5 +1,6 @@
 import { calculate1RM } from "../utils/strengthMath";
 import { sameExercise } from "../utils/exerciseName";
+import { makeVariantMatcher } from "../utils/exerciseVariant";
 import { getExerciseMeta } from "../constants/exerciseMetadata";
 import { isComparable1RMEquipment } from "../constants/gymConstants";
 
@@ -65,9 +66,12 @@ export const findPRs = (currentExercises, history) => {
     if (current.bestWeight === 0) return;
 
     let hist = { bestWeight: 0, bestReps: 0, best1RM: 0 };
+    // Records are per variant (name + implement): a dumbbell curl is not compared with
+    // the barbell one. Current "sin definir" -> by name only, as before.
+    const isVariant = makeVariantMatcher(ex.name, ex.equipment || null);
     safeHistory.forEach((session) => {
       (session.exercises || []).forEach((pastEx) => {
-        if (!sameExercise(pastEx?.name, ex.name)) return;
+        if (!isVariant(pastEx)) return;
         const s = bestSetStats(pastEx.sets);
         if (s.bestWeight > hist.bestWeight) hist.bestWeight = s.bestWeight;
         if (s.bestReps > hist.bestReps) hist.bestReps = s.bestReps;
@@ -76,7 +80,9 @@ export const findPRs = (currentExercises, history) => {
     });
 
     const exercisePRs = [];
-    if (current.bestWeight > hist.bestWeight) {
+    // hist.bestWeight > 0: the first time with an exercise / implement has nothing to beat,
+    // so it is not a "PR de peso" against 0.
+    if (hist.bestWeight > 0 && current.bestWeight > hist.bestWeight) {
       exercisePRs.push({
         kind: "weight",
         value: current.bestWeight,
@@ -130,7 +136,8 @@ export const compareWithLastSession = (
 
   const exerciseComparisons = [];
   (currentExercises || []).forEach((ex) => {
-    const pastEx = (last.exercises || []).find((p) => sameExercise(p?.name, ex?.name));
+    const isVariant = makeVariantMatcher(ex?.name, ex?.equipment || null);
+    const pastEx = (last.exercises || []).find((p) => isVariant(p));
     if (!pastEx) return;
     const currentStats = bestSetStats(ex.sets);
     const pastStats = bestSetStats(pastEx.sets);
