@@ -29,7 +29,7 @@ const isComparableEquipment = isComparable1RMEquipment;
 
 const sortByCriterion = (list, criterion) => {
   const copy = [...list];
-  if (criterion === 'az') copy.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  if (criterion === 'az') copy.sort((a, b) => a.label.localeCompare(b.label, 'es'));
   else if (criterion === 'recent') copy.sort((a, b) => new Date(b.newestDate || 0) - new Date(a.newestDate || 0));
   else copy.sort((a, b) => b.current1RM - a.current1RM); // '1rm', default
   return copy;
@@ -75,11 +75,14 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
     [selectionVersion] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const isEffectivelyTracked = (name) => {
-    const explicit = getTracked1RM(name);
+  // Tracking is per exercise NAME (one flag in the metadata): the implements of a name
+  // that Mis 1RM lists separately ("Curl · barra" / "Curl · mancuerna") are shown or
+  // hidden together. An entry that already carries its implement uses it for the default.
+  const isEffectivelyTracked = (entry) => {
+    const explicit = getTracked1RM(entry.name);
     if (typeof explicit === 'boolean') return explicit;
     if (hasSelection) return false; // curation started elsewhere — untouched means hidden
-    return isComparableEquipment(resolveEquipment(name));
+    return isComparableEquipment(entry.equipment || resolveEquipment(entry.name));
   };
 
   // tracked1RM lives in localStorage, not React state — writing it doesn't trigger a
@@ -90,25 +93,25 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
   // at true, so a memo keyed on hasSelection alone would recompute once and then go
   // stale for every subsequent add/remove.
   const trackedList   = useMemo(
-    () => sortByCriterion(all1RMs.filter(e => isEffectivelyTracked(e.name)), sortCriterion),
+    () => sortByCriterion(all1RMs.filter(e => isEffectivelyTracked(e)), sortCriterion),
     [all1RMs, hasSelection, selectionVersion, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const untrackedList = useMemo(
-    () => sortByCriterion(all1RMs.filter(e => !isEffectivelyTracked(e.name)), sortCriterion),
+    () => sortByCriterion(all1RMs.filter(e => !isEffectivelyTracked(e)), sortCriterion),
     [all1RMs, hasSelection, selectionVersion, sortCriterion] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const applySearch = (list) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(e => e.name.toLowerCase().includes(q));
+    return list.filter(e => e.label.toLowerCase().includes(q));
   };
 
   const visibleTracked   = applySearch(trackedList);
   const visibleUntracked = applySearch(untrackedList);
 
-  const handleToggle = (exerciseName) => {
-    setTracked1RM(exerciseName, !isEffectivelyTracked(exerciseName));
+  const handleToggle = (entry) => {
+    setTracked1RM(entry.name, !isEffectivelyTracked(entry));
     setSelectionVersion(v => v + 1);
   };
 
@@ -121,6 +124,8 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
     return (
       <Exercise1RMDetail
         exerciseName={selectedExercise.name}
+        equipment={selectedExercise.equipment}
+        label={selectedExercise.label}
         history={history}
         timeframe={tf}
         barUnit={barUnit}
@@ -184,12 +189,12 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
               <div className="space-y-2">
                 {visibleTracked.map(ex => (
                   <Exercise1RMCard
-                    key={ex.name}
+                    key={ex.key}
                     exercise={ex}
                     barUnit={barUnit}
                     editMode
                     selected
-                    onToggle={() => handleToggle(ex.name)}
+                    onToggle={() => handleToggle(ex)}
                   />
                 ))}
               </div>
@@ -208,12 +213,12 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
               <div className="space-y-2">
                 {visibleUntracked.map(ex => (
                   <Exercise1RMCard
-                    key={ex.name}
+                    key={ex.key}
                     exercise={ex}
                     barUnit={barUnit}
                     editMode
                     selected={false}
-                    onToggle={() => handleToggle(ex.name)}
+                    onToggle={() => handleToggle(ex)}
                   />
                 ))}
               </div>
@@ -234,7 +239,7 @@ export const Mode1List = ({ history, barUnit, onCalcRequest }) => {
         <div className="space-y-2">
           {visibleTracked.map(ex => (
             <Exercise1RMCard
-              key={ex.name}
+              key={ex.key}
               exercise={ex}
               barUnit={barUnit}
               onClick={() => setSelectedExercise(ex)}

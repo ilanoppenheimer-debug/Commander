@@ -1,7 +1,7 @@
 import { formatSetSummary } from './formatters';
 import { normalizeExerciseName } from './exerciseName';
 import { computeExercise1RM } from './strengthMath';
-import { makeVariantMatcher } from './exerciseVariant';
+import { makeVariantMatcher, createVariantIndex, variantLabel, EQUIPMENT_LABEL_ES } from './exerciseVariant';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
 
@@ -67,13 +67,16 @@ const formatSets = (sets, companion, plus = false) => {
 };
 
 /**
- * Every appearance of exercises in `history`, newest first, grouped by identity.
- * Returns Map<normalizedName, Appearance[]>; Appearance = { time, iso, sessionName,
- * sessionType, name (spelling used that day), sets (work sets only) }.
+ * Every appearance of exercises in `history`, newest first, grouped by VARIANT
+ * (normalized name + implement; see createVariantIndex).
+ * Returns Map<"normalizedName|equipment", Appearance[]>; Appearance = { time, iso,
+ * sessionName, sessionType, name (spelling used that day), equipment (the group's
+ * implement, or null), label (how to print it: "Nombre · implemento" only when the name
+ * has more than one variant in this scope, else just the name), sets (work sets only) }.
  * `sinceMs` limits the window; `include(exercise)` filters which exercises are kept.
  */
 export const collectAppearances = (history, { sinceMs = 0, include = () => true } = {}) => {
-  const byKey = new Map();
+  const items = [];
   for (const session of Array.isArray(history) ? history : []) {
     const iso = session?.completedAt || session?.createdAt;
     const time = Date.parse(iso || '') || 0;
@@ -82,10 +85,15 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
       if (!ex?.name || !Array.isArray(ex.sets) || !include(ex)) continue;
       const sets = ex.sets.filter(isWorkSet);
       if (sets.length === 0) continue;
-      const key = normalizeExerciseName(ex.name);
-      if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment: ex.equipment || null, sets });
+      items.push({ session, iso, time, ex, sets });
     }
+  }
+  const index = createVariantIndex(items.map(i => i.ex));
+  const byKey = new Map();
+  for (const { session, iso, time, ex, sets } of items) {
+    const { key, equipment } = index.keyOf(ex);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment, label: index.labelFor(ex.name, equipment), sets });
   }
   for (const apps of byKey.values()) apps.sort((a, b) => b.time - a.time);
   return byKey;
@@ -96,7 +104,12 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
 // grouping and work-set filter as the Coach context, because it reuses collectAppearances.
 export const lastLoggedSeconds = (history, name, equipment = null) => {
   const key = normalizeExerciseName(name);
-  const latest = collectAppearances(history, { include: makeVariantMatcher(name, equipment) }).get(key)?.[0];
+  // Groups are per variant; with no implement given every group of the name competes, and
+  // the most recent appearance wins (same as before variants existed).
+  const latest = [...collectAppearances(history, { include: makeVariantMatcher(name, equipment) })]
+    .filter(([k]) => k.startsWith(`${key}|`))
+    .flatMap(([, apps]) => apps)
+    .sort((a, b) => b.time - a.time)[0];
   return latest ? Math.max(0, ...latest.sets.map(s => num(s.seconds))) : 0;
 };
 
@@ -129,38 +142,34 @@ export const formatLatestEntry = (apps, companion) => {
   return out;
 };
 
-const EQUIPMENT_SHORT = {
-  barbell: 'barra', dumbbell: 'mancuerna', machine: 'máquina', cable: 'polea',
-  smith: 'multipower', kettlebell: 'kettlebell', bodyweight: 'peso corporal',
-  landmine: 'landmine', band: 'banda elástica',
-};
 
 /**
- * Text for "Enviar al Coach": the last `count` appearances of one exercise (spelling
- * variants are one exercise), same line format as the Coach context. Returns null when
- * there is nothing logged.
- *  - Equipment is printed on each line only when the sent appearances disagree.
+ * Text for "Enviar al Coach": the last `count` appearances of one exercise VARIANT
+ * (spelling variants are one exercise), same line format as the Coach context. Returns
+ * null when there is nothing logged.
+ *  - `equipment` given: only that implement; the header reads "Historial de Curl · barra".
+ *  - `equipment` null ("sin definir"): by name, as before; each line carries its implement
+ *    when the sent appearances disagree.
  *  - The 1RM line only for barbell/dumbbell/smith (isComparable1RMEquipment, same criterion as the session report) and
- *    only when computeExercise1RM has a value.
+ *    only when computeExercise1RM has a value (of that variant when one is given).
  */
-export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
-  const all = collectAppearances(history).get(normalizeExerciseName(exName)) || [];
+export const buildExerciseShareText = (exName, history, { count = 6, equipment: wanted = null } = {}) => {
+  const all = [...collectAppearances(history, { include: makeVariantMatcher(exName, wanted) }).values()]
+    .flat().sort((a, b) => b.time - a.time);
   const apps = all.slice(0, count);
   if (apps.length === 0) return null;
 
-  const metaEquipment = getExerciseMeta(exName).equipment || null;
-  const equipOf = (a) => a.equipment || metaEquipment;
-  const mixed = new Set(apps.map(equipOf)).size > 1;
+  const mixed = !wanted && new Set(apps.map(a => a.equipment)).size > 1;
   const companion = getExerciseMeta(exName).companion;
 
   const display = apps[0].name;
   const variants = [...new Set(apps.map(a => a.name))].filter(n => n !== display);
 
-  const out = [`Historial de ${display}${variants.length ? ` (también registrado como: ${variants.join(', ')})` : ''}`];
+  const out = [`Historial de ${wanted ? variantLabel(display, wanted) : display}${variants.length ? ` (también registrado como: ${variants.join(', ')})` : ''}`];
 
-  const equipment = equipOf(apps[0]);
+  const equipment = wanted || apps[0].equipment;
   if (isComparable1RMEquipment(equipment)) {
-    const orm = computeExercise1RM(display, history, { weeksBack: 12 });
+    const orm = computeExercise1RM(display, history, { weeksBack: 12, equipment: wanted });
     if (orm.current1RM != null && orm.sampleSize >= 1) {
       out.push(`1RM estimado: ${Math.round(orm.current1RM * 2) / 2} kg (N=${orm.sampleSize}, últimas 12 semanas) — referencia, no máximo del día`);
     }
@@ -168,7 +177,7 @@ export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
 
   out.push(`Últimas ${apps.length} apariciones:`);
   for (const a of apps) {
-    const eq = mixed ? (EQUIPMENT_SHORT[equipOf(a)] || equipOf(a) || 'sin equipo') : null;
+    const eq = mixed ? (EQUIPMENT_LABEL_ES[a.equipment] || a.equipment || 'sin equipo') : null;
     out.push(`- ${formatAppearance(a, companion, eq)}`);
   }
   return out.join('\n');
@@ -180,8 +189,8 @@ export const buildExerciseShareText = (exName, history, { count = 6 } = {}) => {
  * Resolves to 'shared' | 'copied' | 'cancelled' | 'empty' | 'failed' so each caller
  * shows its own feedback.
  */
-export const sendExerciseToCoach = async (exName, history) => {
-  const text = buildExerciseShareText(exName, history, { count: 6 });
+export const sendExerciseToCoach = async (exName, history, equipment = null) => {
+  const text = buildExerciseShareText(exName, history, { count: 6, equipment });
   if (!text) return 'empty';
   if (typeof navigator !== 'undefined' && navigator.share) {
     try {

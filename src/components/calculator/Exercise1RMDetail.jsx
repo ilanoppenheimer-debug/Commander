@@ -3,10 +3,11 @@ import { ArrowLeft, TrendingUp, Calculator } from 'lucide-react';
 import { computeExercise1RM } from '../../utils/strengthMath';
 import TrendModal from '../modals/TrendModal';
 
-export const Exercise1RMDetail = ({ exerciseName, history, timeframe, barUnit, onBack, onCalcRequest }) => {
+// equipment / label: the variant listed in Mis 1RM (null = by name only).
+export const Exercise1RMDetail = ({ exerciseName, equipment = null, label, history, timeframe, barUnit, onBack, onCalcRequest }) => {
   const [showTrend, setShowTrend] = useState(false);
 
-  const data = computeExercise1RM(exerciseName, history, { weeksBack: timeframe?.weeks });
+  const data = computeExercise1RM(exerciseName, history, { weeksBack: timeframe?.weeks, equipment });
 
   const formatDate = (iso) => {
     if (!iso) return '—';
@@ -23,7 +24,7 @@ export const Exercise1RMDetail = ({ exerciseName, history, timeframe, barUnit, o
           <ArrowLeft size={20} className="text-slate-400" />
         </button>
         <div className="text-sm font-bold uppercase tracking-wider text-slate-200 truncate">
-          {exerciseName}
+          {label || exerciseName}
         </div>
       </div>
 
@@ -92,7 +93,7 @@ export const Exercise1RMDetail = ({ exerciseName, history, timeframe, barUnit, o
             </button>
 
             <button
-              onClick={() => onCalcRequest(exerciseName, data.current1RM)}
+              onClick={() => onCalcRequest(exerciseName, data.current1RM, equipment)}
               className="w-full bg-accent-600 hover:bg-accent-500 text-black rounded-xl py-3 flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-wider transition-colors"
             >
               <Calculator size={16} />
@@ -105,6 +106,8 @@ export const Exercise1RMDetail = ({ exerciseName, history, timeframe, barUnit, o
       {showTrend && (
         <TrendModal
           exName={exerciseName}
+          equipment={equipment}
+          label={label}
           history={history}
           barUnit={barUnit}
           onClose={() => setShowTrend(false)}

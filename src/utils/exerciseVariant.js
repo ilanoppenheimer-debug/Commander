@@ -55,3 +55,38 @@ export const variantLabel = (name, equipment) => {
   const label = equipment ? (EQUIPMENT_LABEL_ES[equipment] || equipment) : null;
   return label ? `${name} · ${label}` : name;
 };
+
+// ── Variant grouping for REPORTS (Coach context, Enviar al Coach, block report) ──────
+// Groups a set of history exercises into variants (normalized name + implement) and
+// decides how each one is printed. Pure, read-only.
+//   - equipment = what the exercise itself says, else the exercise metadata (history).
+//   - An exercise with NO known implement joins the name's group when the name has exactly
+//     one implement in this scope (nothing is lost, nothing is guessed); otherwise it
+//     stays in its own implement-less group.
+//   - A variant is printed "Nombre · implemento" ONLY when its name has more than one
+//     variant in this scope; single-implement names print exactly as before.
+export const createVariantIndex = (exercises) => {
+  const eqByName = new Map();   // normalized name -> Set(equipment)
+  const nullNames = new Set();  // names that have at least one exercise without implement
+  for (const ex of exercises) {
+    if (!ex?.name) continue;
+    const n = normalizeExerciseName(ex.name);
+    const eq = resolveHistoryEquipment(ex);
+    if (eq) { if (!eqByName.has(n)) eqByName.set(n, new Set()); eqByName.get(n).add(eq); }
+    else nullNames.add(n);
+  }
+  const keyOf = (ex) => {
+    const norm = normalizeExerciseName(ex?.name);
+    let eq = resolveHistoryEquipment(ex);
+    if (!eq) { const s = eqByName.get(norm); if (s && s.size === 1) eq = [...s][0]; }
+    return { key: `${norm}|${eq || ''}`, norm, equipment: eq || null };
+  };
+  const variantCount = (norm) => {
+    const size = eqByName.get(norm)?.size || 0;
+    return size + (nullNames.has(norm) && size !== 1 ? 1 : 0);
+  };
+  const isMulti = (norm) => variantCount(norm) > 1;
+  const labelFor = (name, equipment) =>
+    (equipment && isMulti(normalizeExerciseName(name))) ? variantLabel(name, equipment) : name;
+  return { keyOf, isMulti, labelFor };
+};
