@@ -65,6 +65,7 @@ const ALARM_PULSE_DURATION = 0.3;
 // 2-4 kHz, so the pulses alternate 2.4 / 3.2 kHz; the 5 ms attack makes each beep cut
 // through (and the 15 ms release avoids a click); the peak is near full scale because the
 // web can't touch the media volume, so the signal itself has to be as loud as it can be.
+// Shared with the background <audio> alarm (features/restBackground.js) so both sound alike.
 export const ALARM_TONE = {
   freqs: [2400, 3200],
   peak: 0.9,
@@ -137,6 +138,15 @@ const playWebAudioPulse = (i) => {
   const bus = newBus(ctx, ALARM_PULSE_DURATION);
   beep(ctx, bus, ALARM_TONE.freqs[i % ALARM_TONE.freqs.length], ctx.currentTime, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
   scheduleIdleSuspend(ALARM_PULSE_DURATION);
+};
+
+// Vibration alone (same pattern as the alarm), for callers that play the alarm sound some
+// other way (the background <audio> path in features/restBackground.js, "Pantalla bloqueada").
+export const vibrateAlarm = () => {
+  try { if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN); } catch {}
+};
+export const stopVibration = () => {
+  try { if (navigator.vibrate) navigator.vibrate(0); } catch {}
 };
 
 // Short "you reached the target" signal for a hold timer (not the rest alarm): two

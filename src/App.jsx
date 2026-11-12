@@ -21,6 +21,7 @@ import InputGroup from "./components/ui/InputGroup";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
+import { REST_BG_MODES, setBackgroundMode, normalizeBackgroundMode } from "./features/restBackground";
 import ExerciseHistoryModal from "./components/modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./components/modals/ExerciseSelectorModal";
 import AdvancedTimer from "./features/AdvancedTimer";
@@ -82,6 +83,8 @@ const FullSettingsModal = ({
   onGoToHistory,
   showPreSessionPreview,
   setShowPreSessionPreview,
+  restBgMode,
+  setRestBgMode,
   globalIncrementOverrides,
   setGlobalIncrementOverrides,
 }) => {
@@ -177,6 +180,29 @@ const FullSettingsModal = ({
                   >
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${showPreSessionPreview ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">Descanso fuera de la app</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 mb-2">Se aplica desde el próximo descanso.</div>
+                  <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-600" role="radiogroup" aria-label="Descanso fuera de la app">
+                    {REST_BG_MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={restBgMode === m.id}
+                        onClick={() => setRestBgMode(m.id)}
+                        className={`flex-1 min-h-[44px] px-2 rounded text-xs font-bold ${restBgMode === m.id ? 'bg-accent-600 text-black' : 'text-slate-400'}`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {REST_BG_MODES.map((m) => (
+                      <div key={m.id} className={`text-[10px] ${restBgMode === m.id ? 'text-slate-300' : 'text-slate-500'}`}>{m.hint}</div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
@@ -442,6 +468,7 @@ function AppMain() {
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
   const [workSubTab,         setWorkSubTab]         = useState('strength');
   const [showPreSessionPreview,    setShowPreSessionPreview]    = useState(false);
+  const [restBgMode,                setRestBgMode]               = useState('music');
   const [globalIncrementOverrides, setGlobalIncrementOverrides] = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
   const [showCoachContext,      setShowCoachContext]      = useState(false);
@@ -477,7 +504,7 @@ function AppMain() {
       await migrateCleanupResidualBlocks();
 
       // Load settings from Dexie
-      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','globalIncrementOverrides'];
+      const keys = ['barWeight','barUnit','accent','activeModeId','activeTab','historyMode','modes','inventory','showPreSessionPreview','restBackgroundMode','globalIncrementOverrides'];
       const values = await Promise.all(keys.map(k => getSetting(k)));
       const s = Object.fromEntries(keys.map((k, i) => [k, values[i]]));
 
@@ -497,6 +524,8 @@ function AppMain() {
       }
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
+      // old values: 'full' = Pantalla bloqueada; 'pip', 'off' or nothing = Con música
+      setRestBgMode(normalizeBackgroundMode(s.restBackgroundMode));
       if (s.globalIncrementOverrides !== undefined && s.globalIncrementOverrides !== null) setGlobalIncrementOverrides(s.globalIncrementOverrides);
 
       // Hydrate active session from Dexie
@@ -518,6 +547,7 @@ function AppMain() {
   useEffect(() => { if (isSettingsLoaded.current) setSetting('inventory', inventory); }, [inventory]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('showPreSessionPreview', showPreSessionPreview); }, [showPreSessionPreview]);
   useEffect(() => { if (isSettingsLoaded.current) setSetting('globalIncrementOverrides', globalIncrementOverrides); }, [globalIncrementOverrides]);
+  useEffect(() => { setBackgroundMode(restBgMode); if (isSettingsLoaded.current) setSetting('restBackgroundMode', restBgMode); }, [restBgMode]);
 
   // ── Auto backup check on load ─────────────────────────────────────────────
   useEffect(() => {
@@ -1485,6 +1515,8 @@ function AppMain() {
           onGoToHistory={() => { setActiveTab('history'); setShowSettings(false); }}
           showPreSessionPreview={showPreSessionPreview}
           setShowPreSessionPreview={setShowPreSessionPreview}
+          restBgMode={restBgMode}
+          setRestBgMode={setRestBgMode}
           globalIncrementOverrides={globalIncrementOverrides}
           setGlobalIncrementOverrides={setGlobalIncrementOverrides}
         />
