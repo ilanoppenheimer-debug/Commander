@@ -1,5 +1,6 @@
-import { buildDisplayNameIndex } from './exerciseName';
-import { makeVariantMatcher } from './exerciseVariant';
+import { buildDisplayNameIndex, normalizeExerciseName } from './exerciseName';
+import { makeVariantMatcher, resolveHistoryEquipment, variantLabel, isTimeMeasured } from './exerciseVariant';
+import { isComparable1RMEquipment } from '../constants/gymConstants';
 
 export const FORMULAS = {
   epley: (w, r) => w * (1 + r / 30),
@@ -240,6 +241,14 @@ export const getTopHistoricalSet = (exerciseName, history, options = {}) => {
 
 /**
  * Calcula 1RM estimado para todos los ejercicios con datos en el historial.
+ * Una entrada por VARIANTE (nombre + implemento) solo donde el 1RM es comparable
+ * (isComparable1RMEquipment: barra, mancuerna, multipower):
+ *  - un nombre con MÁS de un implemento comparable (con datos) → una entrada por implemento,
+ *    rotulada "Curl de Bíceps · barra";
+ *  - un nombre con un solo implemento comparable → una entrada, calculada solo con ese
+ *    implemento (la polea no infla la mancuerna), rotulada con el nombre a secas;
+ *  - un nombre sin implemento comparable → una entrada por nombre, como siempre.
+ * Cada entrada: { key, name, equipment, label, ...computeExercise1RM }.
  * Returns: Array sorted by current1RM desc.
  */
 export const computeAll1RMs = (history, options = {}) => {
@@ -248,12 +257,30 @@ export const computeAll1RMs = (history, options = {}) => {
   // One entry per exercise IDENTITY; the printed name is the spelling of its most recent session.
   const displayNames = buildDisplayNameIndex(history);
 
-  const results = [];
-  displayNames.forEach(name => {
-    const computed = computeExercise1RM(name, history, options);
-    if (computed.current1RM !== null) {
-      results.push({ name, ...computed });
+  // Comparable implements seen per name (history value, else metadata fallback).
+  const comparableByName = new Map();
+  for (const session of history) {
+    for (const ex of (Array.isArray(session?.exercises) ? session.exercises : [])) {
+      if (!ex?.name) continue;
+      const eq = resolveHistoryEquipment(ex);
+      if (!isComparable1RMEquipment(eq)) continue;
+      const n = normalizeExerciseName(ex.name);
+      if (!comparableByName.has(n)) comparableByName.set(n, new Set());
+      comparableByName.get(n).add(eq);
     }
+  }
+
+  const results = [];
+  displayNames.forEach((name, norm) => {
+    const eqs = [...(comparableByName.get(norm) || [])];
+    const variants = (eqs.length === 0 || isTimeMeasured(name)) ? [null] : eqs;
+    const found = [];
+    for (const equipment of variants) {
+      const computed = computeExercise1RM(name, history, { ...options, equipment });
+      if (computed.current1RM !== null) found.push({ key: `${norm}|${equipment || ''}`, name, equipment, ...computed });
+    }
+    // The implement is printed only when the name shows up more than once in the list.
+    for (const e of found) results.push({ ...e, label: found.length > 1 ? variantLabel(name, e.equipment) : name });
   });
 
   results.sort((a, b) => b.current1RM - a.current1RM);

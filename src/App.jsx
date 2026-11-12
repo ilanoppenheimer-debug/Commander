@@ -23,6 +23,7 @@ import InputGroup from "./components/ui/InputGroup";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
+import { variantLabel } from "./utils/exerciseVariant";
 import ExerciseHistoryModal from "./components/modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./components/modals/ExerciseSelectorModal";
 import AdvancedTimer from "./features/AdvancedTimer";
@@ -482,6 +483,7 @@ function AppMain() {
   const [isImporting,        setIsImporting]        = useState(false);
   const [notification,       setNotification]       = useState(null);
   const [trendExercise,      setTrendExercise]      = useState(null);
+  const [trendEquipment,     setTrendEquipment]     = useState(null); // variant when opened from a session's exercise
   const [isMigrating,        setIsMigrating]        = useState(true);
   const [detailSession,      setDetailSession]      = useState(null);
   const [editingSession,     setEditingSession]     = useState(null);
@@ -1410,7 +1412,7 @@ function AppMain() {
                       return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, count]) => {
                         const details = getExerciseDetails(name);
                         return (
-                          <div key={name} onClick={() => setTrendExercise(name)} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
+                          <div key={name} onClick={() => { setTrendEquipment(null); setTrendExercise(name); }} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}>{details.icon}</div>
                               <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{name}</span>
@@ -1431,7 +1433,7 @@ function AppMain() {
         })()}
 
         {trendExercise && (
-          <TrendModal exName={trendExercise} history={safeHistory} barUnit={barUnit} onClose={() => setTrendExercise(null)} />
+          <TrendModal exName={trendExercise} equipment={trendEquipment} label={variantLabel(trendExercise, trendEquipment)} history={safeHistory} barUnit={barUnit} onClose={() => { setTrendExercise(null); setTrendEquipment(null); }} />
         )}
 
         {detailSession && !editingSession && (
@@ -1441,7 +1443,7 @@ function AppMain() {
             onClose={() => setDetailSession(null)}
             onEdit={(s) => { setDetailSession(null); setEditingSession(s); }}
             onDeleted={() => setDetailSession(null)}
-            onOpenTrend={(name) => { setDetailSession(null); setTrendExercise(name); }}
+            onOpenTrend={(name, equipment = null) => { setDetailSession(null); setTrendEquipment(equipment); setTrendExercise(name); }}
             onGoToRoutines={(name) => { setDetailSession(null); setActiveTab('routines'); showNotify(`Plantilla creada: ${name}`, 'success'); }}
           />
         )}

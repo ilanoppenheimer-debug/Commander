@@ -3,7 +3,7 @@ import { computeExercise1RM, estimate1RM } from '../../utils/strengthMath';
 import { ExerciseSearchInput } from './ExerciseSearchInput';
 import { WorkSetsTable } from './WorkSetsTable';
 
-export const Mode2Calc = ({ history, barUnit, preselectedExercise, preselected1RM, onClearPreselection }) => {
+export const Mode2Calc = ({ history, barUnit, preselectedExercise, preselected1RM, preselectedEquipment = null, onClearPreselection }) => {
   const [exerciseName, setExerciseName] = useState(preselectedExercise || '');
   const [weight, setWeight] = useState('');
   const [reps,   setReps]   = useState('');
@@ -13,7 +13,7 @@ export const Mode2Calc = ({ history, barUnit, preselectedExercise, preselected1R
   useEffect(() => {
     if (preselectedExercise) {
       setExerciseName(preselectedExercise);
-      const data = computeExercise1RM(preselectedExercise, history, { weeksBack: 12 });
+      const data = computeExercise1RM(preselectedExercise, history, { weeksBack: 12, equipment: preselectedEquipment });
       const topSet = data?.topSets?.[0];
       if (topSet) {
         setWeight(String(topSet.weight ?? ''));

@@ -53,7 +53,7 @@ import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
-import { currentEquipment, makeVariantMatcher } from "../utils/exerciseVariant";
+import { currentEquipment, makeVariantMatcher, variantLabel } from "../utils/exerciseVariant";
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
@@ -752,6 +752,7 @@ export default function ActiveSession({
         <ExerciseHistoryModal
           exName={selectedExHistory}
           equipment={currentEquipment(exercises.find(e => sameExercise(e.name, selectedExHistory)))}
+          label={variantLabel(selectedExHistory, currentEquipment(exercises.find(e => sameExercise(e.name, selectedExHistory))))}
           history={history}
           barUnit={barUnit}
           showNotify={showNotify}

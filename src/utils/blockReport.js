@@ -2,7 +2,7 @@ import { getExerciseMeta, getCompanion } from '../constants/exerciseMetadata';
 import { formatSetSummary, formatVolume } from './formatters';
 import { getSessionTypeBreakdown } from './routineImport/contextGenerator';
 import { localDateStr } from './localDate';
-import { sameExercise, normalizeExerciseName } from './exerciseName';
+import { createVariantIndex } from './exerciseVariant';
 
 const PAIN_WORDS = ['dolor', 'molestia', 'pinchazo', 'tiron', 'tirón', 'lesion', 'lesión', 'pinzamiento'];
 const hasPainKeyword = (text) => {
@@ -35,11 +35,13 @@ export const resolveExerciseTag = (ex) => ex?.tag || getExerciseMeta(ex?.name)?.
 // score; bodyweight (weight 0) ranks by reps, since weight can't discriminate there.
 const setScore = (weight, reps) => (weight > 0 ? weight * (1 + reps / 30) : reps);
 
-const bestSetForExercise = (name, sessions) => {
+// `inVariant(ex)` says whether a history exercise belongs to the variant (name +
+// implement) being reported — see createVariantIndex.
+const bestSetForExercise = (inVariant, sessions) => {
   let best = null, bestDate = '', bestScoreVal = -1;
   for (const s of sessions) {
     for (const ex of (s.exercises || [])) {
-      if (!sameExercise(ex?.name, name)) continue;
+      if (!ex?.name || !inVariant(ex)) continue;
       for (const set of (ex.sets || [])) {
         if (!hasData(set) || !isWorkSet(set)) continue;
         const w = parseFloat(set.weight) || 0;
@@ -122,19 +124,30 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
   // Exercises that belong to this block by tag, in first-appearance order.
   // One entry per exercise identity (spelling variants merge); blockSessions is in
   // ascending date order, so the last spelling written wins = the most recent session's.
+  // Reported per VARIANT (name + implement): "Curl · barra" and "Curl · mancuerna" are two
+  // entries with their own best set and volume. The index spans this block and the
+  // previous one, so the comparison "[bloque anterior: …]" is against the same variant.
+  // A name with a single implement prints exactly as before (no suffix).
+  const vIndex = createVariantIndex([...blockSessions, ...previousSessions].flatMap(s => s.exercises || []));
   const nameByKey = new Map();
+  const equipmentByKey = new Map();
   const keyOrder = [];
   blockSessions.forEach(s => {
     (s.exercises || []).forEach(ex => {
       if (!ex?.name) return;
       const tag = resolveExerciseTag(ex);
       if (!(tag && blockTags.includes(tag))) return;
-      const key = normalizeExerciseName(ex.name);
+      const { key, equipment } = vIndex.keyOf(ex);
       if (!nameByKey.has(key)) keyOrder.push(key);
       nameByKey.set(key, ex.name);
+      equipmentByKey.set(key, equipment);
     });
   });
-  const exerciseNames = keyOrder.map(k => nameByKey.get(k));
+  const exerciseVariants = keyOrder.map(k => ({
+    key: k,
+    name: nameByKey.get(k),
+    label: vIndex.labelFor(nameByKey.get(k), equipmentByKey.get(k)),
+  }));
 
   // Weekly + total volume, sets, RPE — loaded work only for volume (kg·rep needs a
   // weight); sets/RPE count any real data, bodyweight included.
@@ -197,14 +210,15 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
     }
   }
 
-  for (const name of exerciseNames) {
-    const best = bestSetForExercise(name, blockSessions);
+  for (const { key, name, label } of exerciseVariants) {
+    const inVariant = (ex) => vIndex.keyOf(ex).key === key;
+    const best = bestSetForExercise(inVariant, blockSessions);
     const companion = getCompanion(name);
 
     let exSets = 0, exVolume = 0;
     blockSessions.forEach(s => {
       (s.exercises || []).forEach(ex => {
-        if (!sameExercise(ex.name, name)) return;
+        if (!ex?.name || !inVariant(ex)) return;
         (ex.sets || []).forEach(set => {
           if (!hasData(set) || !isWorkSet(set)) return;
           exSets++;
@@ -219,11 +233,11 @@ export const generateBlockReport = (block, allHistory, allBlocks = []) => {
     if (exSets === 0) continue;
 
     lines.push('');
-    lines.push(`## ${name}`);
+    lines.push(`## ${label}`);
 
     if (best) {
       let bestLine = `  Mejor set: ${formatSetSummary(best.set, 'kg', companion)} (${best.date})`;
-      const prevBest = previousBlock ? bestSetForExercise(name, previousSessions) : null;
+      const prevBest = previousBlock ? bestSetForExercise(inVariant, previousSessions) : null;
       if (prevBest) {
         bestLine += ` [bloque anterior: ${formatSetSummary(prevBest.set, 'kg', companion)}, ${prevBest.date}]`;
       }

@@ -6,9 +6,11 @@ export default function StrengthCalculator({ history, barUnit = 'kg' }) {
   const [mode, setMode] = useState('list');
   const [preselectedExercise, setPreselectedExercise] = useState(null);
   const [preselected1RM,      setPreselected1RM]      = useState(null);
+  const [preselectedEquipment, setPreselectedEquipment] = useState(null);
 
-  const switchToCalc = (exerciseName, oneRM) => {
+  const switchToCalc = (exerciseName, oneRM, equipment = null) => {
     setPreselectedExercise(exerciseName);
+    setPreselectedEquipment(equipment);
     setPreselected1RM(oneRM);
     setMode('calc');
   };
@@ -47,9 +49,11 @@ export default function StrengthCalculator({ history, barUnit = 'kg' }) {
           barUnit={barUnit}
           preselectedExercise={preselectedExercise}
           preselected1RM={preselected1RM}
+          preselectedEquipment={preselectedEquipment}
           onClearPreselection={() => {
             setPreselectedExercise(null);
             setPreselected1RM(null);
+            setPreselectedEquipment(null);
           }}
         />
       )}
