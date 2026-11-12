@@ -524,7 +524,7 @@ function AppMain() {
       }
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
-      // old values: 'full' = Pantalla bloqueada; 'pip', 'off' or nothing = Con música
+      // old values: 'full' = Completo; 'pip', 'off' or nothing = PiP
       setRestBgMode(normalizeBackgroundMode(s.restBackgroundMode));
       if (s.globalIncrementOverrides !== undefined && s.globalIncrementOverrides !== null) setGlobalIncrementOverrides(s.globalIncrementOverrides);
 

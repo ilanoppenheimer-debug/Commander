@@ -141,7 +141,7 @@ const playWebAudioPulse = (i) => {
 };
 
 // Vibration alone (same pattern as the alarm), for callers that play the alarm sound some
-// other way (the background <audio> path in features/restBackground.js, "Pantalla bloqueada").
+// other way (the background <audio> path in features/restBackground.js, "Completo").
 export const vibrateAlarm = () => {
   try { if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN); } catch {}
 };
@@ -172,7 +172,18 @@ export const playHoldTargetBeep = () => {
   }
 };
 
-export const playPreAlert = () => {
+// `webAudio` (setting "Completo") plays the pre-alert exactly as it always did, a WebAudio beep
+// on the shared context: that is the behaviour validated with the screen locked. Otherwise one
+// short <audio> clip.
+export const playPreAlert = ({ webAudio = false } = {}) => {
+  if (webAudio) {
+    try {
+      const ctx = getCtx();
+      if (ctx) beep(ctx, newBus(ctx, 0.15), 440, ctx.currentTime, 0.15, 0.15);
+      if (navigator.vibrate) navigator.vibrate(80);
+    } catch {}
+    return;
+  }
   // One short clip (440 Hz, 0.15 s, same level as before); the old WebAudio beep only if the
   // browser refuses the <audio>.
   playClip(preAlertUrl(), () => {

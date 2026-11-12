@@ -30,15 +30,15 @@ const ALARM_CAP_MS = 30000;
 const ALARM_VIBRATE_REPEAT_MS = 5000;
 
 // Two ways to run the rest timer outside the app (a user setting):
-//   music  (default): PiP window only. No <audio> is kept playing, so a music app keeps the
+//   music  (default, label "PiP"): PiP window only. No <audio> is kept playing, so a music app keeps the
 //          audio focus; the pre-alert and the alarm are short <audio> clips (audioService.js)
 //          that make the music duck and come back. The screen stays on (Wake Lock).
-//   locked : the near-silent <audio> in a loop + Media Session notification + PiP. It keeps the
+//   locked (label "Completo"): the near-silent <audio> in a loop + Media Session notification + PiP. It keeps the
 //          page alive with the phone locked and the alarm sounds from that audio; it takes the
 //          audio focus, so it pauses the music.
 export const REST_BG_MODES = [
-  { id: 'music', label: 'Con música', hint: 'Con música: la música baja en el aviso y sigue. No bloquees la pantalla.' },
-  { id: 'locked', label: 'Pantalla bloqueada', hint: 'Pantalla bloqueada: la alarma suena con el teléfono bloqueado. Corta la música.' },
+  { id: 'music', label: 'PiP', hint: 'PiP: la música baja en el aviso y sigue. No bloquees la pantalla.' },
+  { id: 'locked', label: 'Completo', hint: 'Completo: suena con el teléfono bloqueado. Corta la música.' },
 ];
 // The stored setting used to be 'full' | 'pip' | 'off': 'full' is the locked-screen mode, anything
 // else (or nothing) is the music mode.
@@ -335,7 +335,7 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
 // Entry point, called from the tap on a set's "complete": the notification (audio + Media
 // Session) and the PiP window start together. Both sync parts run before any await, so both
 // keep the tap's user activation; a PiP that can't open leaves the notification running.
-// Mode 'pip' (setting "Con música"): just the floating window. No <audio>, so the music app keeps
+// Mode 'pip' (setting "PiP"): just the floating window. No <audio>, so the music app keeps
 // the audio focus; the alarm is the short-clip one played by the timer (bgHandlesAlarm is false).
 // The PiP is best effort.
 const startPipOnly = async ({ getSnapshot, onStop, onDismiss }) => {
@@ -400,5 +400,5 @@ export const bgComplete = () => {
     const vib = setInterval(vibrateAlarm, ALARM_VIBRATE_REPEAT_MS);
     st.cleanup.push(() => { clearInterval(vib); stopVibration(); });
   }
-  note(viaAudio ? 'fin del descanso: alarma por <audio> (tope 30 s)' : `fin del descanso: alarma de clips cortos (${st.mode === 'pip' ? 'modo Con música' : 'el audio de fondo lo perdió otra app'})`);
+  note(viaAudio ? 'fin del descanso: alarma por <audio> (tope 30 s)' : `fin del descanso: alarma de clips cortos (${st.mode === 'pip' ? 'modo PiP' : 'el audio de fondo lo perdió otra app'})`);
 };

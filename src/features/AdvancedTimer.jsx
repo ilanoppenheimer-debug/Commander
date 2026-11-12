@@ -6,7 +6,7 @@ import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage
 import { acquireWakeLock, releaseWakeLock as releaseWakeLockOwner } from '../utils/wakeLock';
 
 const REST_LOCK_OWNER = 'rest-timer';
-import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
+import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming, getBackgroundMode } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -74,7 +74,7 @@ const AdvancedTimer = () => {
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
-  // Rest timer outside the app (PiP window / locked-screen audio, features/restBackground.js):
+  // Rest timer outside the app (PiP, or PiP + locked-screen audio in "Completo"; features/restBackground.js):
   // live snapshot of the countdown for it to draw/report.
   const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null }));
   // Mirrors initialTimerSeconds but is also written synchronously by setTimerPreset: the
@@ -178,7 +178,7 @@ const AdvancedTimer = () => {
     const remaining = getDisplaySeconds();
     if (remaining <= 10 && !preAlertFiredRef.current) {
       preAlertFiredRef.current = true;
-      playPreAlert();
+      playPreAlert({ webAudio: getBackgroundMode() === 'locked' }); // "Completo": the WebAudio beep as before
     }
     if (remaining <= 0 && !completedRef.current) {
       completedRef.current = true;
@@ -187,7 +187,7 @@ const AdvancedTimer = () => {
       releaseWakeLock();
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
-      // (In "Pantalla bloqueada" the background <audio> element plays the alarm.)
+      // (In "Completo" the background <audio> element plays the alarm.)
       bgComplete();
       if (!bgHandlesAlarm()) startAlarmLoop();
       setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
@@ -372,7 +372,7 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
-      // The background part (PiP, plus the audio + notification in "Pantalla bloqueada")
+      // The background part (PiP, plus the audio + notification in "Completo")
       // starts still inside the tap on a set's check button (the event is dispatched
       // synchronously from its click handler), so audio.play() and requestPictureInPicture()
       // have their user gesture. A PiP that can't open leaves the rest running, without any
