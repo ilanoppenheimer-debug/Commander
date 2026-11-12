@@ -1,4 +1,5 @@
 import { vibrateAlarm, stopVibration, ALARM_TONE } from '../services/audioService';
+import { makeWavUrl } from '../utils/wavSynth';
 
 // Rest timer outside the app. On every set completion BOTH start, inside the same tap:
 //
@@ -28,18 +29,22 @@ const SILENT_AMPLITUDE = 0.003;
 const ALARM_CAP_MS = 30000;
 const ALARM_VIBRATE_REPEAT_MS = 5000;
 
-// How much of the "rest outside the app" machinery runs (a user setting). The silent <audio>
-// that keeps the page alive also takes Android's audio focus, which pauses a music app, so:
-//   full : <audio> + Media Session notification + PiP (the original behaviour)
-//   pip  : PiP window only — no <audio>, no notification; the alarm is the regular WebAudio one
-//   off  : nothing outside the app — the in-app timer, WebAudio alarm and vibration only
+// Two ways to run the rest timer outside the app (a user setting):
+//   music  (default, label "PiP"): PiP window only. No <audio> is kept playing, so a music app keeps the
+//          audio focus; the pre-alert and the alarm are short <audio> clips (audioService.js)
+//          that make the music duck and come back. The screen stays on (Wake Lock).
+//   locked (label "Completo"): the near-silent <audio> in a loop + Media Session notification + PiP. It keeps the
+//          page alive with the phone locked and the alarm sounds from that audio; it takes the
+//          audio focus, so it pauses the music.
 export const REST_BG_MODES = [
-  { id: 'full', label: 'Completo', hint: 'Notificación + PiP. Pausa la música.' },
-  { id: 'pip', label: 'Solo PiP', hint: 'Ventana flotante, sin audio de fondo.' },
-  { id: 'off', label: 'Sin fondo', hint: 'Nada fuera de la app.' },
+  { id: 'music', label: 'PiP', hint: 'PiP: la música baja en el aviso y sigue. No bloquees la pantalla.' },
+  { id: 'locked', label: 'Completo', hint: 'Completo: suena con el teléfono bloqueado. Corta la música.' },
 ];
-let bgMode = 'full';
-export const setBackgroundMode = (m) => { bgMode = REST_BG_MODES.some(x => x.id === m) ? m : 'full'; };
+// The stored setting used to be 'full' | 'pip' | 'off': 'full' is the locked-screen mode, anything
+// else (or nothing) is the music mode.
+export const normalizeBackgroundMode = (m) => (m === 'full' || m === 'locked' ? 'locked' : 'music');
+let bgMode = 'music';
+export const setBackgroundMode = (m) => { bgMode = normalizeBackgroundMode(m); };
 export const getBackgroundMode = () => bgMode;
 
 let state = null; // { mode: 'media'|'pip', cleanup: [fn], getSnapshot, actions, alarming, pip: {...} | null, ... }
@@ -59,19 +64,6 @@ export const bgSupport = () => ({
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
 
-// ── Tiny WAV synth (no dependencies) ─────────────────────────────────────────────────
-export const makeWavUrl = (seconds, sampleRate, sampleAt) => {
-  const n = Math.floor(seconds * sampleRate);
-  const buf = new ArrayBuffer(44 + n * 2);
-  const v = new DataView(buf);
-  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
-  v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(sampleAt(i / sampleRate) * 32767), true);
-  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-};
 const silentUrl = () => makeWavUrl(10, 8000, (t) => SILENT_AMPLITUDE * Math.sin(2 * Math.PI * 30 * t));
 // Same pulses as playTacticalAlarm (tone, envelope and peak come from ALARM_TONE).
 const alarmUrl = () => makeWavUrl(ALARM_TONE.pulses * ALARM_TONE.interval, 22050, (t) => {
@@ -188,12 +180,12 @@ const drawFrame = (ctx, w, h, { remainingSecs, totalSecs, name }, done) => {
 
 // Best effort, attached to the running media state. Must run inside the user gesture that
 // started the rest (the tap on a set's check button).
-const releasePip = (st, note) => {
+const releasePip = (st, msg) => {
   const pip = st.pip;
   if (!pip) return;
   st.pip = null;
   for (const fn of pip.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
-  if (note && state === st) note(note);
+  if (msg && state === st) note(msg);
 };
 
 const attachPip = async (st) => {
@@ -343,8 +335,9 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
 // Entry point, called from the tap on a set's "complete": the notification (audio + Media
 // Session) and the PiP window start together. Both sync parts run before any await, so both
 // keep the tap's user activation; a PiP that can't open leaves the notification running.
-// Mode 'pip': just the floating window. No <audio>, so the music app keeps the audio focus; the
-// alarm is the regular WebAudio one (bgHandlesAlarm is false here). The PiP is best effort.
+// Mode 'pip' (setting "PiP"): just the floating window. No <audio>, so the music app keeps
+// the audio focus; the alarm is the short-clip one played by the timer (bgHandlesAlarm is false).
+// The PiP is best effort.
 const startPipOnly = async ({ getSnapshot, onStop, onDismiss }) => {
   if (state?.mode === 'pip' && !state.alarming) {
     state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
@@ -361,8 +354,7 @@ const startPipOnly = async ({ getSnapshot, onStop, onDismiss }) => {
 };
 
 export const startBackground = async (params) => {
-  if (bgMode === 'off') { stopBackground(); return false; }
-  if (bgMode === 'pip') return startPipOnly(params);
+  if (bgMode === 'music') return startPipOnly(params);
   const mediaP = startMediaCore(params);
   const st = state;
   const pipP = st ? attachPip(st) : Promise.resolve(false);
@@ -378,8 +370,8 @@ export const bgComplete = () => {
   st.pip?.draw(); // the floating window flips to ¡FIN! at once
   // media: the alarm goes through the same <audio> element that is keeping the page alive,
   // and the notification flips to "¡FIN!" (title, subtitle with what follows, big picture).
-  // Not when the system took the audio away, and not in 'pip' mode: there the regular WebAudio
-  // alarm (which also vibrates) is played by the timer (bgHandlesAlarm is false).
+  // Not when the system took the audio away, and not in 'pip' mode: there the timer plays the
+  // short-clip alarm (which also vibrates) itself (bgHandlesAlarm is false).
   const viaAudio = st.mode === 'media' && !st.audioLost;
   if (st.mode === 'media') {
     const { audio, alarmSrc } = st;
@@ -408,5 +400,5 @@ export const bgComplete = () => {
     const vib = setInterval(vibrateAlarm, ALARM_VIBRATE_REPEAT_MS);
     st.cleanup.push(() => { clearInterval(vib); stopVibration(); });
   }
-  note(viaAudio ? 'fin del descanso: alarma por <audio> (tope 30 s)' : `fin del descanso: alarma WebAudio (${st.mode === 'pip' ? 'modo Solo PiP' : 'el audio de fondo lo perdió otra app'})`);
+  note(viaAudio ? 'fin del descanso: alarma por <audio> (tope 30 s)' : `fin del descanso: alarma de clips cortos (${st.mode === 'pip' ? 'modo PiP' : 'el audio de fondo lo perdió otra app'})`);
 };

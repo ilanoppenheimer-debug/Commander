@@ -13,8 +13,6 @@ import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { DEFAULT_INCREMENTS_BY_EQUIPMENT } from "./components/keypad/keypadConfig";
-import { REST_BG_MODES, setBackgroundMode } from "./features/restBackground";
-import { ALARM_FOCUS_TESTS, runAlarmFocusTest } from "./features/alarmFocusTest";
 import { playTacticalAlarm } from "./services/audioService";
 import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -23,6 +21,7 @@ import InputGroup from "./components/ui/InputGroup";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
+import { REST_BG_MODES, setBackgroundMode, normalizeBackgroundMode } from "./features/restBackground";
 import { variantLabel } from "./utils/exerciseVariant";
 import ExerciseHistoryModal from "./components/modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./components/modals/ExerciseSelectorModal";
@@ -70,30 +69,6 @@ import {
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical,
   Archive
 } from 'lucide-react';
-
-// Temporary: tap each variant once with music playing and note what the music does.
-const AlarmFocusTest = () => {
-  const [last, setLast] = useState(null); // { id, ok }
-  return (
-    <div>
-      <div className="text-sm font-bold text-white">Probar alarma (prueba)</div>
-      <div className="text-[10px] text-slate-500 mt-0.5 mb-2">Con música sonando, tocá cada botón (suena 1 vez) y anotá si la música se corta, baja y vuelve sola, o no cambia. No cambia el timer real.</div>
-      <div className="space-y-1.5">
-        {ALARM_FOCUS_TESTS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setLast({ id: t.id, ok: runAlarmFocusTest(t.id) })}
-            className="w-full min-h-[44px] px-3 rounded-lg bg-slate-900 border border-slate-600 text-left text-xs font-bold text-slate-200 active:scale-[0.99] flex items-center justify-between gap-2"
-          >
-            <span>{t.label}</span>
-            {last?.id === t.id && <span className={`shrink-0 text-[10px] ${last.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{last.ok ? 'sonó' : 'no soportado'}</span>}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const FullSettingsModal = ({
   inventory,
@@ -207,10 +182,9 @@ const FullSettingsModal = ({
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${showPreSessionPreview ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
-                {/* Temporary, for the Android music test matrix: it becomes one "Escucho música en el gym" switch. */}
                 <div>
-                  <div className="text-sm font-bold text-white">Descanso fuera de la app (prueba)</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5 mb-2">El audio de fondo que mantiene vivo el timer pausa la música. Se aplica desde el próximo descanso.</div>
+                  <div className="text-sm font-bold text-white">Descanso fuera de la app</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 mb-2">Se aplica desde el próximo descanso.</div>
                   <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-600" role="radiogroup" aria-label="Descanso fuera de la app">
                     {REST_BG_MODES.map((m) => (
                       <button
@@ -225,10 +199,12 @@ const FullSettingsModal = ({
                       </button>
                     ))}
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-1">{REST_BG_MODES.find((m) => m.id === restBgMode)?.hint}</div>
+                  <div className="mt-2 space-y-1">
+                    {REST_BG_MODES.map((m) => (
+                      <div key={m.id} className={`text-[10px] ${restBgMode === m.id ? 'text-slate-300' : 'text-slate-500'}`}>{m.hint}</div>
+                    ))}
+                  </div>
                 </div>
-                {/* Temporary test (no effect on the real timer): which alarm lets the music keep playing. */}
-                <AlarmFocusTest />
               </div>
             </section>
           )}
@@ -494,7 +470,7 @@ function AppMain() {
   const [platesSubTab,       setPlatesSubTab]       = useState('target');
   const [workSubTab,         setWorkSubTab]         = useState('strength');
   const [showPreSessionPreview,    setShowPreSessionPreview]    = useState(false);
-  const [restBgMode,                setRestBgMode]               = useState('full');
+  const [restBgMode,                setRestBgMode]               = useState('music');
   const [globalIncrementOverrides, setGlobalIncrementOverrides] = useState({});
   const [preSessionRoutine,     setPreSessionRoutine]     = useState(null);
   const [showCoachContext,      setShowCoachContext]      = useState(false);
@@ -550,7 +526,8 @@ function AppMain() {
       }
 
       if (s.showPreSessionPreview !== undefined) setShowPreSessionPreview(s.showPreSessionPreview);
-      if (s.restBackgroundMode !== undefined && s.restBackgroundMode !== null) setRestBgMode(s.restBackgroundMode);
+      // old values: 'full' = Completo; 'pip', 'off' or nothing = PiP
+      setRestBgMode(normalizeBackgroundMode(s.restBackgroundMode));
       if (s.globalIncrementOverrides !== undefined && s.globalIncrementOverrides !== null) setGlobalIncrementOverrides(s.globalIncrementOverrides);
 
       // Hydrate active session from Dexie
