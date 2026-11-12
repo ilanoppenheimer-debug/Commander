@@ -14,6 +14,7 @@ import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { DEFAULT_INCREMENTS_BY_EQUIPMENT } from "./components/keypad/keypadConfig";
 import { REST_BG_MODES, setBackgroundMode } from "./features/restBackground";
+import { ALARM_FOCUS_TESTS, runAlarmFocusTest } from "./features/alarmFocusTest";
 import { playTacticalAlarm } from "./services/audioService";
 import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -68,6 +69,30 @@ import {
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical,
   Archive
 } from 'lucide-react';
+
+// Temporary: tap each variant once with music playing and note what the music does.
+const AlarmFocusTest = () => {
+  const [last, setLast] = useState(null); // { id, ok }
+  return (
+    <div>
+      <div className="text-sm font-bold text-white">Probar alarma (prueba)</div>
+      <div className="text-[10px] text-slate-500 mt-0.5 mb-2">Con música sonando, tocá cada botón (suena 1 vez) y anotá si la música se corta, baja y vuelve sola, o no cambia. No cambia el timer real.</div>
+      <div className="space-y-1.5">
+        {ALARM_FOCUS_TESTS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setLast({ id: t.id, ok: runAlarmFocusTest(t.id) })}
+            className="w-full min-h-[44px] px-3 rounded-lg bg-slate-900 border border-slate-600 text-left text-xs font-bold text-slate-200 active:scale-[0.99] flex items-center justify-between gap-2"
+          >
+            <span>{t.label}</span>
+            {last?.id === t.id && <span className={`shrink-0 text-[10px] ${last.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{last.ok ? 'sonó' : 'no soportado'}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const FullSettingsModal = ({
   inventory,
@@ -201,6 +226,8 @@ const FullSettingsModal = ({
                   </div>
                   <div className="text-[10px] text-slate-500 mt-1">{REST_BG_MODES.find((m) => m.id === restBgMode)?.hint}</div>
                 </div>
+                {/* Temporary test (no effect on the real timer): which alarm lets the music keep playing. */}
+                <AlarmFocusTest />
               </div>
             </section>
           )}

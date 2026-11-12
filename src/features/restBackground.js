@@ -60,7 +60,7 @@ export const bgSupport = () => ({
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
 
 // ── Tiny WAV synth (no dependencies) ─────────────────────────────────────────────────
-const makeWavUrl = (seconds, sampleRate, sampleAt) => {
+export const makeWavUrl = (seconds, sampleRate, sampleAt) => {
   const n = Math.floor(seconds * sampleRate);
   const buf = new ArrayBuffer(44 + n * 2);
   const v = new DataView(buf);

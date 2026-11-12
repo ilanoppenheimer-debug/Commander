@@ -82,6 +82,18 @@ export const playTacticalAlarm = () => {
   }
 };
 
+// One short beep (test of the audio-focus behaviour on Android, see features/alarmFocusTest.js):
+// same shared AudioContext, bus, tone and envelope as the alarm pulses, just a single pulse.
+export const playSingleBeep = (duration = 0.3) => {
+  try {
+    const ctx = getCtx();
+    if (!ctx) return false;
+    const bus = newBus(ctx, duration);
+    beep(ctx, bus, ALARM_TONE.freqs[0], ctx.currentTime, duration, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
+    return true;
+  } catch { return false; }
+};
+
 // Vibration alone (same pattern as the alarm), for callers that play the alarm sound some
 // other way (the background <audio> path in features/restBackground.js).
 export const vibrateAlarm = () => {
