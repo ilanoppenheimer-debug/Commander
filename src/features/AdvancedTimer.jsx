@@ -6,7 +6,7 @@ import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage
 import { acquireWakeLock, releaseWakeLock as releaseWakeLockOwner } from '../utils/wakeLock';
 
 const REST_LOCK_OWNER = 'rest-timer';
-import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
+import { startBackground, bgComplete, stopBackground, bgAlarming } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -74,7 +74,7 @@ const AdvancedTimer = () => {
   const prevHasSessionRef  = useRef(hasActiveSession);
   // End-of-rest alert shown full screen: { at: ms when it finished, next: label | null }
   const [alertInfo, setAlertInfo] = useState(null);
-  // Rest timer outside the app (PiP + media notification, features/restBackground.js):
+  // Rest timer outside the app (PiP window, features/restBackground.js):
   // live snapshot of the countdown for it to draw/report.
   const bgSnapshotRef = useRef(() => ({ remainingSecs: 0, totalSecs: 0, name: null, next: null }));
   // Mirrors initialTimerSeconds but is also written synchronously by setTimerPreset: the
@@ -187,9 +187,8 @@ const AdvancedTimer = () => {
       releaseWakeLock();
       // Visible or not, the alarm repeats until silenced (30s cap) and the full-screen alert
       // is raised — if the app was hidden, it's what the athlete sees on coming back.
-      // (With the background notification active, its <audio> element plays the alarm.)
       bgComplete();
-      if (!bgHandlesAlarm()) startAlarmLoop();
+      startAlarmLoop();
       setAlertInfo({ at: Date.now(), next: nextRef.current, name: sourceRef.current });
     }
   }); // runs on every render; fine since it checks refs before acting
@@ -336,7 +335,7 @@ const AdvancedTimer = () => {
   };
 
   const setTimerPreset = (secs, next = null, name = null) => {
-    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm held by the background notification
+    if (bgAlarming()) stopBackground(); // a new rest ends the previous alarm's floating window
     durationRef.current = secs;
     stopAlarmLoop();
     setAlertInfo(null);
@@ -372,10 +371,10 @@ const AdvancedTimer = () => {
       const { seconds: restSecs, next, exerciseName } = e.detail || {};
       if (!restSecs) return;
       setTimerPreset(restSecs, next || null, exerciseName || null);
-      // Notification + PiP start together, still inside the tap on a set's check
-      // button (the event is dispatched synchronously from its click handler), so
-      // audio.play() and requestPictureInPicture() have their user gesture. A PiP that
-      // can't open leaves the notification running, without any visible error.
+      // The PiP window starts still inside the tap on a set's check button (the event is
+      // dispatched synchronously from its click handler), so requestPictureInPicture() has its
+      // user gesture. A PiP that can't open leaves the in-app timer running, without any
+      // visible error.
       startBackground(bgParams());
       setIsExpanded(true);
       clearTimeout(autoCloseTimer);
@@ -383,7 +382,7 @@ const AdvancedTimer = () => {
     };
     // One timer at a time: a timed-set hold that starts cancels the rest timer — running or
     // already finished with its alarm/alert up — silently (no alarm, no end-of-rest overlay).
-    // resetTimer also releases the rest wake lock and the background notification/PiP.
+    // resetTimer also releases the rest wake lock and the PiP window.
     const cancelHandler = () => { clearTimeout(autoCloseTimer); setIsExpanded(false); resetTimer(); };
     window.addEventListener('iron-cmdr:start-rest-timer', handler);
     window.addEventListener('iron-cmdr:cancel-rest-timer', cancelHandler);

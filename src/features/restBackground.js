@@ -1,121 +1,30 @@
-import { vibrateAlarm, stopVibration, ALARM_TONE } from '../services/audioService';
-import { makeWavUrl } from '../utils/wavSynth';
+// Rest timer outside the app: a floating Picture-in-Picture window.
+//
+// The timer is drawn on a <canvas>, captureStream() feeds a muted <video> and
+// requestPictureInPicture() floats it over other apps. Keeping that playing video is what
+// lets Android keep the page alive with the athlete in another app. It must start inside the
+// tap on a set's check (user gesture). If it can't open (unsupported, rejected, no gesture) the
+// count carries on inside the app, without a visible error (the reason goes to console.info).
+//
+// There is NO <audio> here and no Media Session notification: a playing <audio> takes Android's
+// audio focus and pauses the music app. The pre-alert and the alarm are short <audio> clips
+// (services/audioService.js) that make the music duck and come back by itself.
+//
+// While the alarm sounds, closing the floating window (away from the app) silences it and
+// releases everything. Everything lives in memory; nothing is written to storage.
 
-// Rest timer outside the app. On every set completion BOTH start, inside the same tap:
-//
-//  - Player notification (always): a near-silent looping <audio> + Media Session metadata /
-//    position / actions, so Android treats the page as "playing media" and keeps it alive
-//    with the app in the background or the screen locked.
-//  - Picture-in-Picture (best effort): the timer is drawn on a <canvas>, captureStream()
-//    feeds a <video> and requestPictureInPicture() floats it over other apps. If it can't
-//    open (unsupported, rejected, no gesture) the notification carries on alone, without a
-//    visible error (the reason goes to console.info). Android closes the PiP when the
-//    screen locks and it can't be reopened without a gesture: the notification covers that.
-//
-// Dismissing without opening the app:
-//  - while COUNTING, "pause" is ignored (pausing the silent audio would let Android freeze
-//    the page) and "stop" skips the rest;
-//  - while the ALARM sounds, pause/stop (and closing the PiP window) silence it and
-//    release everything.
-//
-// Everything lives in memory (module state + blob URLs); nothing is written to storage.
-
-// Amplitud del audio "silencioso": NO es 0 a propósito. Chrome decide si una página está
-// reproduciendo audio midiendo la potencia real de la salida; con silencio digital exacto
-// (muestras en 0) puede no contarla como audible y Android vuelve a congelar la página con
-// la pantalla bloqueada. 0.003 (~ -50 dBFS, un seno de 30 Hz que los parlantes de un celular
-// ni reproducen) es inaudible y alcanzó en las pruebas en un Android real.
-const SILENT_AMPLITUDE = 0.003;
 const ALARM_CAP_MS = 30000;
-const ALARM_VIBRATE_REPEAT_MS = 5000;
 
-// How much of the "rest outside the app" machinery runs (a user setting). The silent <audio>
-// that keeps the page alive also takes Android's audio focus, which pauses a music app, so:
-//   full : <audio> + Media Session notification + PiP (the original behaviour)
-//   pip  : PiP window only — no <audio>, no notification; the alarm is the regular WebAudio one
-//   off  : nothing outside the app — the in-app timer, WebAudio alarm and vibration only
-export const REST_BG_MODES = [
-  { id: 'full', label: 'Completo', hint: 'Notificación + PiP. Pausa la música.' },
-  { id: 'pip', label: 'Solo PiP', hint: 'Ventana flotante, sin audio de fondo.' },
-  { id: 'off', label: 'Sin fondo', hint: 'Nada fuera de la app.' },
-];
-let bgMode = 'full';
-export const setBackgroundMode = (m) => { bgMode = REST_BG_MODES.some(x => x.id === m) ? m : 'full'; };
-export const getBackgroundMode = () => bgMode;
-
-let state = null; // { mode: 'media'|'pip', cleanup: [fn], getSnapshot, actions, alarming, pip: {...} | null, ... }
+let state = null; // { cleanup: [fn], getSnapshot, actions, alarming, pip: {...} | null }
 const note = (msg) => console.info('[restBg]', msg);
 export const bgAlarming = () => !!state?.alarming;
-// With the notification active the alarm is played by the <audio> element itself (the thing
-// Android keeps alive), so the regular WebAudio alarm is skipped to avoid doubling it. If the
-// system took that audio away (another app's audio focus) it can't carry the alarm: WebAudio does.
-export const bgHandlesAlarm = () => state?.mode === 'media' && !state.audioLost;
 
-export const bgSupport = () => ({
+const bgSupport = () => ({
   pip: typeof document !== 'undefined' && !!document.pictureInPictureEnabled && typeof HTMLVideoElement !== 'undefined' && 'requestPictureInPicture' in HTMLVideoElement.prototype,
   captureStream: typeof HTMLCanvasElement !== 'undefined' && 'captureStream' in HTMLCanvasElement.prototype,
-  mediaSession: typeof navigator !== 'undefined' && 'mediaSession' in navigator,
-  positionState: typeof navigator !== 'undefined' && !!navigator.mediaSession && 'setPositionState' in navigator.mediaSession,
 });
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
-
-const silentUrl = () => makeWavUrl(10, 8000, (t) => SILENT_AMPLITUDE * Math.sin(2 * Math.PI * 30 * t));
-// Same pulses as playTacticalAlarm (tone, envelope and peak come from ALARM_TONE).
-const alarmUrl = () => makeWavUrl(ALARM_TONE.pulses * ALARM_TONE.interval, 22050, (t) => {
-  const i = Math.floor(t / ALARM_TONE.interval);
-  const tt = t - i * ALARM_TONE.interval;
-  if (tt >= ALARM_TONE.duration) return 0;
-  const env = Math.min(1, tt / ALARM_TONE.attack, (ALARM_TONE.duration - tt) / ALARM_TONE.release);
-  return ALARM_TONE.peak * env * Math.sin(2 * Math.PI * ALARM_TONE.freqs[i % ALARM_TONE.freqs.length] * tt);
-});
-
-// ── Notification artwork (the picture shown on the lock screen) ──────────────────────
-const wrapText = (ctx, text, maxWidth) => {
-  const words = String(text).split(/\s+/); const lines = []; let cur = '';
-  for (const w of words) {
-    const t = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(t).width > maxWidth && cur) { lines.push(cur); cur = w; } else cur = t;
-  }
-  if (cur) lines.push(cur);
-  return lines.slice(0, 3);
-};
-const makeArtwork = ({ done, name }) => {
-  try {
-    const c = document.createElement('canvas');
-    c.width = 512; c.height = 512;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = done ? '#f59e0b' : '#0f172a';
-    ctx.fillRect(0, 0, 512, 512);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = done ? '#000' : '#fbbf24';
-    ctx.font = `bold ${done ? 150 : 88}px system-ui, sans-serif`;
-    ctx.fillText(done ? '¡FIN!' : 'DESCANSO', 256, done ? 270 : 230);
-    if (name) {
-      ctx.fillStyle = done ? '#1c1917' : '#cbd5e1';
-      ctx.font = 'bold 40px system-ui, sans-serif';
-      wrapText(ctx, name, 440).forEach((l, i) => ctx.fillText(l, 256, 340 + i * 48));
-    }
-    return c.toDataURL('image/png');
-  } catch { return null; }
-};
-
-const setMetadata = (snap, done) => {
-  if (!bgSupport().mediaSession) return;
-  try {
-    const art = makeArtwork({ done, name: snap.name });
-    const artwork = [
-      ...(art ? [{ src: art, sizes: '512x512', type: 'image/png' }] : []),
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ];
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: done ? `¡FIN! · ${snap.name || 'Descanso terminado'}` : (snap.name ? `Descanso · ${snap.name}` : 'Descanso'),
-      artist: done ? (snap.next ? `Sigue: ${snap.next}` : 'Descanso terminado') : 'Iron Commander',
-      album: done ? 'Tocá APAGAR en la notificación o abrí la app' : 'Timer de descanso',
-      artwork,
-    });
-  } catch { /* metadata is cosmetic */ }
-};
 
 // ── Release everything ───────────────────────────────────────────────────────────────
 export const stopBackground = (finalNote = '') => {
@@ -126,36 +35,7 @@ export const stopBackground = (finalNote = '') => {
   if (finalNote) note(finalNote);
 };
 
-// ── Media Session actions shared by both experiments ─────────────────────────────────
-const keepPlaying = () => {
-  const el = state?.audio || state?.video;
-  if (el && el.paused) el.play().catch(() => {});
-};
-const installActions = (st) => {
-  if (!bgSupport().mediaSession) return [];
-  const ms = navigator.mediaSession;
-  const onPause = () => {
-    if (state !== st) return;
-    if (st.alarming) { note('Pausa durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else if (st.audioLost) note('Pausa: el audio ya lo tiene otra app; no se reanuda a la fuerza.');
-    else { note('Pausa ignorada: la cuenta sigue (el audio no se corta).'); keepPlaying(); }
-  };
-  const onStopAction = () => {
-    if (state !== st) return;
-    if (st.alarming) { note('Stop durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else { note('Stop: descanso saltado.'); st.actions.onStop?.(); }
-  };
-  // "play" is the athlete's own tap on our notification: that one does take the audio back.
-  const handlers = { pause: onPause, stop: onStopAction, play: () => { st.audioLost = false; keepPlaying(); } };
-  const registered = [];
-  for (const [a, h] of Object.entries(handlers)) {
-    try { ms.setActionHandler(a, h); registered.push(a); } catch { /* unsupported action */ }
-  }
-  st.cleanup.push(() => { for (const a of registered) { try { ms.setActionHandler(a, null); } catch { /* ignore */ } } });
-  return registered;
-};
-
-// ── A) Picture-in-Picture ────────────────────────────────────────────────────────────
+// ── Picture-in-Picture ───────────────────────────────────────────────────────────────
 const drawFrame = (ctx, w, h, { remainingSecs, totalSecs, name }, done) => {
   ctx.fillStyle = done ? '#f59e0b' : '#0f172a';
   ctx.fillRect(0, 0, w, h);
@@ -174,14 +54,13 @@ const drawFrame = (ctx, w, h, { remainingSecs, totalSecs, name }, done) => {
   }
 };
 
-// Best effort, attached to the running media state. Must run inside the user gesture that
-// started the rest (the tap on a set's check button).
-const releasePip = (st, note) => {
+// Best effort. Must run inside the user gesture that started the rest (the tap on a set's check button).
+const releasePip = (st, msg) => {
   const pip = st.pip;
   if (!pip) return;
   st.pip = null;
   for (const fn of pip.cleanup.slice().reverse()) { try { fn(); } catch { /* best effort */ } }
-  if (note && state === st) note(note);
+  if (msg && state === st) note(msg);
 };
 
 const attachPip = async (st) => {
@@ -230,7 +109,7 @@ const attachPip = async (st) => {
   if (state !== st || st.pip !== pip) { releasePip(st); return false; } // the rest ended meanwhile
 
   // Closing the floating window: with the alarm sounding it is "apagar" (everything is
-  // released); while counting it only drops the PiP (notification and timer carry on).
+  // released); while counting it only drops the PiP (the timer carries on in the app).
   // Coming back to the app through the window (visible page) must not wipe the end alert.
   const onLeave = () => {
     if (state !== st || st.pip !== pip) return;
@@ -241,7 +120,7 @@ const attachPip = async (st) => {
     } else if (st.alarming) {
       releasePip(st, 'PiP cerrado al volver a la app: la alerta queda en pantalla.');
     } else {
-      releasePip(st, `PiP cerrado (visibilityState=${vis}): sigue la notificación.`);
+      releasePip(st, `PiP cerrado (visibilityState=${vis}): la cuenta sigue dentro de la app.`);
     }
   };
   video.addEventListener('leavepictureinpicture', onLeave);
@@ -251,150 +130,33 @@ const attachPip = async (st) => {
   return true;
 };
 
-// ── B) Player notification (silent audio + Media Session) ────────────────────────────
-// Must run inside the user gesture that started the rest.
-const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
-  // A new rest while the notification is already counting: refresh it, keep the audio (and, if
-  // the system took the audio away, do not ask for it back).
-  if (state?.mode === 'media' && !state.alarming) {
+
+// Entry point, called from the tap on a set's "complete". A rest that is still counting keeps
+// its window; the next set only refreshes what it shows.
+export const startBackground = async ({ getSnapshot, onStop, onDismiss }) => {
+  if (state && !state.alarming) {
     state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
-    setMetadata(getSnapshot(), false);
-    note(state.audioLost ? 'Media: descanso nuevo; el audio lo tiene otra app, no se pide de vuelta.' : 'Media: descanso nuevo, notificación actualizada (el audio sigue).');
-    return true;
-  }
-  stopBackground();
-  const sup = bgSupport();
-  const cleanup = [];
-  const st = { mode: 'media', cleanup, getSnapshot, actions: { onStop, onDismiss }, alarming: false, switching: false, audioLost: false };
-  state = st;
-  cleanup.push(() => releasePip(st));
-
-  const sUrl = silentUrl();
-  const aUrl = alarmUrl();
-  cleanup.push(() => { URL.revokeObjectURL(sUrl); URL.revokeObjectURL(aUrl); });
-  const audio = new Audio(sUrl);
-  audio.loop = true;
-  st.audio = audio; st.alarmSrc = aUrl;
-  cleanup.push(() => { audio.pause(); audio.removeAttribute('src'); audio.load(); });
-
-  // Android can pause the element on its own (another app took the audio focus: music, a call).
-  // During the alarm that means "apagar". During the count we do NOT fight for it: taking the
-  // focus back would pause the other app again and again. The count carries on with what is
-  // left (the PiP window, the in-app timer) and the alarm falls back to WebAudio, which mixes.
-  const onNativePause = () => {
-    if (state !== st || st.switching) return;
-    if (st.alarming) { note('El sistema pausó el audio durante la alarma → apagada.'); st.actions.onDismiss?.(); }
-    else if (!st.audioLost) { st.audioLost = true; note('El sistema pausó el audio (otra app tomó el foco): no se reanuda a la fuerza.'); }
-  };
-  audio.addEventListener('pause', onNativePause);
-  cleanup.push(() => audio.removeEventListener('pause', onNativePause));
-
-  try {
-    await audio.play(); // needs the tap that started the rest
-  } catch (e) {
-    note(`Audio falló: ${e?.name || 'error'} — ${e?.message || ''}`);
-    stopBackground(`Audio falló: ${e?.name || 'error'}`);
-    return false;
-  }
-
-  const notes = [];
-  if (sup.mediaSession) {
-    const ms = navigator.mediaSession;
-    const snap = getSnapshot();
-    setMetadata(snap, false);
-    try { ms.playbackState = 'playing'; } catch { /* ignore */ }
-    notes.push('metadata OK');
-    const updatePosition = () => {
-      if (!sup.positionState || state !== st || st.alarming) return;
-      const s = st.getSnapshot();
-      const duration = Math.max(1, s.totalSecs);
-      const position = Math.min(duration, Math.max(0, duration - s.remainingSecs));
-      try { ms.setPositionState({ duration, playbackRate: 1, position }); } catch { /* ignore */ }
-    };
-    updatePosition();
-    const posTimer = setInterval(updatePosition, 1000);
-    cleanup.push(() => clearInterval(posTimer));
-    notes.push(sup.positionState ? 'setPositionState OK' : 'sin setPositionState');
-    const registered = installActions(st);
-    notes.push(`acciones registradas: ${registered.join('/') || 'ninguna'}`);
-    cleanup.push(() => {
-      try { ms.setPositionState(); } catch { /* ignore */ }
-      try { ms.playbackState = 'none'; ms.metadata = null; } catch { /* ignore */ }
-    });
-  } else {
-    notes.push('sin Media Session');
-  }
-  note(`Media activa: ${notes.join(', ')}.`);
-  return true;
-};
-
-// Entry point, called from the tap on a set's "complete": the notification (audio + Media
-// Session) and the PiP window start together. Both sync parts run before any await, so both
-// keep the tap's user activation; a PiP that can't open leaves the notification running.
-// Mode 'pip': just the floating window. No <audio>, so the music app keeps the audio focus; the
-// alarm is the regular WebAudio one (bgHandlesAlarm is false here). The PiP is best effort.
-const startPipOnly = async ({ getSnapshot, onStop, onDismiss }) => {
-  if (state?.mode === 'pip' && !state.alarming) {
-    state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
-    note('Solo PiP: descanso nuevo, la ventana sigue.');
+    note('PiP: descanso nuevo, la ventana sigue.');
     return !!state.pip;
   }
   stopBackground();
-  const st = { mode: 'pip', cleanup: [], getSnapshot, actions: { onStop, onDismiss }, alarming: false, switching: false, pip: null };
+  const st = { cleanup: [], getSnapshot, actions: { onStop, onDismiss }, alarming: false, pip: null };
   state = st;
   st.cleanup.push(() => releasePip(st));
   const ok = await attachPip(st);
-  if (!ok && state === st) stopBackground('Solo PiP: la ventana no se abrió; la cuenta sigue dentro de la app.');
+  if (!ok && state === st) stopBackground('PiP: la ventana no se abrió; la cuenta sigue dentro de la app.');
   return ok;
 };
 
-export const startBackground = async (params) => {
-  if (bgMode === 'off') { stopBackground(); return false; }
-  if (bgMode === 'pip') return startPipOnly(params);
-  const mediaP = startMediaCore(params);
-  const st = state;
-  const pipP = st ? attachPip(st) : Promise.resolve(false);
-  const [mediaOk] = await Promise.all([mediaP, pipP]);
-  return mediaOk;
-};
-
 // ── Timer reached 0 ──────────────────────────────────────────────────────────────────
+// The floating window flips to ¡FIN! at once. The sound (short <audio> clips) and the vibration
+// are played by the timer itself; this only holds the window open for up to 30 s.
 export const bgComplete = () => {
   if (!state) return;
   const st = state;
   st.alarming = true;
-  st.pip?.draw(); // the floating window flips to ¡FIN! at once
-  // media: the alarm goes through the same <audio> element that is keeping the page alive,
-  // and the notification flips to "¡FIN!" (title, subtitle with what follows, big picture).
-  // Not when the system took the audio away, and not in 'pip' mode: there the regular WebAudio
-  // alarm (which also vibrates) is played by the timer (bgHandlesAlarm is false).
-  const viaAudio = st.mode === 'media' && !st.audioLost;
-  if (st.mode === 'media') {
-    const { audio, alarmSrc } = st;
-    const snap = st.getSnapshot();
-    setMetadata(snap, true);
-    try {
-      if (bgSupport().positionState) navigator.mediaSession.setPositionState({ duration: Math.max(1, snap.totalSecs), playbackRate: 1, position: Math.max(1, snap.totalSecs) });
-    } catch { /* ignore */ }
-    if (viaAudio) {
-      st.switching = true;
-      try {
-        audio.src = alarmSrc;
-        audio.loop = true;
-        audio.play().catch((e) => note(`Media: la alarma no pudo sonar (${e?.name})`));
-      } catch { /* ignore */ }
-      setTimeout(() => { if (state === st) st.switching = false; }, 300);
-    }
-  }
-  const cap = setTimeout(() => stopBackground('Alarma de fondo cortada por el tope de 30 s.'), ALARM_CAP_MS);
+  st.pip?.draw();
+  const cap = setTimeout(() => stopBackground('Ventana de fondo cerrada por el tope de 30 s.'), ALARM_CAP_MS);
   st.cleanup.push(() => clearTimeout(cap));
-  if (viaAudio) {
-    // Vibration parity with the foreground alarm (playTacticalAlarm vibrates; the <audio>
-    // path doesn't). Chrome only honours it while the page is visible, so this is the
-    // in-app case; in the background the sound and the notification carry the alert.
-    vibrateAlarm();
-    const vib = setInterval(vibrateAlarm, ALARM_VIBRATE_REPEAT_MS);
-    st.cleanup.push(() => { clearInterval(vib); stopVibration(); });
-  }
-  note(viaAudio ? 'fin del descanso: alarma por <audio> (tope 30 s)' : `fin del descanso: alarma WebAudio (${st.mode === 'pip' ? 'modo Solo PiP' : 'el audio de fondo lo perdió otra app'})`);
+  note('fin del descanso: alarma de clips <audio> cortos (tope 30 s)');
 };

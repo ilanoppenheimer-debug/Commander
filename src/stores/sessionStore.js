@@ -50,7 +50,7 @@ export const useSessionStore = create((set, get) => ({
     // must not attach to this session's reused exercise ids.
     clearAllTimedSetTimers();
     clearRestTimerStorage();
-    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    stopBackground(); // the rest timer's PiP window dies with the session
     releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     const session = {
       id: `session-${Date.now()}`,
@@ -369,7 +369,7 @@ export const useSessionStore = create((set, get) => ({
   finishSession: () => {
     clearAllTimedSetTimers();
     clearRestTimerStorage();
-    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    stopBackground(); // the rest timer's PiP window dies with the session
     releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     set({ session: null, lastDeleted: null });
     persistToDb(null);
@@ -378,7 +378,7 @@ export const useSessionStore = create((set, get) => ({
   discardSession: () => {
     clearAllTimedSetTimers();
     clearRestTimerStorage();
-    stopBackground(); // audio, PiP and Media Session of the rest timer die with the session
+    stopBackground(); // the rest timer's PiP window dies with the session
     releaseAllWakeLocks(); // and so does every screen wake lock (rest timer, timed-set holds)
     set({ session: null, lastDeleted: null });
     persistToDb(null);
