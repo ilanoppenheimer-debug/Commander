@@ -148,7 +148,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                     </div>
                     {onOpenTrend && (
                       <button
-                        onClick={() => onOpenTrend(ex.name)}
+                        onClick={() => onOpenTrend(ex.name, ex.equipment || null)}
                         className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1 transition"
                       >
                         <TrendingUp size={12} /> Progreso

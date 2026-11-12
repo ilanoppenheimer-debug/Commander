@@ -23,7 +23,7 @@ export const Exercise1RMDetail = ({ exerciseName, equipment = null, label, histo
         >
           <ArrowLeft size={20} className="text-slate-400" />
         </button>
-        <div className="text-sm font-bold uppercase tracking-wider text-slate-200 truncate">
+        <div className="text-sm font-bold uppercase tracking-wider text-slate-200 break-words line-clamp-2">
           {label || exerciseName}
         </div>
       </div>

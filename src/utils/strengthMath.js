@@ -1,5 +1,5 @@
 import { buildDisplayNameIndex, normalizeExerciseName } from './exerciseName';
-import { makeVariantMatcher, resolveHistoryEquipment, variantLabel } from './exerciseVariant';
+import { makeVariantMatcher, resolveHistoryEquipment, variantLabel, isTimeMeasured } from './exerciseVariant';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
 
 export const FORMULAS = {
@@ -273,7 +273,7 @@ export const computeAll1RMs = (history, options = {}) => {
   const results = [];
   displayNames.forEach((name, norm) => {
     const eqs = [...(comparableByName.get(norm) || [])];
-    const variants = eqs.length === 0 ? [null] : eqs;
+    const variants = (eqs.length === 0 || isTimeMeasured(name)) ? [null] : eqs;
     const found = [];
     for (const equipment of variants) {
       const computed = computeExercise1RM(name, history, { ...options, equipment });

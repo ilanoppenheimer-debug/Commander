@@ -1,5 +1,5 @@
 import { normalizeExerciseName } from './exerciseName';
-import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { getExerciseMeta, getMeasurement } from '../constants/exerciseMetadata';
 
 // Exercise VARIANT = normalized name + equipment (implement). Numbers (1RM, top set,
 // placeholders, previous performance, PRs) are computed per variant. Read-only: nothing
@@ -13,6 +13,11 @@ import { getExerciseMeta } from '../constants/exerciseMetadata';
 //   - bodyweight is one variant: the added load (lastre) is just the set weight, nothing
 //     else is separated;
 //   - otherwise equipment must be equal.
+
+// Time-measured exercises (measurement 'time': Plancha, Cardio, Handstand...) are NEVER
+// split by implement: the implement is irrelevant to the hold/duration, so they stay one
+// variant per name everywhere (placeholders, seconds, Coach context, block report, share).
+export const isTimeMeasured = (name) => getMeasurement(name) === 'time';
 
 // Equipment of a history exercise: the value saved on the session wins, the exercise
 // metadata is the fallback for old sessions (same chain as sessionExport / Mode1List).
@@ -33,7 +38,7 @@ export const equipmentMatches = (currentEquipment, historyEquipment) => {
 // only consulted for history exercises that have no equipment of their own.
 export const makeVariantMatcher = (name, equipment) => {
   const key = normalizeExerciseName(name);
-  const eq = equipment || null;
+  const eq = isTimeMeasured(name) ? null : (equipment || null);
   return (histEx) => {
     if (!histEx?.name || key === '' || normalizeExerciseName(histEx.name) !== key) return false;
     if (!eq) return true;
@@ -52,6 +57,7 @@ export const EQUIPMENT_LABEL_ES = {
 
 // "Curl de Bíceps · barra"; just the name when the implement is unknown.
 export const variantLabel = (name, equipment) => {
+  if (isTimeMeasured(name)) return name;
   const label = equipment ? (EQUIPMENT_LABEL_ES[equipment] || equipment) : null;
   return label ? `${name} · ${label}` : name;
 };
@@ -67,21 +73,26 @@ export const variantLabel = (name, equipment) => {
 //     variant in this scope; single-implement names print exactly as before.
 export const createVariantIndex = (exercises) => {
   const eqByName = new Map();   // normalized name -> Set(equipment)
+  const timeByName = new Map();
+  const isTime = (norm, name) => { if (!timeByName.has(norm)) timeByName.set(norm, isTimeMeasured(name)); return timeByName.get(norm); };
   const nullNames = new Set();  // names that have at least one exercise without implement
   for (const ex of exercises) {
     if (!ex?.name) continue;
     const n = normalizeExerciseName(ex.name);
+    if (isTime(n, ex.name)) continue;
     const eq = resolveHistoryEquipment(ex);
     if (eq) { if (!eqByName.has(n)) eqByName.set(n, new Set()); eqByName.get(n).add(eq); }
     else nullNames.add(n);
   }
   const keyOf = (ex) => {
     const norm = normalizeExerciseName(ex?.name);
+    if (isTime(norm, ex?.name)) return { key: `${norm}|`, norm, equipment: null };
     let eq = resolveHistoryEquipment(ex);
     if (!eq) { const s = eqByName.get(norm); if (s && s.size === 1) eq = [...s][0]; }
     return { key: `${norm}|${eq || ''}`, norm, equipment: eq || null };
   };
   const variantCount = (norm) => {
+    if (timeByName.get(norm)) return 1; // time-measured: one variant
     const size = eqByName.get(norm)?.size || 0;
     return size + (nullNames.has(norm) && size !== 1 ? 1 : 0);
   };

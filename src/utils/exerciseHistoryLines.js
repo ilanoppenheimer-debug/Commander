@@ -1,7 +1,7 @@
 import { formatSetSummary } from './formatters';
 import { normalizeExerciseName } from './exerciseName';
 import { computeExercise1RM } from './strengthMath';
-import { makeVariantMatcher, createVariantIndex, variantLabel, EQUIPMENT_LABEL_ES } from './exerciseVariant';
+import { makeVariantMatcher, createVariantIndex, variantLabel, resolveHistoryEquipment, isTimeMeasured, EQUIPMENT_LABEL_ES } from './exerciseVariant';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
 
@@ -93,7 +93,7 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
   for (const { session, iso, time, ex, sets } of items) {
     const { key, equipment } = index.keyOf(ex);
     if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment, label: index.labelFor(ex.name, equipment), sets });
+    byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment, rawEquipment: resolveHistoryEquipment(ex), label: index.labelFor(ex.name, equipment), sets });
   }
   for (const apps of byKey.values()) apps.sort((a, b) => b.time - a.time);
   return byKey;
@@ -153,13 +153,17 @@ export const formatLatestEntry = (apps, companion) => {
  *  - The 1RM line only for barbell/dumbbell/smith (isComparable1RMEquipment, same criterion as the session report) and
  *    only when computeExercise1RM has a value (of that variant when one is given).
  */
-export const buildExerciseShareText = (exName, history, { count = 6, equipment: wanted = null } = {}) => {
+export const buildExerciseShareText = (exName, history, { count = 6, equipment: wantedArg = null } = {}) => {
+  // Time-measured exercises are one variant: an implement asked for is ignored.
+  const wanted = isTimeMeasured(exName) ? null : wantedArg;
   const all = [...collectAppearances(history, { include: makeVariantMatcher(exName, wanted) }).values()]
     .flat().sort((a, b) => b.time - a.time);
   const apps = all.slice(0, count);
   if (apps.length === 0) return null;
 
-  const mixed = !wanted && new Set(apps.map(a => a.equipment)).size > 1;
+  // Per-line implement labels use what each appearance recorded (time-measured exercises are
+  // one variant, but their lines still say which implement was used).
+  const mixed = !wanted && new Set(apps.map(a => a.rawEquipment)).size > 1;
   const companion = getExerciseMeta(exName).companion;
 
   const display = apps[0].name;
@@ -167,7 +171,7 @@ export const buildExerciseShareText = (exName, history, { count = 6, equipment: 
 
   const out = [`Historial de ${wanted ? variantLabel(display, wanted) : display}${variants.length ? ` (también registrado como: ${variants.join(', ')})` : ''}`];
 
-  const equipment = wanted || apps[0].equipment;
+  const equipment = wanted || apps[0].rawEquipment;
   if (isComparable1RMEquipment(equipment)) {
     const orm = computeExercise1RM(display, history, { weeksBack: 12, equipment: wanted });
     if (orm.current1RM != null && orm.sampleSize >= 1) {
@@ -177,7 +181,7 @@ export const buildExerciseShareText = (exName, history, { count = 6, equipment: 
 
   out.push(`Últimas ${apps.length} apariciones:`);
   for (const a of apps) {
-    const eq = mixed ? (EQUIPMENT_LABEL_ES[a.equipment] || a.equipment || 'sin equipo') : null;
+    const eq = mixed ? (EQUIPMENT_LABEL_ES[a.rawEquipment] || a.rawEquipment || 'sin equipo') : null;
     out.push(`- ${formatAppearance(a, companion, eq)}`);
   }
   return out.join('\n');
