@@ -1,9 +1,25 @@
+import { makeWavUrl } from '../utils/wavSynth';
+
 // One AudioContext for the whole app (browsers cap how many can exist, and a new one per
 // alert was never closed). Every alarm plays through its own gain "bus" so stopAlarm()
 // can silence pulses that are already scheduled on the context timeline — scheduled
 // oscillators can't be cancelled one by one, but disconnecting their bus silences them.
 let sharedCtx = null;
 const activeBuses = new Set();
+
+// The rest alarm and pre-alert do NOT use this context any more: they play short <audio>
+// clips (see "Short clips" below), because on Android a long-lived running AudioContext made
+// the music app lose audio focus. What still uses it (the hold-target beep, the test beep and
+// the clip fallback) is short, and the context is SUSPENDED as soon as nothing sounds, so it
+// is never left running through a rest. getCtx() resumes it on the next use.
+let idleSuspendTimer = null;
+const scheduleIdleSuspend = (secs) => {
+  if (idleSuspendTimer) clearTimeout(idleSuspendTimer);
+  idleSuspendTimer = setTimeout(() => {
+    idleSuspendTimer = null;
+    try { if (sharedCtx && sharedCtx.state === 'running') sharedCtx.suspend(); } catch { /* ignore */ }
+  }, (secs + 0.3) * 1000);
+};
 
 const getCtx = () => {
   try {
@@ -65,31 +81,75 @@ export const ALARM_TONE = {
 // / 700ms off (fills out the 1s interval), ending on an "on" segment.
 const ALARM_VIBRATE_PATTERN = [300, 700, 300, 700, 300, 700, 300, 700, 300];
 
-export const playTacticalAlarm = () => {
-  try {
-    const ctx = getCtx();
-    if (ctx) {
-      const t = ctx.currentTime;
-      const bus = newBus(ctx, ALARM_PULSE_COUNT * ALARM_PULSE_INTERVAL);
-      for (let i = 0; i < ALARM_PULSE_COUNT; i++) {
-        beep(ctx, bus, ALARM_TONE.freqs[i % ALARM_TONE.freqs.length], t + i * ALARM_PULSE_INTERVAL, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
-      }
-    }
-    if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN);
-  } catch (e) {
-    console.warn('Audio failed:', e);
-    if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN);
+// ── Short clips ──────────────────────────────────────────────────────────────────────
+// Same tone, envelope and level as the old WebAudio beeps, rendered once into tiny WAVs and
+// played with <audio>: a short media element asks Android for transient audio focus (the music
+// ducks and comes back by itself) where a long-lived WebAudio context did not.
+const clipCache = new Map();
+const clipUrl = (key, freq, duration, peak, attack, release) => {
+  if (!clipCache.has(key)) {
+    clipCache.set(key, makeWavUrl(duration, 22050, (t) => {
+      const env = Math.min(1, t / attack, (duration - t) / release);
+      return peak * Math.max(0, env) * Math.sin(2 * Math.PI * freq * t);
+    }));
   }
+  return clipCache.get(key);
+};
+const alarmPulseUrl = (i) => {
+  const f = ALARM_TONE.freqs[i % ALARM_TONE.freqs.length];
+  return clipUrl(`alarm${f}`, f, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
+};
+const PRE_ALERT = { freq: 440, duration: 0.15, peak: 0.15, attack: 0.02, release: 0.05 };
+const preAlertUrl = () => clipUrl('prealert', PRE_ALERT.freq, PRE_ALERT.duration, PRE_ALERT.peak, PRE_ALERT.attack, PRE_ALERT.release);
+
+const activeClips = new Set();
+const pendingPulses = new Set();
+// Plays one clip; if the browser refuses (autoplay policy, no Audio) `fallback` runs instead.
+const playClip = (url, fallback) => {
+  try {
+    const a = new Audio(url);
+    a.volume = 1;
+    activeClips.add(a);
+    const done = () => { activeClips.delete(a); };
+    a.addEventListener('ended', done);
+    a.addEventListener('error', done);
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { done(); try { fallback?.(); } catch { /* ignore */ } });
+  } catch { try { fallback?.(); } catch { /* ignore */ } }
+};
+
+export const playTacticalAlarm = () => {
+  // 5 short clips, one per pulse, 1 s apart (the same cadence as before). stopAlarm() cancels
+  // the ones not yet played and cuts the one sounding.
+  for (let i = 0; i < ALARM_PULSE_COUNT; i++) {
+    const fire = () => playClip(alarmPulseUrl(i), () => playWebAudioPulse(i));
+    if (i === 0) fire();
+    else {
+      const id = setTimeout(() => { pendingPulses.delete(id); fire(); }, i * ALARM_PULSE_INTERVAL * 1000);
+      pendingPulses.add(id);
+    }
+  }
+  try { if (navigator.vibrate) navigator.vibrate(ALARM_VIBRATE_PATTERN); } catch { /* ignore */ }
+};
+
+// Fallback for a pulse the browser would not play as <audio>: the old WebAudio beep.
+const playWebAudioPulse = (i) => {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const bus = newBus(ctx, ALARM_PULSE_DURATION);
+  beep(ctx, bus, ALARM_TONE.freqs[i % ALARM_TONE.freqs.length], ctx.currentTime, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
+  scheduleIdleSuspend(ALARM_PULSE_DURATION);
 };
 
 // One short beep (test of the audio-focus behaviour on Android, see features/alarmFocusTest.js):
-// same shared AudioContext, bus, tone and envelope as the alarm pulses, just a single pulse.
+// the shared AudioContext, bus, tone and envelope of the old alarm pulses, a single pulse.
 export const playSingleBeep = (duration = 0.3) => {
   try {
     const ctx = getCtx();
     if (!ctx) return false;
     const bus = newBus(ctx, duration);
     beep(ctx, bus, ALARM_TONE.freqs[0], ctx.currentTime, duration, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
+    scheduleIdleSuspend(duration);
     return true;
   } catch { return false; }
 };
@@ -118,6 +178,7 @@ export const playHoldTargetBeep = () => {
       ALARM_TONE.freqs.forEach((f, i) => {
         beep(ctx, bus, f, t + i * (HOLD_BEEP_DURATION + HOLD_BEEP_GAP), HOLD_BEEP_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
       });
+      scheduleIdleSuspend(2 * HOLD_BEEP_DURATION + HOLD_BEEP_GAP);
     }
     if (navigator.vibrate) navigator.vibrate(HOLD_VIBRATE_PATTERN);
   } catch {
@@ -126,15 +187,21 @@ export const playHoldTargetBeep = () => {
 };
 
 export const playPreAlert = () => {
-  try {
+  // One short clip (440 Hz, 0.15 s, same level as before); the old WebAudio beep only if the
+  // browser refuses the <audio>.
+  playClip(preAlertUrl(), () => {
     const ctx = getCtx();
-    if (ctx) beep(ctx, newBus(ctx, 0.15), 440, ctx.currentTime, 0.15, 0.15);
-    if (navigator.vibrate) navigator.vibrate(80);
-  } catch {}
+    if (ctx) { beep(ctx, newBus(ctx, 0.15), 440, ctx.currentTime, 0.15, 0.15); scheduleIdleSuspend(0.15); }
+  });
+  try { if (navigator.vibrate) navigator.vibrate(80); } catch { /* ignore */ }
 };
 
 // Silences every alarm/pre-alert still scheduled or sounding, and cancels vibration.
 export const stopAlarm = () => {
+  for (const id of pendingPulses) clearTimeout(id);
+  pendingPulses.clear();
+  for (const a of activeClips) { try { a.pause(); } catch { /* ignore */ } }
+  activeClips.clear();
   for (const bus of activeBuses) { try { bus.disconnect(); } catch {} }
   activeBuses.clear();
   try { if (navigator.vibrate) navigator.vibrate(0); } catch {}

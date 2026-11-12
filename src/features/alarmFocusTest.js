@@ -1,5 +1,5 @@
 import { playTacticalAlarm, playSingleBeep, stopAlarm, ALARM_TONE } from '../services/audioService';
-import { makeWavUrl } from './restBackground';
+import { makeWavUrl } from '../utils/wavSynth';
 
 // TEST ONLY (Ajustes → "Probar alarma"). Which way of sounding the end-of-rest alarm lets a
 // music app (Spotify) keep playing on Android? Each variant plays ONCE when tapped; nothing
@@ -7,7 +7,7 @@ import { makeWavUrl } from './restBackground';
 // test: Android/Chrome gives a long sound "persistent" audio focus (pauses other apps) and a
 // short one "transient, may duck". It can't be checked from docs: it is tried on the device.
 //
-//   a   the current Solo PiP alarm: WebAudio, 5 pulses (~4.3 s)
+//   a   the CURRENT rest alarm (since the short-clip change): 5 short <audio> clips, 1 s apart
 //   b   one WebAudio beep, 0.3 s
 //   c   one <audio> clip, 0.4 s (same tone as the pulses)
 //   d   the clip (c) 3 times, 0.4 s apart
@@ -67,7 +67,7 @@ const withAudioSession = (type, then) => {
 };
 
 export const ALARM_FOCUS_TESTS = [
-  { id: 'a',  label: 'A · Alarma actual (WebAudio, 5 pulsos)', run: () => { playTacticalAlarm(); return true; } },
+  { id: 'a',  label: 'A · Alarma actual (5 clips <audio> cortos)', run: () => { playTacticalAlarm(); return true; } },
   { id: 'b',  label: 'B · Un pitido WebAudio (0,3 s)', run: () => playSingleBeep(0.3) },
   { id: 'c',  label: 'C · Clip <audio> (0,4 s)', run: () => { playClip().catch(() => {}); return true; } },
   { id: 'd',  label: 'D · Clip <audio> ×3 con pausas', run: () => {
