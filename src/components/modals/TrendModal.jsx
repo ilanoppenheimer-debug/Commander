@@ -7,11 +7,12 @@ import { formatNum } from "../../utils/weightUtils";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 // equipment (optional): variant to chart; null/absent = by name only (all implements).
-const TrendModal = ({ exName, equipment = null, history, barUnit, onClose }) => {
+// label (optional): how the variant is printed, "Curl de Bíceps · barra"; defaults to the name.
+const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose }) => {
   // Opened from several places (App, 1RM detail) with no notify prop: feedback is local.
   const [feedback, setFeedback] = useState(null);
   const handleSendToCoach = async () => {
-    const result = await sendExerciseToCoach(exName, history);
+    const result = await sendExerciseToCoach(exName, history, equipment);
     const msg = SEND_TO_COACH_MESSAGES[result];
     if (!msg) return;
     setFeedback(msg);
@@ -177,7 +178,7 @@ const TrendModal = ({ exName, equipment = null, history, barUnit, onClose }) => 
             <h2 className="text-xl font-bold text-purple-400 flex items-center gap-2">
               <TrendingUp size={20} /> Progreso 1RM
             </h2>
-            <p className="text-white text-sm font-bold mt-1">{exName}</p>
+            <p className="text-white text-sm font-bold mt-1">{label || exName}</p>
           </div>
 
           <div className="flex items-center gap-2">

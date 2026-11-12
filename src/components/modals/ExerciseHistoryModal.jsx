@@ -5,7 +5,7 @@ import { makeVariantMatcher } from "../../utils/exerciseVariant";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 // equipment (optional): variant to show; null/absent = by name only (all implements).
-const ExerciseHistoryModal = ({ exName, equipment = null, history, onClose, barUnit, showNotify }) => {
+const ExerciseHistoryModal = ({ exName, equipment = null, label, history, onClose, barUnit, showNotify }) => {
   const [limit, setLimit] = useState(5);
 
   const pastPerformances = useMemo(() => {
@@ -36,7 +36,7 @@ const ExerciseHistoryModal = ({ exName, equipment = null, history, onClose, barU
   // Always the last 6 appearances, regardless of the 5/10/todas selector: this text is
   // for the Coach, not for the screen.
   const handleSendToCoach = async () => {
-    const result = await sendExerciseToCoach(exName, history);
+    const result = await sendExerciseToCoach(exName, history, equipment);
     const msg = SEND_TO_COACH_MESSAGES[result];
     if (msg) showNotify?.(msg[0], msg[1]);
   };
@@ -49,7 +49,7 @@ const ExerciseHistoryModal = ({ exName, equipment = null, history, onClose, barU
             <h2 className="text-lg font-bold text-sky-400 flex items-center gap-2">
               <BarChart2 size={20} /> Comparativa
             </h2>
-            <span className="text-xs text-white uppercase">{exName}</span>
+            <span className="text-xs text-white uppercase">{label || exName}</span>
           </div>
           <div className="flex items-center gap-2">
           <button

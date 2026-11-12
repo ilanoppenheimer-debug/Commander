@@ -202,7 +202,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     // guessed data. No equipment → no line; the Coach asked for silence, not a caveat.
     const equipment = ex.equipment || exMeta.equipment || null;
     if (isComparable1RMEquipment(equipment)) {
-      const orm = computeExercise1RM(ex.name, allSessions, { weeksBack: 12 });
+      const orm = computeExercise1RM(ex.name, allSessions, { weeksBack: 12, equipment: ex.equipment || null });
       if (orm.current1RM != null && orm.sampleSize >= 1) {
         const rounded = Math.round(orm.current1RM * 2) / 2;
         lines.push(`  1RM est.: ${rounded} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}) — referencia, no máximo del día`);

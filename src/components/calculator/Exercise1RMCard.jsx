@@ -24,8 +24,8 @@ export const Exercise1RMCard = ({ exercise, barUnit, editMode = false, selected 
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-100 truncate">
-          {exercise.name}
+        <div className="text-sm font-medium text-slate-100 break-words line-clamp-2">
+          {exercise.label || exercise.name}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="text-[10px] text-slate-500">

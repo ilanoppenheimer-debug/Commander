@@ -3,10 +3,10 @@ import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 import { getCompanion } from '../../constants/exerciseMetadata';
 import { localDateStr } from '../localDate';
-import { normalizeExerciseName } from '../exerciseName';
 import { resolveExerciseTag } from '../blockReport';
 import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
 import { computeExercise1RM } from '../strengthMath';
+import { createVariantIndex } from '../exerciseVariant';
 import { confianza1RM } from '../sessionExport';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
@@ -133,6 +133,10 @@ export const generateCoachContext = async () => {
       // by "Últimos registros por ejercicio", which excludes mains — complementary, not
       // overlapping. Keyed by exercise identity (spelling variants are one exercise);
       // `name` is the spelling of the most recent session that has it.
+      // Keyed by VARIANT (name + implement): "Curl · barra" and "Curl · mancuerna" have
+      // separate best/last/1RM. A name with a single implement prints exactly as before.
+      const vIndex = createVariantIndex(recent.flatMap(sn => (Array.isArray(sn.exercises) ? sn.exercises : [])
+        .filter(e => e?.name && resolveExerciseTag(e) === 'main_lift')));
       const topByEx = {};
       const lastTopByEx = {}; // the most recent session's top (same criterion, work sets only)
       const latestNameAt = {};
@@ -140,8 +144,8 @@ export const generateCoachContext = async () => {
         const sessionTime = Date.parse(session.completedAt || session.createdAt || '') || 0;
         for (const ex of (Array.isArray(session.exercises) ? session.exercises : [])) {
           if (!ex?.name || resolveExerciseTag(ex) !== 'main_lift') continue;
-          const key = normalizeExerciseName(ex.name);
-          if (!(key in latestNameAt) || sessionTime >= latestNameAt[key].t) latestNameAt[key] = { name: ex.name, t: sessionTime };
+          const { key, equipment: variantEq } = vIndex.keyOf(ex);
+          if (!(key in latestNameAt) || sessionTime >= latestNameAt[key].t) latestNameAt[key] = { name: ex.name, t: sessionTime, equipment: variantEq };
           const target = topByEx;
           let sessionTop = null;
           for (const s of (Array.isArray(ex.sets) ? ex.sets : [])) {
@@ -170,7 +174,12 @@ export const generateCoachContext = async () => {
           if (sessionTop && (!lastTopByEx[key] || sessionTime > lastTopByEx[key].t)) lastTopByEx[key] = sessionTop;
         }
       }
-      for (const key of Object.keys(topByEx)) topByEx[key].name = latestNameAt[key].name;
+      for (const key of Object.keys(topByEx)) {
+        const { name, equipment } = latestNameAt[key];
+        topByEx[key].name = name;
+        topByEx[key].equipment = equipment;
+        topByEx[key].label = vIndex.labelFor(name, equipment);
+      }
 
       const rankedEntries = (byEx) => Object.entries(byEx)
         .sort((a, b) => b[1].value - a[1].value)
@@ -187,9 +196,9 @@ export const generateCoachContext = async () => {
           const best = `${formatSetSummary(s, 'kg', getCompanion(s.name))} (${formatShortDate(s.iso)})`;
           const last = lastTopByEx[key];
           lines.push(last && last.t !== s.t
-            ? `  - ${s.name}: mejor ${best} · último ${formatPlainSet(last.set)} (${formatShortDate(last.iso)})`
-            : `  - ${s.name}: ${best}`);
-          const orm = computeExercise1RM(s.name, allHistory, { weeksBack: 12 });
+            ? `  - ${s.label}: mejor ${best} · último ${formatPlainSet(last.set)} (${formatShortDate(last.iso)})`
+            : `  - ${s.label}: ${best}`);
+          const orm = computeExercise1RM(s.name, allHistory, { weeksBack: 12, equipment: s.equipment });
           if (orm.current1RM != null && orm.sampleSize >= 1) {
             lines.push(`    1RM est. ${Math.round(orm.current1RM * 2) / 2} kg (confianza ${confianza1RM(orm.sampleSize)}, N=${orm.sampleSize}, ventana 12 semanas)`);
           }
@@ -218,7 +227,7 @@ export const generateCoachContext = async () => {
         if (!groups.has(gKey)) groups.set(gKey, { label: classifySessionType(latest.sessionName), entries: [] });
         groups.get(gKey).entries.push({
           time: latest.time,
-          text: `${latest.name} — ${formatLatestEntry(apps, getCompanion(latest.name))}`,
+          text: `${latest.label} — ${formatLatestEntry(apps, getCompanion(latest.name))}`,
         });
       }
       lines.push('## Últimos registros por ejercicio (últimas 8 semanas, sin main lifts)');
