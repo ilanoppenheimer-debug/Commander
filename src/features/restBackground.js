@@ -1,4 +1,4 @@
-import { vibrateAlarm, stopVibration, ALARM_TONE, getPreAlertClipUrl } from '../services/audioService';
+import { vibrateAlarm, stopVibration, ALARM_TONE, getLongPreAlertClipUrl } from '../services/audioService';
 import { makeWavUrl } from '../utils/wavSynth';
 
 // Rest timer outside the app. On every set completion BOTH start, inside the same tap:
@@ -374,7 +374,8 @@ export const startBackground = async (params) => {
 //    stream stopped), and only then does the caller play the clip. It stays closed for the rest
 //    of the count (the rest timer's Wake Lock keeps the screen on); the next rest reopens it.
 //  - "Completo": the pre-alert goes out through the same <audio> element that keeps the page
-//    alive (source swapped to the beep, then back to the silent loop), like the alarm does.
+//    alive (source swapped to a ~1 s triple beep, then back to the silent loop ONLY when the clip
+//    fires 'ended'; if 'ended' does not come within 3 s it goes back anyway), like the alarm does.
 const closePipBeforeSound = async (st) => {
   const pip = st.pip;
   if (!pip) return;
@@ -398,11 +399,11 @@ const preAlertViaAudio = (st) => {
   };
   try {
     audio.loop = false;
-    audio.src = getPreAlertClipUrl();
+    audio.src = getLongPreAlertClipUrl();
     audio.addEventListener('ended', restore);
     audio.play().catch((e) => { note(`Media: el pre-aviso no pudo sonar (${e?.name})`); restore(); });
   } catch { restore(); return false; }
-  setTimeout(restore, 1200); // safety net if 'ended' never comes
+  setTimeout(restore, 3000); // safety net if 'ended' never comes
   try { if (navigator.vibrate) navigator.vibrate(80); } catch { /* ignore */ }
   return true;
 };

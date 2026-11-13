@@ -99,7 +99,23 @@ const alarmPulseUrl = (i) => {
   return clipUrl(`alarm${f}`, f, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
 };
 const PRE_ALERT = { freq: 440, duration: 0.15, peak: 0.15, attack: 0.02, release: 0.05 };
-export const getPreAlertClipUrl = () => preAlertUrl();
+// "Completo" (screen locked) pre-alert: ~1 s, 3 pulses of 0.2 s every 1/3 s with the ALARM tone
+// (2.4 / 3.2 / 2.4 kHz, same envelope and peak). A 150 ms beep was too short to be heard with the
+// screen off (output latency), so it is long enough to survive that.
+const LONG_PRE_ALERT = { pulses: 3, pulse: 0.2, period: 1 / 3 };
+export const getLongPreAlertClipUrl = () => {
+  const total = LONG_PRE_ALERT.pulses * LONG_PRE_ALERT.period;
+  if (!clipCache.has('prealert-long')) {
+    clipCache.set('prealert-long', makeWavUrl(total, 22050, (t) => {
+      const i = Math.min(LONG_PRE_ALERT.pulses - 1, Math.floor(t / LONG_PRE_ALERT.period));
+      const tt = t - i * LONG_PRE_ALERT.period;
+      if (tt >= LONG_PRE_ALERT.pulse) return 0;
+      const env = Math.min(1, tt / ALARM_TONE.attack, (LONG_PRE_ALERT.pulse - tt) / ALARM_TONE.release);
+      return ALARM_TONE.peak * Math.max(0, env) * Math.sin(2 * Math.PI * ALARM_TONE.freqs[i % ALARM_TONE.freqs.length] * tt);
+    }));
+  }
+  return clipCache.get('prealert-long');
+};
 const preAlertUrl = () => clipUrl('prealert', PRE_ALERT.freq, PRE_ALERT.duration, PRE_ALERT.peak, PRE_ALERT.attack, PRE_ALERT.release);
 
 const activeClips = new Set();
