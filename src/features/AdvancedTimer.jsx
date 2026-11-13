@@ -6,7 +6,7 @@ import { REST_TIMER_KEY, clearRestTimerStorage } from '../utils/restTimerStorage
 import { acquireWakeLock, releaseWakeLock as releaseWakeLockOwner } from '../utils/wakeLock';
 
 const REST_LOCK_OWNER = 'rest-timer';
-import { startBackground, bgComplete, stopBackground, bgHandlesAlarm, bgAlarming, getBackgroundMode } from './restBackground';
+import { startBackground, bgComplete, bgPreAlert, stopBackground, bgHandlesAlarm, bgAlarming } from './restBackground';
 
 const CORNER_KEY = 'timerCorner';
 const TIMER_STORAGE_KEY = REST_TIMER_KEY;
@@ -178,7 +178,10 @@ const AdvancedTimer = () => {
     const remaining = getDisplaySeconds();
     if (remaining <= 10 && !preAlertFiredRef.current) {
       preAlertFiredRef.current = true;
-      playPreAlert({ webAudio: getBackgroundMode() === 'locked' }); // "Completo": the WebAudio beep as before
+      // "PiP": the floating window is closed first and then the clip sounds (a playing PiP video
+      // makes any sound take persistent audio focus). "Completo": it sounds through the
+      // background <audio>. Otherwise the short clip.
+      bgPreAlert().then((handled) => { if (!handled) playPreAlert(); }).catch(() => playPreAlert());
     }
     if (remaining <= 0 && !completedRef.current) {
       completedRef.current = true;
