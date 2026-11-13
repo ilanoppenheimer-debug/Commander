@@ -1,4 +1,4 @@
-import { vibrateAlarm, stopVibration, ALARM_TONE } from '../services/audioService';
+import { vibrateAlarm, stopVibration, ALARM_TONE, getPreAlertClipUrl } from '../services/audioService';
 import { makeWavUrl } from '../utils/wavSynth';
 
 // Rest timer outside the app. On every set completion BOTH start, inside the same tap:
@@ -197,7 +197,7 @@ const attachPip = async (st) => {
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
-  const pip = { cleanup: [], draw: null };
+  const pip = { cleanup: [], draw: null, video: null };
   st.pip = pip;
 
   pip.draw = () => drawFrame(ctx, W, H, st.getSnapshot(), st.alarming);
@@ -213,6 +213,7 @@ const attachPip = async (st) => {
   const stream = canvas.captureStream(5);
   video.srcObject = stream;
   document.body.appendChild(video);
+  pip.video = video;
   pip.cleanup.push(() => { stream.getTracks().forEach(t => t.stop()); video.srcObject = null; video.remove(); });
 
   // Does the browser accept the "enter PiP automatically on leaving" handler at all?
@@ -278,7 +279,7 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
   cleanup.push(() => { URL.revokeObjectURL(sUrl); URL.revokeObjectURL(aUrl); });
   const audio = new Audio(sUrl);
   audio.loop = true;
-  st.audio = audio; st.alarmSrc = aUrl;
+  st.audio = audio; st.alarmSrc = aUrl; st.silentSrc = sUrl;
   cleanup.push(() => { audio.pause(); audio.removeAttribute('src'); audio.load(); });
 
   // Android can pause the element on its own (another app took the audio focus: music, a call).
@@ -341,8 +342,11 @@ const startMediaCore = async ({ getSnapshot, onStop, onDismiss }) => {
 const startPipOnly = async ({ getSnapshot, onStop, onDismiss }) => {
   if (state?.mode === 'pip' && !state.alarming) {
     state.getSnapshot = getSnapshot; state.actions = { onStop, onDismiss };
-    note('Solo PiP: descanso nuevo, la ventana sigue.');
-    return !!state.pip;
+    if (state.pip) { note('Solo PiP: descanso nuevo, la ventana sigue.'); return true; }
+    // The window was closed at the previous rest's T-10 (see bgPreAlert): a new rest (a new tap)
+    // opens it again.
+    note('Solo PiP: descanso nuevo, se vuelve a abrir la ventana.');
+    return attachPip(state);
   }
   stopBackground();
   const st = { mode: 'pip', cleanup: [], getSnapshot, actions: { onStop, onDismiss }, alarming: false, switching: false, pip: null };
@@ -360,6 +364,55 @@ export const startBackground = async (params) => {
   const pipP = st ? attachPip(st) : Promise.resolve(false);
   const [mediaOk] = await Promise.all([mediaP, pipP]);
   return mediaOk;
+};
+
+// ── Pre-alert (T-10) ─────────────────────────────────────────────────────────────────
+// Returns true when it already sounded through the background audio ("Completo"); false when
+// the caller must play the short clip itself.
+//  - "PiP": with the PiP video playing, ANY sound of the page takes persistent audio focus and
+//    pauses the music for good. So the floating window is closed first (video paused, exit PiP,
+//    stream stopped), and only then does the caller play the clip. It stays closed for the rest
+//    of the count (the rest timer's Wake Lock keeps the screen on); the next rest reopens it.
+//  - "Completo": the pre-alert goes out through the same <audio> element that keeps the page
+//    alive (source swapped to the beep, then back to the silent loop), like the alarm does.
+const closePipBeforeSound = async (st) => {
+  const pip = st.pip;
+  if (!pip) return;
+  try { pip.video?.pause(); } catch { /* ignore */ }
+  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); } catch { /* already closed */ }
+  if (state === st && st.pip === pip) releasePip(st, 'PiP cerrado a T-10, antes del pre-aviso.');
+};
+
+const preAlertViaAudio = (st) => {
+  const { audio, silentSrc } = st;
+  st.switching = true;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    audio.removeEventListener('ended', restore);
+    if (state === st && !st.alarming) { // the alarm may already own the element
+      try { audio.src = silentSrc; audio.loop = true; audio.play().catch(() => {}); } catch { /* ignore */ }
+    }
+    setTimeout(() => { if (state === st) st.switching = false; }, 300);
+  };
+  try {
+    audio.loop = false;
+    audio.src = getPreAlertClipUrl();
+    audio.addEventListener('ended', restore);
+    audio.play().catch((e) => { note(`Media: el pre-aviso no pudo sonar (${e?.name})`); restore(); });
+  } catch { restore(); return false; }
+  setTimeout(restore, 1200); // safety net if 'ended' never comes
+  try { if (navigator.vibrate) navigator.vibrate(80); } catch { /* ignore */ }
+  return true;
+};
+
+export const bgPreAlert = async () => {
+  const st = state;
+  if (!st || st.alarming) return false;
+  if (st.mode === 'pip') { await closePipBeforeSound(st); return false; }
+  if (st.mode === 'media' && !st.audioLost) return preAlertViaAudio(st);
+  return false;
 };
 
 // ── Timer reached 0 ──────────────────────────────────────────────────────────────────

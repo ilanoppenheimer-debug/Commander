@@ -99,6 +99,7 @@ const alarmPulseUrl = (i) => {
   return clipUrl(`alarm${f}`, f, ALARM_PULSE_DURATION, ALARM_TONE.peak, ALARM_TONE.attack, ALARM_TONE.release);
 };
 const PRE_ALERT = { freq: 440, duration: 0.15, peak: 0.15, attack: 0.02, release: 0.05 };
+export const getPreAlertClipUrl = () => preAlertUrl();
 const preAlertUrl = () => clipUrl('prealert', PRE_ALERT.freq, PRE_ALERT.duration, PRE_ALERT.peak, PRE_ALERT.attack, PRE_ALERT.release);
 
 const activeClips = new Set();
@@ -172,20 +173,10 @@ export const playHoldTargetBeep = () => {
   }
 };
 
-// `webAudio` (setting "Completo") plays the pre-alert exactly as it always did, a WebAudio beep
-// on the shared context: that is the behaviour validated with the screen locked. Otherwise one
-// short <audio> clip.
-export const playPreAlert = ({ webAudio = false } = {}) => {
-  if (webAudio) {
-    try {
-      const ctx = getCtx();
-      if (ctx) beep(ctx, newBus(ctx, 0.15), 440, ctx.currentTime, 0.15, 0.15);
-      if (navigator.vibrate) navigator.vibrate(80);
-    } catch {}
-    return;
-  }
-  // One short clip (440 Hz, 0.15 s, same level as before); the old WebAudio beep only if the
-  // browser refuses the <audio>.
+// One short <audio> clip (440 Hz, 0.15 s) + a short vibration. "Completo" plays it through its
+// background <audio> element instead (features/restBackground.js, bgPreAlert).
+export const playPreAlert = () => {
+  // The old WebAudio beep only if the browser refuses the <audio>.
   playClip(preAlertUrl(), () => {
     const ctx = getCtx();
     if (ctx) { beep(ctx, newBus(ctx, 0.15), 440, ctx.currentTime, 0.15, 0.15); scheduleIdleSuspend(0.15); }
