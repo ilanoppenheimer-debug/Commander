@@ -102,6 +102,32 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "Pull-over", name: "Pull-over con Polea", equipment: ["cable"], measurement: "reps", inSelector: true, status: "nueva" },
 ].map(Object.freeze));
 
+// Muscle group of each FAMILY (ids of MUSCLE_GROUP_OPTIONS). It is only a DEFAULT: it preloads the
+// group when creating an exercise of the family and classifies it in the selector's muscle tabs
+// when the exercise has no group of its own. An exercise's own muscleGroup (metadata) always wins.
+export const FAMILY_GROUP = Object.freeze({
+  // Piernas
+  'Sentadilla': 'legs', 'Prensa': 'legs', 'Peso Muerto': 'legs', 'RDL': 'legs', 'Hip Thrust': 'legs',
+  'Split Squat': 'legs', 'Curl Femoral': 'legs', 'Extensión de Cuádriceps': 'legs', 'Abducción': 'legs',
+  'Gemelos': 'legs', 'Tibial Anterior': 'legs',
+  // Pecho
+  'Press Banca': 'chest', 'Press Inclinado': 'chest', 'Flexiones': 'chest', 'Flexiones Declinadas': 'chest', 'Aperturas': 'chest',
+  // Espalda
+  'Dominadas': 'back', 'Muscle-Up': 'back', 'Jalón': 'back', 'Remo': 'back', 'Pull-over': 'back', 'Front Lever': 'back',
+  // Hombros
+  'Press Militar': 'shoulders', 'Elevaciones Laterales': 'shoulders', 'Elevaciones Frontales': 'shoulders', 'Facepull': 'shoulders',
+  'Pájaros': 'shoulders', 'Encogimientos': 'shoulders', 'Manguito Rotador': 'shoulders', 'Handstand': 'shoulders',
+  // Brazos
+  'Curl de Bíceps': 'arms', 'Extensión de Tríceps': 'arms', 'Muñeca': 'arms',
+  // Core / Cardio
+  'Core': 'core', 'Cardio': 'cardio',
+});
+const familyGroupByKey = new Map(Object.entries(FAMILY_GROUP).map(([f, g]) => [normalizeExerciseName(f), g]));
+// Default muscle group of a family (by family name), or undefined.
+export const familyGroup = (family) => familyGroupByKey.get(normalizeExerciseName(family));
+// Every family name of the table (35).
+export const FAMILY_NAMES = Object.freeze([...new Set(FAMILY_TABLE.map(r => r.family))]);
+
 // Names taken OUT of the selector (hardcoded catalogue + any custom row with the same name):
 //  - the 7 old ones: Press Banca Inclinado, Remo en punta / Remo en Punta (one identity), Curl
 //    Femoral, Extensiones de Cuádriceps, Cruce de Poleas, Plancha Abdominal;

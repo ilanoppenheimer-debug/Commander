@@ -7,7 +7,7 @@ import { defaultImplement } from "../../utils/exerciseVariant";
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
-import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily } from "../../constants/exerciseMetadata";
+import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily, familyDefaultGroup } from "../../constants/exerciseMetadata";
 
 const TABS = [
   { id: 'recent',    label: 'Recientes' },
@@ -109,20 +109,11 @@ const ExerciseSelectorModal = ({
     return sizes;
   }, [familyOf]);
 
-  // Muscle of a name for the tabs: its own; if it has none (a new variant that only lives in the
-  // table) the one its family-mates agree on.
-  const muscleOf = useCallback((name) => {
-    const own = catalogMuscleFor(name) || getExerciseMeta(name)?.muscleGroup;
-    if (own) return own;
-    const key = normalizeExerciseName(familyOf.get(name) ?? name);
-    const mates = new Set();
-    for (const [n, f] of familyOf) {
-      if (n === name || normalizeExerciseName(f) !== key) continue;
-      const m = catalogMuscleFor(n) || getExerciseMeta(n)?.muscleGroup;
-      if (m) mates.add(m);
-    }
-    return mates.size === 1 ? [...mates][0] : null;
-  }, [familyOf]);
+  // Muscle of a name for the tabs: its own (catalogue / metadata), else the default of its family
+  // (families table or the family the athlete chose). Own always wins.
+  const muscleOf = useCallback((name) => (
+    catalogMuscleFor(name) || getExerciseMeta(name)?.muscleGroup || familyDefaultGroup(name) || null
+  ), [favVersion]);
 
   // Recent: exercises used in last 4 weeks
   const recentExercises = useMemo(() => {

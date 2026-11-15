@@ -1,5 +1,5 @@
 import { normalizeExerciseName } from '../utils/exerciseName';
-import { getFamilyEntry } from './exerciseFamilies';
+import { getFamilyEntry, familyGroup } from './exerciseFamilies';
 
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
@@ -210,6 +210,12 @@ export function getMeasurement(name) {
 // the exercise's own name (a family of one).
 export function resolveFamily(name) {
   return getExerciseMeta(name).family || getFamilyEntry(name)?.family || String(name ?? '');
+}
+
+// Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a
+// default: the exercise's own metadata.muscleGroup, when there is one, always wins over it.
+export function familyDefaultGroup(name) {
+  return familyGroup(resolveFamily(name));
 }
 
 // Companion metric — only meaningful when measurement === 'time'. Tri-state: undefined

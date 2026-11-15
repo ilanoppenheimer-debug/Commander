@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, ChevronDown, ChevronRight, Star, AlertTriangle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { TAG_LABELS } from '../../constants/blockTemplates';
-import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta } from '../../constants/exerciseMetadata';
+import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta, resolveFamily } from '../../constants/exerciseMetadata';
+import { FAMILY_NAMES, familyGroup, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
+import { scoreCandidates } from '../../utils/routineImport/exerciseMatching';
 import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
-import { sameExercise } from '../../utils/exerciseName';
+import { sameExercise, normalizeExerciseName } from '../../utils/exerciseName';
 
 const DEBOUNCE_MS = 300;
 
@@ -24,6 +26,61 @@ function StarRating({ value, onChange }) {
   );
 }
 
+// Family field: the family the exercise is grouped under in the selector. Default (null) = "Nueva
+// familia: <name>" (a family of one). Typing searches the existing families; a text that matches none
+// can also be used as a new family. Only grouping: nothing here touches the history.
+function FamilyPicker({ value, onChange, options, newLabelName, locked = false }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const q = normalizeExerciseName(query);
+  const filtered = options.filter(o => !q || normalizeExerciseName(o.name).includes(q));
+  const exactTyped = options.some(o => normalizeExerciseName(o.name) === q);
+  const shown = value === null ? `Nueva familia: ${newLabelName || '…'}` : value;
+  return (
+    <div>
+      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Familia</label>
+      <button
+        type="button"
+        data-testid="family-picker"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white text-left focus:border-accent-500"
+      >
+        <span className={value === null ? 'text-slate-400 italic' : ''}>{shown}</span>
+        <ChevronDown size={14} className="text-slate-500" />
+      </button>
+      {open && (
+        <div className="mt-1 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Buscar familia..."
+            className="w-full bg-slate-950 px-3 py-2 text-sm text-white border-b border-slate-800 focus:outline-none"
+          />
+          <div className="max-h-48 overflow-y-auto">
+            {!locked && (
+              <button type="button" onClick={() => { onChange(null); setOpen(false); setQuery(''); }} className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">
+                ▸ Nueva familia: {newLabelName || '…'}
+              </button>
+            )}
+            {filtered.map(o => (
+              <button key={o.name} type="button" onClick={() => { onChange(o.name); setOpen(false); setQuery(''); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-800 ${value === o.name ? 'text-accent-400' : 'text-slate-200'}`}>
+                ▸ {o.name} <span className="text-slate-500 text-xs">(existente · {o.count})</span>
+              </button>
+            ))}
+            {query.trim() && !exactTyped && (
+              <button type="button" onClick={() => { onChange(query.trim()); setOpen(false); setQuery(''); }} className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 border-t border-slate-800">
+                ▸ Nueva familia: {query.trim()}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CreateExerciseModal({ existingName, allExerciseNames = [], customExerciseNames = [], onSave, onClose }) {
   const isEdit = !!existingName;
   const isCustomExercise = isEdit && customExerciseNames.includes(existingName);
@@ -31,6 +88,9 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   // one would drop it out of muscle-group/tab classification with no way to fix that at
   // runtime. Renaming is scoped to custom exercises until that's addressed separately.
   const canRename = isEdit && isCustomExercise;
+  // A variant of the families table (not an exercise of the athlete's own): long press only lets him
+  // change its FAMILY — the name and everything else stay as they are.
+  const tableVariantEdit = isEdit && !isCustomExercise && !!getFamilyEntry(existingName);
 
   const [name, setName] = useState(existingName || '');
   const [muscleGroup, setMuscleGroup] = useState('');
@@ -45,7 +105,13 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const [enjoyment, setEnjoyment] = useState(null);
   const [feelConnection, setFeelConnection] = useState(null);
   const [notes, setNotes] = useState('');
-  const [duplicate, setDuplicate] = useState({ exact: null, similar: [] });
+  const [duplicate, setDuplicate] = useState({ exact: null, suggest: null });
+  // Family: null = "Nueva familia: <name>" (a family of one, nothing is written). In edit mode it starts
+  // as the family the exercise resolves to today.
+  const [family, setFamily] = useState(() => (existingName ? resolveFamily(existingName) : null));
+  const initialFamily = useRef(existingName ? resolveFamily(existingName) : null);
+  const [muscleTouched, setMuscleTouched] = useState(false);
+  const [dismissedFor, setDismissedFor] = useState(''); // "No, es otro" for this exact text
 
   // Rename confirmation sub-flow: null = normal form; an object = showing the preview
   // screen (sessions/plantillas affected, merge details) awaiting explicit confirm.
@@ -73,31 +139,77 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   }, [isEdit, existingName]);
 
   // Duplicate detection. In create mode an exact match blocks saving (offers "usar
-  // este" instead). In rename mode an exact match is expected and welcome — it's the
-  // fusion case — so it's surfaced as information on the confirm screen, not here.
+  // este" instead). Besides that, an "¿Es X?" prompt only when the typed name is `probable` or a
+  // `fuzzy` whose WHOLE name contains / is contained in an existing one (see scoreCandidates), so a
+  // legitimate new variant ("Curl X") is not flooded with prompts. In rename mode an exact match is
+  // expected and welcome — it's the fusion case — so it's surfaced as information on the confirm
+  // screen, not here.
   useEffect(() => {
     if (isEdit && !canRename) return;
     clearTimeout(debounceRef.current);
     const trimmed = name.trim().toLowerCase();
     const isRenameAttempt = isEdit && trimmed !== existingName.toLowerCase();
-    if (isEdit && !isRenameAttempt) { setDuplicate({ exact: null, similar: [] }); return; }
-    if (!trimmed) { setDuplicate({ exact: null, similar: [] }); return; }
+    if (isEdit && !isRenameAttempt) { setDuplicate({ exact: null, suggest: null }); return; }
+    if (!trimmed) { setDuplicate({ exact: null, suggest: null }); return; }
     debounceRef.current = setTimeout(() => {
       const exact = allExerciseNames.find(e => sameExercise(e, trimmed)) || null;
-      const similar = exact ? [] : allExerciseNames.filter(e => {
-        const el = e.toLowerCase();
-        return el.startsWith(trimmed) || el.includes(trimmed) || trimmed.includes(el);
-      }).slice(0, 3);
-      setDuplicate({ exact, similar });
+      let suggest = null;
+      if (!exact && !isEdit) {
+        const r = scoreCandidates(name.trim(), allExerciseNames);
+        if (r.type === 'probable') suggest = { name: r.exerciseName, tier: 'probable' };
+        else if (r.type === 'fuzzy' && r.contained.length) suggest = { name: r.contained[0], tier: 'fuzzy' };
+      }
+      setDuplicate({ exact, suggest });
     }, DEBOUNCE_MS);
   }, [name, allExerciseNames, isEdit, canRename, existingName]);
+
+  // Existing families to pick from: the table's plus the ones the athlete's exercises group under.
+  const familyOptions = useMemo(() => {
+    const counts = new Map();
+    const add = (f, n) => { const k = normalizeExerciseName(f); const c = counts.get(k) || { name: f, count: 0 }; c.count += n; counts.set(k, c); };
+    FAMILY_NAMES.forEach(f => add(f, 0));
+    for (const n of allExerciseNames) { const f = resolveFamily(n); if (f !== n || counts.has(normalizeExerciseName(f))) add(f, 1); }
+    return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [allExerciseNames]);
+
+  // What choosing a family preloads: its muscle group (the table's default, or the one its members agree
+  // on) and the implements its variants offer (as suggestions: the equipment stays a single choice).
+  const familyMembers = useMemo(() => (family ? allExerciseNames.filter(n => normalizeExerciseName(resolveFamily(n)) === normalizeExerciseName(family)) : []), [family, allExerciseNames]);
+  const groupOfFamily = useMemo(() => {
+    if (!family) return null;
+    const own = familyGroup(family);
+    if (own) return own;
+    const mates = new Set(familyMembers.map(n => getExerciseMeta(n).muscleGroup).filter(Boolean));
+    return mates.size === 1 ? [...mates][0] : null;
+  }, [family, familyMembers]);
+  const suggestedEquipment = useMemo(() => {
+    if (!family) return [];
+    const freq = new Map();
+    for (const r of familyVariants(family)) for (const e of r.equipment) freq.set(e, (freq.get(e) || 0) + 1);
+    for (const n of familyMembers) { const e = getExerciseMeta(n).equipment; if (e) freq.set(e, (freq.get(e) || 0) + 1); }
+    return [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([e]) => e);
+  }, [family, familyMembers]);
+  useEffect(() => {
+    if (isEdit || muscleTouched || !groupOfFamily) return;
+    setMuscleGroup(groupOfFamily);
+  }, [groupOfFamily, isEdit, muscleTouched]);
 
   const isRenameAttempt = canRename && name.trim() && name.trim() !== existingName;
   // Editing an exercise that never had an implement may stay that way (equipment is then
   // simply not written); creating one must pick it.
-  const canSave = isEdit
-    ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup
-    : !duplicate.exact && name.trim() && muscleGroup && equipment;
+  const canSave = tableVariantEdit
+    ? true
+    : isEdit
+      ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup
+      : !duplicate.exact && name.trim() && muscleGroup && equipment;
+
+  // The family is written ONLY when the athlete chose one different from what the exercise resolves to
+  // (edit) or from its own name (create): "Nueva familia: <name>" is already the fallback.
+  const familyToWrite = (() => {
+    if (!family) return null;
+    const base = isEdit ? initialFamily.current : name.trim();
+    return normalizeExerciseName(family) !== normalizeExerciseName(base || '') ? family : null;
+  })();
 
   // Keys with no value are left OUT, not set to undefined: saveExerciseMeta merges
   // {...stored, ...data}, so an undefined key would erase what is already stored.
@@ -118,6 +230,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     feelConnection,
     notes,
     ...(isEdit ? {} : { isCustom: true, createdAt: new Date().toISOString() }),
+    ...(familyToWrite ? { family: familyToWrite } : {}),
     muscleGroupOverride: true,
     muscleGroupAssignedAt: new Date().toISOString(),
     muscleGroupAssignedBy: 'user-manual',
@@ -126,6 +239,13 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const handleSave = async () => {
     if (!canSave) return;
     setRenameError(null);
+
+    if (tableVariantEdit) {
+      // Only the family. Nothing else of the exercise is written.
+      if (familyToWrite) saveExerciseMeta(existingName, { family: familyToWrite });
+      onSave(existingName, null);
+      return;
+    }
 
     if (isRenameAttempt) {
       // Persist metadata edits under the OLD name first, so the rename's merge picks
@@ -245,10 +365,18 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             </div>
           )}
 
-          {isEdit && !isCustomExercise && (
+          {isEdit && !isCustomExercise && !tableVariantEdit && (
             <div className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-xs">
               <AlertTriangle size={14} className="shrink-0" />
               Ejercicio de catálogo — renombrar todavía no está disponible para estos.
+            </div>
+          )}
+
+          {/* Table variant: the name is locked, only the family can change */}
+          {tableVariantEdit && (
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Nombre</label>
+              <div data-testid="locked-name" className="w-full bg-slate-800/50 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-500 text-sm">{existingName}</div>
             </div>
           )}
 
@@ -270,11 +398,13 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
                   <button onClick={() => { onSave(duplicate.exact, null); }} className="ml-auto underline text-accent-400">Usar este</button>
                 </div>
               )}
-              {!isEdit && !duplicate.exact && duplicate.similar.length > 0 && (
-                <div className="mt-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-400">
-                  ¿Te referís a: {duplicate.similar.map(s => (
-                    <button key={s} onClick={() => { onSave(s, null); }} className="text-accent-400 underline ml-1">{s}</button>
-                  ))}?
+              {!isEdit && !duplicate.exact && duplicate.suggest && dismissedFor !== normalizeExerciseName(name) && (
+                <div data-testid="es-x" className="mt-2 bg-amber-950/30 border border-amber-600/40 rounded-lg px-3 py-2 text-amber-300 text-xs space-y-2">
+                  <div className="flex items-center gap-1.5"><AlertTriangle size={12} className="shrink-0" /> ¿Es "{duplicate.suggest.name}"?</div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { onSave(duplicate.suggest.name, null); }} className="px-2.5 py-1 rounded-lg bg-accent-600 text-black font-bold">Usar existente</button>
+                    <button type="button" onClick={() => setDismissedFor(normalizeExerciseName(name))} className="px-2.5 py-1 rounded-lg bg-slate-700 text-white font-bold">No, es otro</button>
+                  </div>
                 </div>
               )}
               {isEdit && isRenameAttempt && duplicate.exact && (
@@ -285,6 +415,13 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             </div>
           )}
 
+          {/* Family: preloads the muscle group and suggests implements (create); alone in "solo familia" */}
+          <FamilyPicker value={family} onChange={(v) => setFamily(v === null && isEdit ? existingName : v)} options={familyOptions} newLabelName={isEdit ? existingName : name.trim()} locked={tableVariantEdit} />
+          {tableVariantEdit && (
+            <div className="text-[11px] text-slate-500">Solo cambia dónde aparece en el selector.</div>
+          )}
+
+          {!tableVariantEdit && (<>
           {/* Muscle group */}
           <div>
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Grupo muscular *</label>
@@ -293,7 +430,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
                 <button
                   key={mg.id}
                   type="button"
-                  onClick={() => setMuscleGroup(mg.id)}
+                  onClick={() => { setMuscleGroup(mg.id); setMuscleTouched(true); }}
                   className={`py-2 rounded-lg text-xs font-bold transition border ${muscleGroup === mg.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
                 >
                   {mg.label}
@@ -305,13 +442,16 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
           {/* Equipment */}
           <div>
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Equipamiento *</label>
+            {suggestedEquipment.length > 0 && (
+              <div className="text-[10px] text-slate-500 mb-1.5">Sugeridos por la familia (con borde punteado)</div>
+            )}
             <div className="flex flex-wrap gap-1.5">
-              {EQUIPMENT_TYPES.map(eq => (
+              {[...EQUIPMENT_TYPES].sort((a, b) => (suggestedEquipment.includes(b.id) ? 1 : 0) - (suggestedEquipment.includes(a.id) ? 1 : 0)).map(eq => (
                 <button
                   key={eq.id}
                   type="button"
                   onClick={() => setEquipment(eq.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${equipment === eq.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${equipment === eq.id ? 'bg-accent-600 border-accent-500 text-black' : `bg-slate-800 text-slate-400 hover:text-white ${suggestedEquipment.includes(eq.id) ? 'border-dashed border-accent-500/60' : 'border-slate-700'}`}`}
                 >
                   {eq.label}
                 </button>
@@ -382,6 +522,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
               </div>
             )}
           </div>
+          </>)}
         </div>
 
         <div className="p-4 border-t border-slate-800 flex gap-2 shrink-0">
