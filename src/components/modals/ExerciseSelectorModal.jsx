@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
-import { Dumbbell, X, Search, Plus, Trash2, Star } from "lucide-react";
+import { Dumbbell, X, Search, Plus, Trash2, Star, ChevronDown, ChevronRight } from "lucide-react";
 import { DEFAULT_EXERCISE_DB, catalogMuscleFor } from "../../constants/gymConstants";
-import { sameExercise } from "../../utils/exerciseName";
+import { sameExercise, normalizeExerciseName } from "../../utils/exerciseName";
+import { SELECTOR_TABLE_NAMES, isHiddenFromSelector } from "../../constants/exerciseFamilies";
+import { defaultImplement } from "../../utils/exerciseVariant";
 import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
-import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta } from "../../constants/exerciseMetadata";
+import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily } from "../../constants/exerciseMetadata";
 
 const TABS = [
   { id: 'recent',    label: 'Recientes' },
@@ -85,13 +87,42 @@ const ExerciseSelectorModal = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingExName, setEditingExName] = useState(null);
 
+  // Catalogue + families table (the new variants live only there) + the athlete's own exercises,
+  // without the ones taken out of the selector (old / duplicated / hidden: see exerciseFamilies.js).
   const allExerciseNames = useMemo(() => {
     const safeCustom = Array.isArray(customExercises) ? customExercises.filter(Boolean) : [];
-    const deduped = [...DEFAULT_EXERCISE_DB, ...safeCustom].filter((e, _, arr) =>
-      arr.findIndex(x => sameExercise(x, e)) === arr.indexOf(e)
-    );
-    return [...new Set(deduped)].sort();
+    const deduped = [...DEFAULT_EXERCISE_DB, ...SELECTOR_TABLE_NAMES, ...safeCustom]
+      .filter(e => !isHiddenFromSelector(e))
+      .filter((e, _, arr) => arr.findIndex(x => sameExercise(x, e)) === arr.indexOf(e));
+    return [...new Set(deduped)].sort((a, b) => a.localeCompare(b, 'es'));
   }, [customExercises]);
+
+  // Family of every name (metadata.family -> table -> the name itself) and its size in the list.
+  const familyOf = useMemo(() => {
+    const map = new Map();
+    for (const n of allExerciseNames) map.set(n, resolveFamily(n));
+    return map;
+  }, [allExerciseNames, favVersion]);
+  const familySize = useMemo(() => {
+    const sizes = new Map();
+    for (const f of familyOf.values()) { const k = normalizeExerciseName(f); sizes.set(k, (sizes.get(k) || 0) + 1); }
+    return sizes;
+  }, [familyOf]);
+
+  // Muscle of a name for the tabs: its own; if it has none (a new variant that only lives in the
+  // table) the one its family-mates agree on.
+  const muscleOf = useCallback((name) => {
+    const own = catalogMuscleFor(name) || getExerciseMeta(name)?.muscleGroup;
+    if (own) return own;
+    const key = normalizeExerciseName(familyOf.get(name) ?? name);
+    const mates = new Set();
+    for (const [n, f] of familyOf) {
+      if (n === name || normalizeExerciseName(f) !== key) continue;
+      const m = catalogMuscleFor(n) || getExerciseMeta(n)?.muscleGroup;
+      if (m) mates.add(m);
+    }
+    return mates.size === 1 ? [...mates][0] : null;
+  }, [familyOf]);
 
   // Recent: exercises used in last 4 weeks
   const recentExercises = useMemo(() => {
@@ -109,9 +140,10 @@ const ExerciseSelectorModal = ({
   }, [history, allExerciseNames]);
 
   const filteredExercises = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    // When searching, bypass tab and search all
-    if (q) return allExerciseNames.filter(e => e.toLowerCase().includes(q));
+    const q = normalizeExerciseName(search);
+    // When searching, bypass tab and search all — by the name AND by the family name
+    // ("Split" finds Sentadilla Búlgara).
+    if (q) return allExerciseNames.filter(e => normalizeExerciseName(e).includes(q) || normalizeExerciseName(familyOf.get(e) ?? '').includes(q));
 
     switch (activeTab) {
       case 'recent': return recentExercises.length ? recentExercises : allExerciseNames.slice(0, 20);
@@ -122,18 +154,38 @@ const ExerciseSelectorModal = ({
         if (!expected) return allExerciseNames;
         const expectedArr = Array.isArray(expected) ? expected : [expected];
         return allExerciseNames.filter(e => {
-          const m = catalogMuscleFor(e) || getExerciseMeta(e)?.muscleGroup;
+          const m = muscleOf(e);
           return m && expectedArr.includes(m);
         });
       }
     }
-  }, [search, activeTab, allExerciseNames, recentExercises, favVersion]);
+  }, [search, activeTab, allExerciseNames, recentExercises, favVersion, familyOf, muscleOf]);
+
+  // Grouped by family (collapsible) except in the flat lists (search, Recientes, Favoritos). A family
+  // with a single variant is a plain row.
+  const flat = !!search.trim() || activeTab === 'recent' || activeTab === 'favorites';
+  const [openFamilies, setOpenFamilies] = useState(() => new Set());
+  const toggleFamily = (key) => setOpenFamilies(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const groups = useMemo(() => {
+    if (flat) return [];
+    const byKey = new Map();
+    for (const n of filteredExercises) {
+      const label = familyOf.get(n) ?? n;
+      const key = normalizeExerciseName(label);
+      if (!byKey.has(key)) byKey.set(key, { key, label, names: [], total: familySize.get(key) || 1 });
+      byKey.get(key).names.push(n);
+    }
+    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [flat, filteredExercises, familyOf, familySize]);
 
   const removeCustom = (e, exName) => {
     e.stopPropagation();
     if (removeCustomExercise) removeCustomExercise(exName);
     else if (setCustomExercises) setCustomExercises(prev => Array.isArray(prev) ? prev.filter(ex => ex !== exName) : []);
   };
+
+  // The exercise goes out with the implement it should start with (see defaultImplement).
+  const pick = (name) => onSelect(name, defaultImplement(name, history));
 
   const handleFavToggle = useCallback((e, exName) => {
     e.stopPropagation();
@@ -144,10 +196,10 @@ const ExerciseSelectorModal = ({
   const handleCreateSave = (name, meta) => {
     setShowCreateModal(false);
     setEditingExName(null);
-    if (!meta) { onSelect(name); return; }
+    if (!meta) { pick(name); return; }
     if (addCustomExercise) addCustomExercise(name);
     else if (setCustomExercises) setCustomExercises(prev => [...(Array.isArray(prev) ? prev : []), name]);
-    onSelect(name);
+    pick(name);
   };
 
   const handleEditSave = (name, meta) => {
@@ -212,24 +264,44 @@ const ExerciseSelectorModal = ({
           <div className="flex-1 min-h-0 overflow-y-auto p-2 overscroll-contain">
             {filteredExercises.length > 0 ? (
               <div className="space-y-0.5">
-                {filteredExercises.map(ex => {
-                  const isCustom = Array.isArray(customExercises) && customExercises.includes(ex);
-                  const details = getExerciseDetails(ex);
-                  const fav = isFavorite(ex);
-                  return (
-                    <ExerciseRow
-                      key={ex}
-                      ex={ex}
-                      details={details}
-                      fav={fav}
-                      isCustom={isCustom}
-                      onSelect={onSelect}
-                      onFavToggle={handleFavToggle}
-                      onRemove={removeCustom}
-                      onLongPress={() => { setEditingExName(ex); setShowCreateModal(true); }}
-                    />
-                  );
-                })}
+                {(() => {
+                  const row = (ex) => {
+                    const isCustom = Array.isArray(customExercises) && customExercises.includes(ex);
+                    return (
+                      <ExerciseRow
+                        key={ex}
+                        ex={ex}
+                        details={getExerciseDetails(ex)}
+                        fav={isFavorite(ex)}
+                        isCustom={isCustom}
+                        onSelect={pick}
+                        onFavToggle={handleFavToggle}
+                        onRemove={removeCustom}
+                        onLongPress={() => { setEditingExName(ex); setShowCreateModal(true); }}
+                      />
+                    );
+                  };
+                  if (flat) return filteredExercises.map(row);
+                  return groups.map(g => {
+                    if (g.total <= 1 && g.names.length === 1) return row(g.names[0]);
+                    const open = openFamilies.has(g.key);
+                    return (
+                      <div key={g.key}>
+                        <button
+                          type="button"
+                          onClick={() => toggleFamily(g.key)}
+                          aria-expanded={open}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800 text-left"
+                        >
+                          {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                          <span className="text-slate-300 font-bold text-sm">{g.label}</span>
+                          <span className="text-slate-500 text-xs">({g.names.length})</span>
+                        </button>
+                        {open && <div className="pl-4 space-y-0.5">{g.names.map(row)}</div>}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             ) : (
               <div className="text-center py-10 px-4 text-slate-500 text-sm">

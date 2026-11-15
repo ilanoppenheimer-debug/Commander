@@ -3,6 +3,7 @@ import { createBackup, downloadBackupAsFile } from '../backupService';
 import { isSignedIn, performDriveBackup } from '../googleDriveService';
 import { logger } from '../logger';
 import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
+import { FAMILY_TABLE } from '../../constants/exerciseFamilies';
 import { collectCustomExercises } from './normalizer';
 
 const STRONG_ID_PREFIX = 'strong-import-';
@@ -72,7 +73,7 @@ export async function importToDexie(normalizedSessions, selectedRoutines, option
   }
 
   // ── Step 3: resolve custom exercises ─────────────────────────────────────
-  const customExNamesToAdd = collectCustomExercises(sessionsToImport, DEFAULT_EXERCISE_DB);
+  const customExNamesToAdd = collectCustomExercises(sessionsToImport, [...DEFAULT_EXERCISE_DB, ...FAMILY_TABLE.map(r => r.name)]); // the families table's variants are known exercises, not custom ones
 
   // ── Step 4: write everything in a Dexie transaction ──────────────────────
   await db.transaction('rw', db.history, db.routines, db.customExercises, db.logs, async () => {

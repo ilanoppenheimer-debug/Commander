@@ -11,6 +11,7 @@ import { normalizeStrongData } from '../../services/strongImporter/normalizer';
 import { detectRoutines } from '../../services/strongImporter/routineDetector';
 import { importToDexie, checkExistingStrongSessions } from '../../services/strongImporter/importer';
 import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
+import { SELECTOR_TABLE_NAMES } from '../../constants/exerciseFamilies';
 import { isSignedIn } from '../../services/googleDriveService';
 
 const EQUIPMENT_OPTIONS = [
@@ -129,7 +130,7 @@ function StepUpload({ onParsed }) {
 function StepMapping({ unknowns, customMappings, setCustomMappings }) {
   if (unknowns.length === 0) return null;
 
-  const allNames = [...DEFAULT_EXERCISE_DB].sort();
+  const allNames = [...new Set([...DEFAULT_EXERCISE_DB, ...SELECTOR_TABLE_NAMES])].sort();
 
   const setDecision = (exerciseRaw, decision) => {
     setCustomMappings(prev => ({ ...prev, [exerciseRaw]: decision }));

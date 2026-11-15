@@ -7,7 +7,7 @@ import { SetRow } from '../session/SetRow';
 import { formatNumber } from '../keypad/keypadConfig';
 import { getExerciseMeta } from '../../constants/exerciseMetadata';
 
-export default function PreSessionModal({ routine, onStart, onCancel, customExercises, addCustomExercise, removeCustomExercise }) {
+export default function PreSessionModal({ routine, onStart, onCancel, customExercises, addCustomExercise, removeCustomExercise, history = [] }) {
   const [draft, setDraft] = useState(() => ({
     ...routine,
     exercises: (Array.isArray(routine?.exercises) ? routine.exercises : []).map(ex => ({
@@ -74,13 +74,13 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
     setDraft(prev => ({ ...prev, exercises: prev.exercises.filter((_, i) => i !== exIdx) }));
   };
 
-  const addExercise = (name) => {
+  const addExercise = (name, equipment) => {
     setDraft(prev => ({
       ...prev,
       exercises: [...prev.exercises, {
         id: `pre-${Date.now()}`,
         name,
-        equipment: getExerciseMeta(name)?.equipment ?? null,
+        equipment: equipment !== undefined ? equipment : (getExerciseMeta(name)?.equipment ?? null),
         restSeconds: 90,
         sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }],
       }],
@@ -211,6 +211,7 @@ export default function PreSessionModal({ routine, onStart, onCancel, customExer
         <ExerciseSelectorModal
           onClose={() => setShowExSelector(false)}
           onSelect={addExercise}
+          history={history}
           customExercises={customExercises}
           addCustomExercise={addCustomExercise}
           removeCustomExercise={removeCustomExercise}

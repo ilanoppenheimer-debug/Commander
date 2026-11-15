@@ -1,5 +1,6 @@
 import { db } from '../../db/database';
 import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
+import { FAMILY_TABLE } from '../../constants/exerciseFamilies';
 import { normalizeExerciseName } from '../exerciseName';
 
 // Filler words that never identify an exercise ("Remo con mancuerna" ≈ "Remo mancuerna").
@@ -39,7 +40,9 @@ export const findExerciseMatch = async (importedName) => {
     customNames = rows.map(r => r.name).filter(Boolean);
   } catch { /* ignore */ }
 
-  const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...customNames])];
+  // The families table's variants count too (a YAML with "Sissy Squat" is not a new exercise), the
+  // hidden ones included: they still resolve to their name.
+  const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...FAMILY_TABLE.map(r => r.name), ...customNames])];
 
   const identity = normalizeExerciseName(importedName);
   const exact = allNames.find(n => normalizeExerciseName(n) === identity);

@@ -1,4 +1,5 @@
 import { normalizeExerciseName } from '../utils/exerciseName';
+import { getFamilyEntry } from './exerciseFamilies';
 
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
@@ -199,7 +200,16 @@ export function setMeasurement(name, value) {
 }
 
 export function getMeasurement(name) {
-  return getExerciseMeta(name).measurement; // undefined | 'reps' | 'time'
+  // The exercise's own metadata first; a variant of the families table with no metadata
+  // (new time variants: Plancha Lateral, Front Lever *, Cardio...) falls back to the table.
+  return getExerciseMeta(name).measurement ?? getFamilyEntry(name)?.measurement; // undefined | 'reps' | 'time'
+}
+
+// Family of an exercise, for GROUPING only (selector, search, reports by family). Never written
+// to the history. Order: the family the athlete chose (metadata.family) -> the families table ->
+// the exercise's own name (a family of one).
+export function resolveFamily(name) {
+  return getExerciseMeta(name).family || getFamilyEntry(name)?.family || String(name ?? '');
 }
 
 // Companion metric — only meaningful when measurement === 'time'. Tri-state: undefined

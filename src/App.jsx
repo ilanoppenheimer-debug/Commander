@@ -1432,6 +1432,7 @@ function AppMain() {
             customExercises={safeCustomExs}
             addCustomExercise={addCustomExercise}
             removeCustomExercise={removeCustomExercise}
+            history={safeHistory}
             onSaved={(updated) => { setEditingSession(null); showNotify('Cambios guardados', 'success'); }}
             onCancel={() => setEditingSession(null)}
           />
@@ -1443,6 +1444,7 @@ function AppMain() {
             customExercises={safeCustomExs}
             addCustomExercise={addCustomExercise}
             removeCustomExercise={removeCustomExercise}
+            history={safeHistory}
             onStart={(modifiedRoutine) => { setPreSessionRoutine(null); storeStart(modifiedRoutine); }}
             onCancel={() => setPreSessionRoutine(null)}
           />

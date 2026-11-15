@@ -23,7 +23,7 @@ function sessReducer(state, action) {
         exercises: [...state.exercises, {
           id: `edit-ex-${Date.now()}-${Math.random()}`,
           name: action.name,
-          equipment: meta.equipment ?? null,
+          equipment: action.equipment !== undefined ? action.equipment : (meta.equipment ?? null),
           tag: meta.defaultTag || null,
           sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', notes: '' }],
         }],
@@ -88,7 +88,7 @@ function sessReducer(state, action) {
   }
 }
 
-export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCancel, customExercises, addCustomExercise, removeCustomExercise }) {
+export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCancel, customExercises, addCustomExercise, removeCustomExercise, history = [] }) {
   const [state, dispatch] = useReducer(sessReducer, {
     ...session,
     exercises: Array.isArray(session.exercises)
@@ -130,12 +130,12 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
     }
   };
 
-  const handleSelectExercise = (name) => {
+  const handleSelectExercise = (name, equipment) => {
     if (swappingExId) {
       dispatch({ type: 'SWAP_EXERCISE', exId: swappingExId, newName: name });
       setSwappingExId(null);
     } else {
-      dispatch({ type: 'ADD_EXERCISE', name });
+      dispatch({ type: 'ADD_EXERCISE', name, equipment });
       setShowExSelector(false);
     }
   };
@@ -266,6 +266,7 @@ export default function SessionEditor({ session, barUnit = 'kg', onSaved, onCanc
         <ExerciseSelectorModal
           onClose={() => { setShowExSelector(false); setSwappingExId(null); }}
           onSelect={handleSelectExercise}
+          history={history}
           customExercises={customExercises}
           addCustomExercise={addCustomExercise}
           removeCustomExercise={removeCustomExercise}

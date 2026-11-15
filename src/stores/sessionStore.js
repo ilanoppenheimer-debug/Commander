@@ -114,7 +114,10 @@ export const useSessionStore = create((set, get) => ({
     // Explicit equipment (e.g. from a Coach import) wins. Otherwise fall back to
     // whatever the user last configured for this exercise — metadata is a default,
     // not an imposition. No metadata either: null ("sin definir"), never a guessed barbell.
-    const resolvedEquipment = equipment || getExerciseMeta(name)?.equipment || null;
+    // The selector passes the implement already resolved (defaultImplement: last used -> first offered ->
+    // none), and an explicit null means "sin definir" on purpose (e.g. Tibial Anterior offers none), so
+    // the metadata is only consulted when nothing was passed at all (undefined).
+    const resolvedEquipment = equipment !== undefined ? (equipment || null) : (getExerciseMeta(name)?.equipment || null);
     const restDefaults = { barbell: 180, smith: 180, dumbbell: 120, kettlebell: 120, landmine: 120, machine: 90, cable: 90, bodyweight: 60, band: 60 };
     const newEx = { id: newId, name, equipment: resolvedEquipment, restSeconds: restDefaults[resolvedEquipment] ?? 90, sets: [{ weight: 0, reps: 0, rpe: 0, type: 'normal', completed: false }] };
     const next = {

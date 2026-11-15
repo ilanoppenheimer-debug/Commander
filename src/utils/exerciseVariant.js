@@ -1,5 +1,6 @@
 import { normalizeExerciseName } from './exerciseName';
 import { getExerciseMeta, getMeasurement } from '../constants/exerciseMetadata';
+import { getFamilyEntry } from '../constants/exerciseFamilies';
 
 // Exercise VARIANT = normalized name + equipment (implement). Numbers (1RM, top set,
 // placeholders, previous performance, PRs) are computed per variant. Read-only: nothing
@@ -100,4 +101,45 @@ export const createVariantIndex = (exercises) => {
   const labelFor = (name, equipment) =>
     (equipment && isMulti(normalizeExerciseName(name))) ? variantLabel(name, equipment) : name;
   return { keyOf, isMulti, labelFor };
+};
+
+// ── Implement offered / default when ADDING an exercise ──────────────────────────────
+// Implements most recently used on this variant in the history (newest first, unique).
+const usedImplements = (name, history) => {
+  const key = normalizeExerciseName(name);
+  const seen = [];
+  const dated = [];
+  for (const s of Array.isArray(history) ? history : []) {
+    const t = Date.parse(s?.completedAt || s?.createdAt || '') || 0;
+    for (const ex of (Array.isArray(s?.exercises) ? s.exercises : [])) {
+      if (ex?.equipment && normalizeExerciseName(ex.name) === key) dated.push([t, ex.equipment]);
+    }
+  }
+  dated.sort((a, b) => b[0] - a[0]);
+  for (const [, eq] of dated) if (!seen.includes(eq)) seen.push(eq);
+  return seen;
+};
+
+// Implement a variant starts with when it is added to a session:
+//   last one used on that variant -> first one the families table offers -> the exercise's own
+//   metadata (custom exercises) -> null ("sin definir"). Never a guess.
+export const defaultImplement = (name, history) => {
+  const last = usedImplements(name, history)[0];
+  if (last) return last;
+  const entry = getFamilyEntry(name);
+  // A variant of the table: what it offers decides ("sin definir" when it offers nothing, e.g.
+  // Tibial Anterior); the metadata is only the fallback of exercises that are not in the table.
+  if (entry) return entry.equipment[0] ?? null;
+  return getExerciseMeta(name).equipment || null;
+};
+
+// Implements to list first ("Esta variante") in the session's implement select: what the table
+// offers for the variant; for a variant that is not in the table, what it was used with.
+export const offeredImplements = (name, history) => {
+  const offered = getFamilyEntry(name)?.equipment;
+  if (offered && offered.length) return [...offered];
+  const own = getExerciseMeta(name).equipment;
+  const out = usedImplements(name, history);
+  if (own && !out.includes(own)) out.push(own);
+  return out;
 };
