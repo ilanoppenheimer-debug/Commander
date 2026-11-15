@@ -16,6 +16,9 @@ const DETAILS_BY_MUSCLE_GROUP = {
   core:      { icon: <CoreIcon size={18} />,      color: "text-emerald-400", bg: "bg-emerald-900/20", border: "border-emerald-500/30", label: "Core",   dotBg: "bg-emerald-400" },
 };
 
+// Icon / colours of a muscle group id (MUSCLE_GROUP_OPTIONS); general when it has none.
+export const getGroupDetails = (group) => DETAILS_BY_MUSCLE_GROUP[group] || GENERAL_DETAILS;
+
 export const getExerciseDetails = (name) => {
   if (!name) return GENERAL_DETAILS;
 
