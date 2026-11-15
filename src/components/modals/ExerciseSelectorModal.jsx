@@ -2,12 +2,12 @@ import React, { useMemo, useState, useRef, useCallback } from "react";
 import { Dumbbell, X, Search, Plus, Trash2, Star, ChevronDown, ChevronRight } from "lucide-react";
 import { DEFAULT_EXERCISE_DB, catalogMuscleFor } from "../../constants/gymConstants";
 import { sameExercise, normalizeExerciseName } from "../../utils/exerciseName";
-import { SELECTOR_TABLE_NAMES, isHiddenFromSelector, familyGroup } from "../../constants/exerciseFamilies";
+import { SELECTOR_TABLE_NAMES, isHiddenFromSelector, familyGroup, getFamilyEntry } from "../../constants/exerciseFamilies";
 import { defaultImplement } from "../../utils/exerciseVariant";
 import { getExerciseDetails, getGroupDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
-import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily, familyDefaultGroup } from "../../constants/exerciseMetadata";
+import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup } from "../../constants/exerciseMetadata";
 
 const TABS = [
   { id: 'recent',    label: 'Recientes' },
@@ -109,11 +109,12 @@ const ExerciseSelectorModal = ({
     return sizes;
   }, [familyOf]);
 
-  // Muscle of a name for the tabs: its own (catalogue / metadata), else the default of its family
-  // (families table or the family the athlete chose). Own always wins.
-  const muscleOf = useCallback((name) => (
-    catalogMuscleFor(name) || getExerciseMeta(name)?.muscleGroup || familyDefaultGroup(name) || null
-  ), [favVersion]);
+  // Muscle of a name for the tabs: see resolveMuscleGroup (a table variant takes its family's group unless
+  // the athlete assigned its own; any other exercise keeps its own group, then the catalogue's).
+  const muscleOf = useCallback((name) => {
+    const { group } = resolveMuscleGroup(name);
+    return getFamilyEntry(name) ? (group || catalogMuscleFor(name) || null) : (catalogMuscleFor(name) || group || null);
+  }, [favVersion]);
 
   // Recent: exercises used in last 4 weeks
   const recentExercises = useMemo(() => {

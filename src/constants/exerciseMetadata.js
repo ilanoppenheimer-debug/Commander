@@ -212,6 +212,28 @@ export function resolveFamily(name) {
   return getExerciseMeta(name).family || getFamilyEntry(name)?.family || String(name ?? '');
 }
 
+// Muscle group an exercise is shown / classified under, and where it comes from. READ ONLY.
+//  - A variant of the families table: the group of its FAMILY wins, unless the exercise has its own
+//    group assigned by the athlete (muscleGroupAssignedBy === 'user-manual' — the same logic as the
+//    implement). A group that came from anything else (coach import, migration, auto) does not override
+//    the family: it was a guess.
+//  - Any other exercise: its own metadata.muscleGroup; failing that, the default of the family the
+//    athlete put it in.
+// Never inferred from words in the name. Returns { group, source } with source in
+// 'metadata-manual' | 'familia' | 'metadata' | 'familia (por defecto)' | null.
+export function resolveMuscleGroup(name) {
+  const meta = getExerciseMeta(name);
+  const fam = familyGroup(resolveFamily(name));
+  if (getFamilyEntry(name)) {
+    if (meta.muscleGroup && meta.muscleGroupAssignedBy === 'user-manual') return { group: meta.muscleGroup, source: 'metadata-manual' };
+    if (fam) return { group: fam, source: 'familia' };
+    return meta.muscleGroup ? { group: meta.muscleGroup, source: 'metadata' } : { group: undefined, source: null };
+  }
+  if (meta.muscleGroup) return { group: meta.muscleGroup, source: 'metadata' };
+  if (fam) return { group: fam, source: 'familia (por defecto)' };
+  return { group: undefined, source: null };
+}
+
 // Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a
 // default: the exercise's own metadata.muscleGroup, when there is one, always wins over it.
 export function familyDefaultGroup(name) {
