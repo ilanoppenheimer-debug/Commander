@@ -1,6 +1,6 @@
 import { normalizeExerciseName as norm } from './exerciseName';
 import { mergeExerciseMeta } from '../constants/exerciseMetadata';
-import { DEFAULT_EXERCISE_DB } from '../constants/gymConstants';
+import { TAXONOMY_CATALOG_PHASE2 } from '../constants/taxonomyCatalogPhase2';
 import {
   TAXONOMY_RULES, TAXONOMY_META_ALIASES, TAXONOMY_META_EQUIPMENT, TAXONOMY_JUNK, TAXONOMY_DUPLICATE_SESSIONS,
 } from './taxonomyMapping';
@@ -118,7 +118,7 @@ export const planTaxonomyMigration = (input, now = new Date().toISOString()) => 
   });
 
   // ---- 4. custom exercises
-  const catalogue = new Set(DEFAULT_EXERCISE_DB.map(norm));
+  const catalogue = new Set(TAXONOMY_CATALOG_PHASE2.map(norm)); // frozen: the live catalogue may change
   const customNorm = new Set(custom.map(norm));
   const usedAfter = new Set();
   nextHistory.forEach(s => (s.exercises || []).forEach(e => usedAfter.add(norm(e.name))));

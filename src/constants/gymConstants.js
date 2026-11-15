@@ -30,40 +30,28 @@ export const DEFAULT_INVENTORY_STATE = {
   lb: { 45: 8, 35: 4, 25: 4, 10: 6, 5: 4, 2.5: 4, 1.25: 2 },
 };
 
+// Phase 4: the old / duplicated names are out (see constants/exerciseFamilies.js); the variants live
+// in the families table. The phase-2 migration keeps its own frozen copy (taxonomyCatalogPhase2.js).
 export const DEFAULT_EXERCISE_DB = [
   "Press Banca",
-  "Press Banca Inclinado",
-  "Aperturas de Pecho",
-  "Cruce de Poleas",
-  "Fondos en Paralelas",
   "Sentadilla",
   "Prensa de Piernas",
-  "Extensiones de Cuádriceps",
   "Sentadilla Búlgara",
   "Sentadilla Hack",
   "Peso Muerto",
-  "Peso Muerto Rumano",
-  "Curl Femoral",
   "Hip Thrust",
   "Elevación de Gemelos",
   "Dominadas",
   "Remo con Barra",
   "Jalón al Pecho",
-  "Remo en Punta",
   "Pull-over con Polea",
   "Press Militar",
   "Elevaciones Laterales",
-  "Pájaros (Elevaciones Posteriores)",
-  "Encogimientos de Hombros",
   "Curl de Bíceps",
-  "Curl Martillo",
   "Curl Predicador",
   "Extensión de Tríceps",
   "Rompecráneos",
-  "Press Francés",
-  "Plancha Abdominal",
   "Crunch Abdominal",
-  "Elevación de Piernas",
 ].sort();
 
 export const MUSCLE_GROUPS = [

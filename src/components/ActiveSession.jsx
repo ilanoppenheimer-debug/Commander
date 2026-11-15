@@ -53,7 +53,7 @@ import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
-import { currentEquipment, makeVariantMatcher, variantLabel } from "../utils/exerciseVariant";
+import { currentEquipment, makeVariantMatcher, variantLabel, offeredImplements } from "../utils/exerciseVariant";
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
 import { requestSessionBriefing } from "../ai/sessionBriefing";
@@ -631,7 +631,9 @@ export default function ActiveSession({
     }
   };
 
-  const handleSelectExercise = (exName) => {
+  // `equipment` = the implement the variant should start with (last used -> first offered -> none),
+  // chosen by the selector (defaultImplement).
+  const handleSelectExercise = (exName, equipment) => {
     if (editingExId !== null) {
       storeUpdateEx(editingExId, { name: exName });
     } else {
@@ -639,7 +641,7 @@ export default function ActiveSession({
       if (alreadyPresent) {
         showNotify?.(`"${exName}" ya está en la sesión — agregando igualmente`, 'info');
       }
-      storeAddEx(exName);
+      storeAddEx(exName, equipment);
     }
     setShowExSelector(false);
     setEditingExId(null);
@@ -1042,9 +1044,27 @@ export default function ActiveSession({
                             className={`appearance-none bg-slate-800 text-[10px] font-bold uppercase tracking-wider px-2 py-1 pr-6 rounded border focus:outline-none focus:border-accent-500 cursor-pointer ${ex.equipment ? 'text-slate-300 border-slate-600' : 'text-amber-300 border-amber-500/60'}`}
                           >
                             <option value="">Sin definir</option>
-                            {EQUIPMENT_TYPES.map((eq) => (
-                              <option key={eq.id} value={eq.id}>{eq.label}</option>
-                            ))}
+                            {(() => {
+                              // "Esta variante": the implements the variant offers (families table, or what it
+                              // was used with); the rest of the implements go under "Otro".
+                              const mine = offeredImplements(ex.name, history);
+                              const first = EQUIPMENT_TYPES.filter(eq => mine.includes(eq.id));
+                              const rest = EQUIPMENT_TYPES.filter(eq => !mine.includes(eq.id));
+                              return (
+                                <>
+                                  {first.length > 0 && (
+                                    <optgroup label="Esta variante">
+                                      {first.map((eq) => <option key={eq.id} value={eq.id}>{eq.label}</option>)}
+                                    </optgroup>
+                                  )}
+                                  {rest.length > 0 && (
+                                    <optgroup label={first.length > 0 ? "Otro" : "Implemento"}>
+                                      {rest.map((eq) => <option key={eq.id} value={eq.id}>{eq.label}</option>)}
+                                    </optgroup>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </select>
                           <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         </div>
