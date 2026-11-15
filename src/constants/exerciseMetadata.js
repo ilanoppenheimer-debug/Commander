@@ -100,6 +100,24 @@ export function saveExerciseMeta(name, data) {
   localStorage.setItem(META_KEY, JSON.stringify(all));
 }
 
+// The athlete drops his own muscle group of an exercise so the family's group rules again. Removes the
+// group and its provenance from EVERY spelling key of the exercise (they resolve as one); touches nothing
+// else. Returns true when something was removed.
+const OWN_GROUP_FIELDS = ['muscleGroup', 'muscleGroupOverride', 'muscleGroupAssignedAt', 'muscleGroupAssignedBy'];
+export function clearOwnMuscleGroup(name) {
+  const all = loadExerciseMeta();
+  let changed = false;
+  for (const k of groupKeysOf(all, name)) {
+    if (!OWN_GROUP_FIELDS.some(f => all[k]?.[f] !== undefined)) continue;
+    const next = { ...all[k] };
+    for (const f of OWN_GROUP_FIELDS) delete next[f];
+    all[k] = { ...next, updatedAt: Date.now() };
+    changed = true;
+  }
+  if (changed) localStorage.setItem(META_KEY, JSON.stringify(all));
+  return changed;
+}
+
 // Exact-key accessors for the rename flow, which must act on a literal spelling.
 export const getRawExerciseMeta = (name) => loadExerciseMeta()[name] || {};
 export function writeRawExerciseMeta(name, meta) {

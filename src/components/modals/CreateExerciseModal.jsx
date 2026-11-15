@@ -3,7 +3,7 @@ import { X, ChevronDown, ChevronRight, Star, AlertTriangle } from 'lucide-react'
 import Modal from '../ui/Modal';
 import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { TAG_LABELS } from '../../constants/blockTemplates';
-import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta, resolveFamily } from '../../constants/exerciseMetadata';
+import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup, clearOwnMuscleGroup } from '../../constants/exerciseMetadata';
 import { FAMILY_NAMES, familyGroup, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
 import { scoreCandidates } from '../../utils/routineImport/exerciseMatching';
 import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
@@ -87,10 +87,11 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   // Catalogue exercises (DEFAULT_EXERCISE_DB) are hardcoded arrays, not data — renaming
   // one would drop it out of muscle-group/tab classification with no way to fix that at
   // runtime. Renaming is scoped to custom exercises until that's addressed separately.
-  const canRename = isEdit && isCustomExercise;
-  // A variant of the families table (not an exercise of the athlete's own): long press only lets him
-  // change its FAMILY — the name and everything else stay as they are.
-  const tableVariantEdit = isEdit && !isCustomExercise && !!getFamilyEntry(existingName);
+  // A variant of the families table — even if the athlete also has it among his own exercises (created
+  // before the table existed): long press only lets him change its FAMILY and its muscle group. The name
+  // is the table's identity and stays locked.
+  const tableVariantEdit = isEdit && !!getFamilyEntry(existingName);
+  const canRename = isEdit && isCustomExercise && !tableVariantEdit;
 
   const [name, setName] = useState(existingName || '');
   const [muscleGroup, setMuscleGroup] = useState('');
@@ -111,6 +112,10 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const [family, setFamily] = useState(() => (existingName ? resolveFamily(existingName) : null));
   const initialFamily = useRef(existingName ? resolveFamily(existingName) : null);
   const [muscleTouched, setMuscleTouched] = useState(false);
+  // "solo familia + grupo" edit of a table variant: where its group comes from today, and whether the
+  // athlete asked to go back to the family's.
+  const initialGroup = useRef(tableVariantEdit ? (resolveMuscleGroup(existingName).group || '') : '');
+  const [useFamilyGroup, setUseFamilyGroup] = useState(false);
   const [dismissedFor, setDismissedFor] = useState(''); // "No, es otro" for this exact text
 
   // Rename confirmation sub-flow: null = normal form; an object = showing the preview
@@ -125,7 +130,8 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   useEffect(() => {
     if (isEdit && existingName) {
       const meta = getExerciseMeta(existingName);
-      if (meta.muscleGroup) setMuscleGroup(meta.muscleGroup);
+      if (tableVariantEdit) setMuscleGroup(initialGroup.current);
+      else if (meta.muscleGroup) setMuscleGroup(meta.muscleGroup);
       if (meta.equipment) setEquipment(meta.equipment);
       if (meta.bilateral !== undefined) setBilateral(meta.bilateral);
       if (meta.movementPattern) setMovementPattern(meta.movementPattern);
@@ -194,6 +200,16 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     setMuscleGroup(groupOfFamily);
   }, [groupOfFamily, isEdit, muscleTouched]);
 
+  // Table variant edit. Today's own group (assigned by the athlete) is what "Usar el de la familia" drops.
+  const ownMeta = tableVariantEdit ? getExerciseMeta(existingName) : null;
+  const hasOwnGroup = !!ownMeta?.muscleGroup;
+  const shownGroup = tableVariantEdit && useFamilyGroup ? (groupOfFamily || '') : muscleGroup;
+  const groupSourceNote = !tableVariantEdit ? '' : useFamilyGroup
+    ? 'Va a mandar el de la familia (se borra el tuyo).'
+    : (muscleGroup && muscleGroup === initialGroup.current
+        ? (resolveMuscleGroup(existingName).source === 'metadata-manual' ? 'Asignado por vos.' : 'Es el de la familia.')
+        : 'Se guarda como asignado por vos.');
+
   const isRenameAttempt = canRename && name.trim() && name.trim() !== existingName;
   // Editing an exercise that never had an implement may stay that way (equipment is then
   // simply not written); creating one must pick it.
@@ -241,8 +257,15 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     setRenameError(null);
 
     if (tableVariantEdit) {
-      // Only the family. Nothing else of the exercise is written.
+      // Only the family and the muscle group; nothing else of the exercise is written, and each one only
+      // when it changes. The group is the athlete's own ('user-manual'), or removed so the family rules.
       if (familyToWrite) saveExerciseMeta(existingName, { family: familyToWrite });
+      if (useFamilyGroup) {
+        if (hasOwnGroup) clearOwnMuscleGroup(existingName);
+      } else if (muscleGroup && muscleGroup !== initialGroup.current) {
+        const now = new Date().toISOString();
+        saveExerciseMeta(existingName, { muscleGroup, muscleGroupOverride: true, muscleGroupAssignedAt: now, muscleGroupAssignedBy: 'user-manual' });
+      }
       onSave(existingName, null);
       return;
     }
@@ -421,8 +444,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             <div className="text-[11px] text-slate-500">Solo cambia dónde aparece en el selector.</div>
           )}
 
-          {!tableVariantEdit && (<>
-          {/* Muscle group */}
+          {/* Muscle group (also editable for a table variant) */}
           <div>
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Grupo muscular *</label>
             <div className="grid grid-cols-4 gap-1.5">
@@ -430,15 +452,31 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
                 <button
                   key={mg.id}
                   type="button"
-                  onClick={() => { setMuscleGroup(mg.id); setMuscleTouched(true); }}
-                  className={`py-2 rounded-lg text-xs font-bold transition border ${muscleGroup === mg.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                  onClick={() => { setMuscleGroup(mg.id); setMuscleTouched(true); setUseFamilyGroup(false); }}
+                  className={`py-2 rounded-lg text-xs font-bold transition border ${shownGroup === mg.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
                 >
                   {mg.label}
                 </button>
               ))}
             </div>
+            {tableVariantEdit && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span data-testid="group-note" className="text-[11px] text-slate-500">{groupSourceNote}</span>
+                {(hasOwnGroup || useFamilyGroup) && groupOfFamily && (
+                  <button
+                    type="button"
+                    data-testid="use-family-group"
+                    onClick={() => setUseFamilyGroup(v => !v)}
+                    className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${useFamilyGroup ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'}`}
+                  >
+                    Usar el de la familia
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
+          {!tableVariantEdit && (<>
           {/* Equipment */}
           <div>
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Equipamiento *</label>
