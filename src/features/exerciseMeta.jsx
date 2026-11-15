@@ -22,8 +22,7 @@ export const getGroupDetails = (group) => DETAILS_BY_MUSCLE_GROUP[group] || GENE
 export const getExerciseDetails = (name) => {
   if (!name) return GENERAL_DETAILS;
 
-  // The resolved group wins (a variant of the families table takes its family's group unless the athlete
-  // assigned its own — see resolveMuscleGroup); keyword matching on the name is only the fallback for
+  // The resolved group wins (the group of its family — see resolveMuscleGroup); keyword matching on the name is only the fallback for
   // exercises with no group at all.
   const { group: resolvedGroup } = resolveMuscleGroup(name);
   if (resolvedGroup && DETAILS_BY_MUSCLE_GROUP[resolvedGroup]) {

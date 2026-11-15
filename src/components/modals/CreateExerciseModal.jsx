@@ -1,30 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, ChevronDown, ChevronRight, Star, AlertTriangle } from 'lucide-react';
+import { X, ChevronDown, AlertTriangle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { TAG_LABELS } from '../../constants/blockTemplates';
-import { MUSCLE_GROUP_OPTIONS, MOVEMENT_PATTERNS, SCALE_3, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup, clearOwnMuscleGroup } from '../../constants/exerciseMetadata';
+import { MUSCLE_GROUP_OPTIONS, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup } from '../../constants/exerciseMetadata';
 import { FAMILY_NAMES, familyGroup, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
 import { scoreCandidates } from '../../utils/routineImport/exerciseMatching';
 import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
 import { sameExercise, normalizeExerciseName } from '../../utils/exerciseName';
 
 const DEBOUNCE_MS = 300;
-
-function StarRating({ value, onChange }) {
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
-          onClick={() => onChange(n === value ? null : n)}
-          className={`text-lg transition ${n <= (value || 0) ? 'text-amber-400' : 'text-slate-700 hover:text-slate-500'}`}
-        >★</button>
-      ))}
-    </div>
-  );
-}
 
 // Family field: the family the exercise is grouped under in the selector. Default (null) = "Nueva
 // familia: <name>" (a family of one). Typing searches the existing families; a text that matches none
@@ -98,24 +83,12 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   // No preselected implement: creating requires choosing one. '' = sin definir.
   const [equipment, setEquipment] = useState('');
   const [bilateral, setBilateral] = useState(true);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [movementPattern, setMovementPattern] = useState(null);
-  const [stability, setStability] = useState(null);
-  const [cnsLoad, setCnsLoad] = useState(null);
-  const [injuryRisk, setInjuryRisk] = useState(null);
-  const [enjoyment, setEnjoyment] = useState(null);
-  const [feelConnection, setFeelConnection] = useState(null);
-  const [notes, setNotes] = useState('');
   const [duplicate, setDuplicate] = useState({ exact: null, suggest: null });
   // Family: null = "Nueva familia: <name>" (a family of one, nothing is written). In edit mode it starts
   // as the family the exercise resolves to today.
   const [family, setFamily] = useState(() => (existingName ? resolveFamily(existingName) : null));
   const initialFamily = useRef(existingName ? resolveFamily(existingName) : null);
   const [muscleTouched, setMuscleTouched] = useState(false);
-  // "solo familia + grupo" edit of a table variant: where its group comes from today, and whether the
-  // athlete asked to go back to the family's.
-  const initialGroup = useRef(tableVariantEdit ? (resolveMuscleGroup(existingName).group || '') : '');
-  const [useFamilyGroup, setUseFamilyGroup] = useState(false);
   const [dismissedFor, setDismissedFor] = useState(''); // "No, es otro" for this exact text
 
   // Rename confirmation sub-flow: null = normal form; an object = showing the preview
@@ -130,17 +103,10 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   useEffect(() => {
     if (isEdit && existingName) {
       const meta = getExerciseMeta(existingName);
-      if (tableVariantEdit) setMuscleGroup(initialGroup.current);
-      else if (meta.muscleGroup) setMuscleGroup(meta.muscleGroup);
+      const g = resolveMuscleGroup(existingName).group || meta.muscleGroup;
+      if (g) setMuscleGroup(g);
       if (meta.equipment) setEquipment(meta.equipment);
       if (meta.bilateral !== undefined) setBilateral(meta.bilateral);
-      if (meta.movementPattern) setMovementPattern(meta.movementPattern);
-      if (meta.stability) setStability(meta.stability);
-      if (meta.cnsLoad) setCnsLoad(meta.cnsLoad);
-      if (meta.injuryRisk) setInjuryRisk(meta.injuryRisk);
-      if (meta.enjoyment) setEnjoyment(meta.enjoyment);
-      if (meta.feelConnection) setFeelConnection(meta.feelConnection);
-      if (meta.notes) setNotes(meta.notes);
     }
   }, [isEdit, existingName]);
 
@@ -178,16 +144,22 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
   }, [allExerciseNames]);
 
-  // What choosing a family preloads: its muscle group (the table's default, or the one its members agree
-  // on) and the implements its variants offer (as suggestions: the equipment stays a single choice).
+  // The muscle group belongs to the FAMILY. A family of the families table has its group fixed there
+  // (read-only here). A family of the athlete's own has the group of its variants: joining it takes that
+  // group; editing one of its variants changes the group of ALL of them. Only "Nueva familia" (a family of
+  // one) picks a group with chips.
+  const selfKey = normalizeExerciseName(isEdit ? existingName : name.trim());
   const familyMembers = useMemo(() => (family ? allExerciseNames.filter(n => normalizeExerciseName(resolveFamily(n)) === normalizeExerciseName(family)) : []), [family, allExerciseNames]);
-  const groupOfFamily = useMemo(() => {
-    if (!family) return null;
-    const own = familyGroup(family);
-    if (own) return own;
-    const mates = new Set(familyMembers.map(n => getExerciseMeta(n).muscleGroup).filter(Boolean));
-    return mates.size === 1 ? [...mates][0] : null;
-  }, [family, familyMembers]);
+  const otherMembers = useMemo(() => familyMembers.filter(n => normalizeExerciseName(n) !== selfKey), [familyMembers, selfKey]);
+  const tableGroup = family ? familyGroup(family) : undefined;
+  const athleteGroup = useMemo(() => {
+    if (tableGroup || otherMembers.length === 0) return null;
+    const groups = new Set(otherMembers.map(n => resolveMuscleGroup(n).group).filter(Boolean));
+    return groups.size === 1 ? [...groups][0] : null;
+  }, [tableGroup, otherMembers]);
+  const familyGroupValue = tableGroup || athleteGroup || null;
+  const groupLocked = !!tableGroup || (!isEdit && !!athleteGroup);
+  const wholeFamilyEdit = !tableGroup && otherMembers.length > 0;
   const suggestedEquipment = useMemo(() => {
     if (!family) return [];
     const freq = new Map();
@@ -195,29 +167,23 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     for (const n of familyMembers) { const e = getExerciseMeta(n).equipment; if (e) freq.set(e, (freq.get(e) || 0) + 1); }
     return [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([e]) => e);
   }, [family, familyMembers]);
+  // Choosing a family preloads its group (until the athlete picks one himself).
   useEffect(() => {
-    if (isEdit || muscleTouched || !groupOfFamily) return;
-    setMuscleGroup(groupOfFamily);
-  }, [groupOfFamily, isEdit, muscleTouched]);
+    if (muscleTouched || !familyGroupValue) return;
+    setMuscleGroup(familyGroupValue);
+  }, [familyGroupValue, muscleTouched]);
 
-  // Table variant edit. Today's own group (assigned by the athlete) is what "Usar el de la familia" drops.
-  const ownMeta = tableVariantEdit ? getExerciseMeta(existingName) : null;
-  const hasOwnGroup = !!ownMeta?.muscleGroup;
-  const shownGroup = tableVariantEdit && useFamilyGroup ? (groupOfFamily || '') : muscleGroup;
-  const groupSourceNote = !tableVariantEdit ? '' : useFamilyGroup
-    ? 'Va a mandar el de la familia (se borra el tuyo).'
-    : (muscleGroup && muscleGroup === initialGroup.current
-        ? (resolveMuscleGroup(existingName).source === 'metadata-manual' ? 'Asignado por vos.' : 'Es el de la familia.')
-        : 'Se guarda como asignado por vos.');
+  const shownGroup = groupLocked ? (familyGroupValue || '') : muscleGroup;
+  const groupLabel = MUSCLE_GROUP_OPTIONS.find(m => m.id === shownGroup)?.label || shownGroup;
 
   const isRenameAttempt = canRename && name.trim() && name.trim() !== existingName;
   // Editing an exercise that never had an implement may stay that way (equipment is then
   // simply not written); creating one must pick it.
   const canSave = tableVariantEdit
-    ? true
+    ? !!shownGroup
     : isEdit
-      ? (isRenameAttempt ? !!name.trim() : true) && muscleGroup
-      : !duplicate.exact && name.trim() && muscleGroup && equipment;
+      ? (isRenameAttempt ? !!name.trim() : true) && !!shownGroup
+      : !duplicate.exact && name.trim() && shownGroup && equipment;
 
   // The family is written ONLY when the athlete chose one different from what the exercise resolves to
   // (edit) or from its own name (create): "Nueva familia: <name>" is already the fallback.
@@ -227,45 +193,49 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     return normalizeExerciseName(family) !== normalizeExerciseName(base || '') ? family : null;
   })();
 
+  // The advanced fields (patrón, estabilidad, SNC, lesión, gusto, conexión, notas) have no form any more:
+  // whatever is stored is carried over as it is, never modified.
+  const ADVANCED_FIELDS = ['movementPattern', 'stability', 'cnsLoad', 'injuryRisk', 'enjoyment', 'feelConnection', 'notes'];
+  const ownGroupStamp = () => ({ muscleGroup: shownGroup, muscleGroupOverride: true, muscleGroupAssignedAt: new Date().toISOString(), muscleGroupAssignedBy: 'user-manual' });
+  // Table family: its group rules, nothing is written. Any other family: the exercise carries the group of
+  // the family, and so do all the other variants when it changed.
+  const writeFamilyGroup = (selfName) => {
+    if (tableGroup || !shownGroup) return;
+    for (const n of otherMembers) {
+      if (resolveMuscleGroup(n).group !== shownGroup) saveExerciseMeta(n, ownGroupStamp());
+    }
+    if (getExerciseMeta(selfName).muscleGroup !== shownGroup) saveExerciseMeta(selfName, ownGroupStamp());
+  };
+
   // Keys with no value are left OUT, not set to undefined: saveExerciseMeta merges
   // {...stored, ...data}, so an undefined key would erase what is already stored.
-  const buildMeta = () => ({
-    muscleGroup,
-    ...(equipment ? {
-      equipment,
-      equipmentOverride: true,
-      equipmentAssignedAt: new Date().toISOString(),
-      equipmentAssignedBy: 'user-manual',
-    } : {}),
-    bilateral,
-    movementPattern,
-    stability,
-    cnsLoad,
-    injuryRisk,
-    enjoyment,
-    feelConnection,
-    notes,
-    ...(isEdit ? {} : { isCustom: true, createdAt: new Date().toISOString() }),
-    ...(familyToWrite ? { family: familyToWrite } : {}),
-    muscleGroupOverride: true,
-    muscleGroupAssignedAt: new Date().toISOString(),
-    muscleGroupAssignedBy: 'user-manual',
-  });
+  const buildMeta = () => {
+    const stored = isEdit ? getExerciseMeta(existingName) : {};
+    const kept = {};
+    for (const f of ADVANCED_FIELDS) if (stored[f] !== undefined) kept[f] = stored[f];
+    return {
+      ...kept,
+      ...(equipment ? {
+        equipment,
+        equipmentOverride: true,
+        equipmentAssignedAt: new Date().toISOString(),
+        equipmentAssignedBy: 'user-manual',
+      } : {}),
+      bilateral,
+      ...(isEdit ? {} : { isCustom: true, createdAt: new Date().toISOString() }),
+      ...(familyToWrite ? { family: familyToWrite } : {}),
+      ...(!tableGroup && shownGroup ? ownGroupStamp() : {}),
+    };
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
     setRenameError(null);
 
     if (tableVariantEdit) {
-      // Only the family and the muscle group; nothing else of the exercise is written, and each one only
-      // when it changes. The group is the athlete's own ('user-manual'), or removed so the family rules.
+      // Only the family (and, when it moves to a family of the athlete's, that family's group).
       if (familyToWrite) saveExerciseMeta(existingName, { family: familyToWrite });
-      if (useFamilyGroup) {
-        if (hasOwnGroup) clearOwnMuscleGroup(existingName);
-      } else if (muscleGroup && muscleGroup !== initialGroup.current) {
-        const now = new Date().toISOString();
-        saveExerciseMeta(existingName, { muscleGroup, muscleGroupOverride: true, muscleGroupAssignedAt: now, muscleGroupAssignedBy: 'user-manual' });
-      }
+      writeFamilyGroup(existingName);
       onSave(existingName, null);
       return;
     }
@@ -274,6 +244,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       // Persist metadata edits under the OLD name first, so the rename's merge picks
       // up the freshest values as the "source" side, not whatever was there on open.
       saveExerciseMeta(existingName, buildMeta());
+      writeFamilyGroup(existingName);
       const preview = await previewRenameExercise(existingName, name.trim());
       if (!preview.ok) { setRenameError(preview.reason); return; }
       setRenamePreview(preview);
@@ -283,6 +254,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     const finalName = isEdit ? existingName : name.trim();
     const meta = buildMeta();
     saveExerciseMeta(finalName, meta);
+    writeFamilyGroup(finalName);
     onSave(finalName, meta);
   };
 
@@ -426,7 +398,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
                   <div className="flex items-center gap-1.5"><AlertTriangle size={12} className="shrink-0" /> ¿Es "{duplicate.suggest.name}"?</div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => { onSave(duplicate.suggest.name, null); }} className="px-2.5 py-1 rounded-lg bg-accent-600 text-black font-bold">Usar existente</button>
-                    <button type="button" onClick={() => setDismissedFor(normalizeExerciseName(name))} className="px-2.5 py-1 rounded-lg bg-slate-700 text-white font-bold">No, es otro</button>
+                    <button type="button" onClick={() => { setDismissedFor(normalizeExerciseName(name)); setFamily(resolveFamily(duplicate.suggest.name)); setMuscleTouched(false); }} className="px-2.5 py-1 rounded-lg bg-slate-700 text-white font-bold">No, es otro</button>
                   </div>
                 </div>
               )}
@@ -441,38 +413,35 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
           {/* Family: preloads the muscle group and suggests implements (create); alone in "solo familia" */}
           <FamilyPicker value={family} onChange={(v) => setFamily(v === null && isEdit ? existingName : v)} options={familyOptions} newLabelName={isEdit ? existingName : name.trim()} locked={tableVariantEdit} />
           {tableVariantEdit && (
-            <div className="text-[11px] text-slate-500">Solo cambia dónde aparece en el selector.</div>
+            <div className="text-[11px] text-slate-500">Cambia dónde aparece en el selector y de qué grupo es.</div>
           )}
 
-          {/* Muscle group (also editable for a table variant) */}
+          {/* Muscle group: the family's. Read-only when the family already has one; chips for a new family
+              (or to change the group of a family of the athlete's own, which applies to all its variants). */}
           <div>
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Grupo muscular *</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {MUSCLE_GROUP_OPTIONS.map(mg => (
-                <button
-                  key={mg.id}
-                  type="button"
-                  onClick={() => { setMuscleGroup(mg.id); setMuscleTouched(true); setUseFamilyGroup(false); }}
-                  className={`py-2 rounded-lg text-xs font-bold transition border ${shownGroup === mg.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
-                >
-                  {mg.label}
-                </button>
-              ))}
-            </div>
-            {tableVariantEdit && (
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span data-testid="group-note" className="text-[11px] text-slate-500">{groupSourceNote}</span>
-                {(hasOwnGroup || useFamilyGroup) && groupOfFamily && (
-                  <button
-                    type="button"
-                    data-testid="use-family-group"
-                    onClick={() => setUseFamilyGroup(v => !v)}
-                    className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${useFamilyGroup ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'}`}
-                  >
-                    Usar el de la familia
-                  </button>
-                )}
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Grupo muscular{groupLocked ? '' : ' *'}</label>
+            {groupLocked ? (
+              <div data-testid="group-readonly" className="bg-slate-800/50 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-300">
+                Grupo: <span className="text-white font-bold">{groupLabel}</span> <span className="text-slate-500">· de la familia</span>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {MUSCLE_GROUP_OPTIONS.map(mg => (
+                    <button
+                      key={mg.id}
+                      type="button"
+                      onClick={() => { setMuscleGroup(mg.id); setMuscleTouched(true); }}
+                      className={`py-2 rounded-lg text-xs font-bold transition border ${shownGroup === mg.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                    >
+                      {mg.label}
+                    </button>
+                  ))}
+                </div>
+                {wholeFamilyEdit && (
+                  <div data-testid="group-note" className="mt-2 text-[11px] text-slate-500">Es el grupo de la familia: cambiarlo lo cambia en las {otherMembers.length + 1} variantes.</div>
+                )}
+              </>
             )}
           </div>
 
@@ -511,55 +480,6 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             </button>
           </div>
 
-          {/* Advanced accordion */}
-          <div className="border border-slate-700 rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider hover:text-white transition"
-            >
-              Configuración avanzada (opcional)
-              {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-            {showAdvanced && (
-              <div className="p-4 space-y-4 bg-slate-900">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Patrón de movimiento</label>
-                  <div className="flex flex-wrap gap-1">
-                    {MOVEMENT_PATTERNS.map(mp => (
-                      <button key={mp.id} type="button" onClick={() => setMovementPattern(p => p === mp.id ? null : mp.id)}
-                        className={`px-2 py-1 rounded text-[10px] font-bold transition border ${movementPattern === mp.id ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-white'}`}
-                      >{mp.label}</button>
-                    ))}
-                  </div>
-                </div>
-                {[{ label: 'Estabilidad requerida', val: stability, set: setStability }, { label: 'Demanda SNC', val: cnsLoad, set: setCnsLoad }, { label: 'Riesgo de lesión', val: injuryRisk, set: setInjuryRisk }].map(({ label, val, set }) => (
-                  <div key={label}>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">{label}</label>
-                    <div className="flex gap-2">
-                      {SCALE_3.map(s => (
-                        <button key={s.id} type="button" onClick={() => set(v => v === s.id ? null : s.id)}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${val === s.id ? `${s.color} bg-slate-700 border-current` : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-white'}`}
-                        >{s.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Cuánto te gusta</label>
-                  <StarRating value={enjoyment} onChange={setEnjoyment} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Conexión mente-músculo</label>
-                  <StarRating value={feelConnection} onChange={setFeelConnection} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Notas</label>
-                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Técnica, cuidados, notas..." className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-accent-500 focus:outline-none resize-none" />
-                </div>
-              </div>
-            )}
-          </div>
           </>)}
         </div>
 

@@ -100,24 +100,6 @@ export function saveExerciseMeta(name, data) {
   localStorage.setItem(META_KEY, JSON.stringify(all));
 }
 
-// The athlete drops his own muscle group of an exercise so the family's group rules again. Removes the
-// group and its provenance from EVERY spelling key of the exercise (they resolve as one); touches nothing
-// else. Returns true when something was removed.
-const OWN_GROUP_FIELDS = ['muscleGroup', 'muscleGroupOverride', 'muscleGroupAssignedAt', 'muscleGroupAssignedBy'];
-export function clearOwnMuscleGroup(name) {
-  const all = loadExerciseMeta();
-  let changed = false;
-  for (const k of groupKeysOf(all, name)) {
-    if (!OWN_GROUP_FIELDS.some(f => all[k]?.[f] !== undefined)) continue;
-    const next = { ...all[k] };
-    for (const f of OWN_GROUP_FIELDS) delete next[f];
-    all[k] = { ...next, updatedAt: Date.now() };
-    changed = true;
-  }
-  if (changed) localStorage.setItem(META_KEY, JSON.stringify(all));
-  return changed;
-}
-
 // Exact-key accessors for the rename flow, which must act on a literal spelling.
 export const getRawExerciseMeta = (name) => loadExerciseMeta()[name] || {};
 export function writeRawExerciseMeta(name, meta) {
@@ -231,25 +213,19 @@ export function resolveFamily(name) {
 }
 
 // Muscle group an exercise is shown / classified under, and where it comes from. READ ONLY.
-//  - A variant of the families table: the group of its FAMILY wins, unless the exercise has its own
-//    group assigned by the athlete (muscleGroupAssignedBy === 'user-manual' — the same logic as the
-//    implement). A group that came from anything else (coach import, migration, auto) does not override
-//    the family: it was a guess.
-//  - Any other exercise: its own metadata.muscleGroup; failing that, the default of the family the
-//    athlete put it in.
+// The group belongs to the FAMILY, not to the variant:
+//  - If the family the exercise resolves to has a group in the families table, that group rules —
+//    whatever the exercise's own metadata.muscleGroup says (it is not deleted: it is simply not read
+//    while the family has a table group, so the change can be undone by reading it again).
+//  - Otherwise (a family of the athlete's own) the exercise's metadata.muscleGroup, which the form writes
+//    to every variant of the family at once.
 // Never inferred from words in the name. Returns { group, source } with source in
-// 'metadata-manual' | 'familia' | 'metadata' | 'familia (por defecto)' | null.
+// 'familia' | 'metadata' | null.
 export function resolveMuscleGroup(name) {
-  const meta = getExerciseMeta(name);
   const fam = familyGroup(resolveFamily(name));
-  if (getFamilyEntry(name)) {
-    if (meta.muscleGroup && meta.muscleGroupAssignedBy === 'user-manual') return { group: meta.muscleGroup, source: 'metadata-manual' };
-    if (fam) return { group: fam, source: 'familia' };
-    return meta.muscleGroup ? { group: meta.muscleGroup, source: 'metadata' } : { group: undefined, source: null };
-  }
-  if (meta.muscleGroup) return { group: meta.muscleGroup, source: 'metadata' };
-  if (fam) return { group: fam, source: 'familia (por defecto)' };
-  return { group: undefined, source: null };
+  if (fam) return { group: fam, source: 'familia' };
+  const own = getExerciseMeta(name).muscleGroup;
+  return own ? { group: own, source: 'metadata' } : { group: undefined, source: null };
 }
 
 // Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a

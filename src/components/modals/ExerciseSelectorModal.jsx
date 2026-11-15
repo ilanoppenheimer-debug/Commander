@@ -109,11 +109,11 @@ const ExerciseSelectorModal = ({
     return sizes;
   }, [familyOf]);
 
-  // Muscle of a name for the tabs: see resolveMuscleGroup (a table variant takes its family's group unless
-  // the athlete assigned its own; any other exercise keeps its own group, then the catalogue's).
+  // Muscle of a name for the tabs: see resolveMuscleGroup (the group of its family rules when the table
+  // has one; otherwise the catalogue's, then the exercise's own).
   const muscleOf = useCallback((name) => {
-    const { group } = resolveMuscleGroup(name);
-    return getFamilyEntry(name) ? (group || catalogMuscleFor(name) || null) : (catalogMuscleFor(name) || group || null);
+    const { group, source } = resolveMuscleGroup(name);
+    return source === 'familia' ? group : (catalogMuscleFor(name) || group || null);
   }, [favVersion]);
 
   // Recent: exercises used in last 4 weeks
