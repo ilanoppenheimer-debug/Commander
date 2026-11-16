@@ -242,14 +242,17 @@ export function matchFamily(text) {
 
 // Unilateral = one side at a time (dumbbells moved together are bilateral). Spec of an exercise:
 // true (always), [implements] (only with those) or false.
-//  - A variant of the families table: the table rules (same principle as the muscle group); the athlete's
-//    own metadata is not read.
-//  - Any other exercise (the athlete's own): its metadata — `unilateral` (true | [implements]) or the
-//    inherited `bilateral:false` of the form's switch. Nothing is migrated or deleted.
+//  1. The athlete's own override, metadata.unilateral (true | [implements] | false), always rules.
+//  2. A variant of the families table: the table is the default. The old `bilateral` mark is ignored
+//     (it used another definition).
+//  3. Any other exercise (the athlete's own): the inherited `bilateral:false` reads as unilateral.
+// Nothing is migrated or deleted.
 export function unilateralSpec(name) {
-  if (getFamilyEntry(name)) return tableUnilateralOf(name);
   const meta = getExerciseMeta(name);
-  if (meta.unilateral === true || Array.isArray(meta.unilateral)) return Array.isArray(meta.unilateral) ? [...meta.unilateral] : true;
+  const own = meta.unilateral;
+  if (own === true || own === false) return own;
+  if (Array.isArray(own)) return [...own];
+  if (getFamilyEntry(name)) return tableUnilateralOf(name);
   return meta.bilateral === false;
 }
 
@@ -257,6 +260,27 @@ export function unilateralSpec(name) {
 export function isUnilateral(name, equipment) {
   const spec = unilateralSpec(name);
   return Array.isArray(spec) ? !!equipment && spec.includes(equipment) : spec === true;
+}
+
+// What the families table alone says for this implement (no override).
+export const tableIsUnilateral = (name, equipment) => {
+  const spec = tableUnilateralOf(name);
+  return Array.isArray(spec) ? !!equipment && spec.includes(equipment) : spec === true;
+};
+
+// Drops fields from EVERY spelling key of an exercise (they resolve as one). Touches nothing else.
+export function clearMetaFields(name, fields) {
+  const all = loadExerciseMeta();
+  let changed = false;
+  for (const k of groupKeysOf(all, name)) {
+    if (!fields.some(f => all[k]?.[f] !== undefined)) continue;
+    const next = { ...all[k] };
+    for (const f of fields) delete next[f];
+    all[k] = { ...next, updatedAt: Date.now() };
+    changed = true;
+  }
+  if (changed) localStorage.setItem(META_KEY, JSON.stringify(all));
+  return changed;
 }
 
 // Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a
