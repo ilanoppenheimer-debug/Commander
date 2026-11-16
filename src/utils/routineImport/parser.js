@@ -20,6 +20,7 @@
  *
  *   # EJERCICIO: Banca Plana
  *   - equipo: barbell
+ *   - familia: Sentadilla        (opcional; solo para ejercicios nuevos fuera de la tabla de familias)
  *   - tag: main_lift
  *   - descanso: 180s
  *   - nota_ejercicio: Foco en velocidad.
@@ -423,6 +424,9 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     warnings.push(`Ejercicio "${name}" sin equipo — queda sin definir (el Coach debe declararlo)`);
   }
 
+  // Optional: the family a NEW exercise is grouped under (grouping only). Absent = as before.
+  const familia = typeof metadata.familia === 'string' ? metadata.familia.trim().replace(/^["']|["']$/g, '').trim() : '';
+
   const tagValue = metadata.tag;
   const validTag = TAG_OPTIONS.includes(tagValue) ? tagValue : null;
 
@@ -441,6 +445,7 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     id: `imp-ex-${Date.now()}-${idx}`,
     name,
     equipment,
+    ...(familia ? { familia } : {}),
     tagSuggested: validTag,
     restSeconds,
     ...(bp.status === 'ok' ? { backoffPct: bp.value } : {}),

@@ -17,8 +17,9 @@ import {
   createAutoBackup, listAutoBackups, restoreFromAutoBackup, downloadAutoBackupAsFile,
 } from '../services/backupService';
 import { getDatabaseCounts, clearAllData } from '../db/repository';
-import { getSetting } from '../db/repository';
+import { getSetting, getCustomExercises, getAllHistory } from '../db/repository';
 import { getRecentLogs, exportLogsAsText } from '../services/logger';
+import { buildExerciseExport } from '../utils/exerciseExport';
 
 export default function DataBackupTab({ showNotify, onGoToHistory }) {
   const [driveEmail, setDriveEmail]       = useState(null);
@@ -198,6 +199,19 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
     URL.revokeObjectURL(url);
   };
 
+  // Exercise list (families -> variants -> implements), same download pattern as the logs.
+  const handleExportExercises = async () => {
+    const [custom, history] = await Promise.all([getCustomExercises(), getAllHistory()]);
+    const { text } = buildExerciseExport({ customExercises: custom, history });
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = buildFilename('ejercicios', '', 'txt');
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const visibleBackups = showAllBackups ? driveBackups : driveBackups.slice(0, 5);
   const filteredLogs = logFilter === 'all' ? logs : logs.filter(l => l.level === logFilter);
 
@@ -321,6 +335,11 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
             </button>
             <button onClick={handleExportLogs} className="flex-1 py-2 text-[10px] font-bold text-slate-400 bg-slate-900 rounded-lg border border-slate-700 hover:border-slate-500 flex items-center justify-center gap-1 transition">
               <Download size={12} /> Exportar logs
+            </button>
+          </div>
+          <div className="mt-2">
+            <button onClick={handleExportExercises} data-testid="export-exercises" className="w-full py-2 text-[10px] font-bold text-slate-400 bg-slate-900 rounded-lg border border-slate-700 hover:border-slate-500 flex items-center justify-center gap-1 transition">
+              <Download size={12} /> Exportar ejercicios
             </button>
           </div>
         </section>
