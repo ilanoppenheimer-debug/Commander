@@ -20,6 +20,7 @@
  *
  *   # EJERCICIO: Banca Plana
  *   - equipo: barbell
+ *   - familia: Sentadilla        (opcional; solo para ejercicios nuevos fuera de la tabla de familias)
  *   - tag: main_lift
  *   - descanso: 180s
  *   - nota_ejercicio: Foco en velocidad.
@@ -37,7 +38,9 @@
  */
 
 import { TAG_OPTIONS } from '../../constants/blockTemplates';
-import { getMeasurement } from '../../constants/exerciseMetadata';
+import { getMeasurement, getExerciseMeta, matchFamily } from '../../constants/exerciseMetadata';
+import { getFamilyEntry } from '../../constants/exerciseFamilies';
+import { normalizeExerciseName } from '../exerciseName';
 import { isMaxPlan, isMaxTimePlan } from '../timedPlan';
 
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'landmine', 'band', 'other'];
@@ -423,6 +426,16 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     warnings.push(`Ejercicio "${name}" sin equipo — queda sin definir (el Coach debe declararlo)`);
   }
 
+  // Optional: the family a NEW exercise is grouped under (grouping only). Absent = as before. It is matched
+  // against the existing families ignoring case and accents ("SENTADILLA" -> Sentadilla); no match = a new
+  // family, which the import warns about. Nothing is written here.
+  const familiaRaw = typeof metadata.familia === 'string' ? metadata.familia.trim().replace(/^["']|["']$/g, '').trim() : '';
+  const fam = familiaRaw ? matchFamily(familiaRaw) : { name: '', isNew: false };
+  const familia = fam.name;
+  if (fam.isNew && !getFamilyEntry(name) && !getExerciseMeta(name).family && normalizeExerciseName(fam.name) !== normalizeExerciseName(name)) {
+    warnings.push(`Familia nueva: ${fam.name} (para "${name}")`);
+  }
+
   const tagValue = metadata.tag;
   const validTag = TAG_OPTIONS.includes(tagValue) ? tagValue : null;
 
@@ -441,6 +454,7 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     id: `imp-ex-${Date.now()}-${idx}`,
     name,
     equipment,
+    ...(familia ? { familia } : {}),
     tagSuggested: validTag,
     restSeconds,
     ...(bp.status === 'ok' ? { backoffPct: bp.value } : {}),
