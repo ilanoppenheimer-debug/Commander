@@ -2,12 +2,12 @@ import React, { useMemo, useState, useRef, useCallback } from "react";
 import { Dumbbell, X, Search, Plus, Trash2, Star, ChevronDown, ChevronRight } from "lucide-react";
 import { DEFAULT_EXERCISE_DB, catalogMuscleFor } from "../../constants/gymConstants";
 import { sameExercise, normalizeExerciseName } from "../../utils/exerciseName";
-import { SELECTOR_TABLE_NAMES, isHiddenFromSelector } from "../../constants/exerciseFamilies";
+import { SELECTOR_TABLE_NAMES, isHiddenFromSelector, familyGroup, getFamilyEntry } from "../../constants/exerciseFamilies";
 import { defaultImplement } from "../../utils/exerciseVariant";
-import { getExerciseDetails } from "../../features/exerciseMeta.jsx";
+import { getExerciseDetails, getGroupDetails } from "../../features/exerciseMeta.jsx";
 import Modal from "../ui/Modal";
 import CreateExerciseModal from "./CreateExerciseModal";
-import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily } from "../../constants/exerciseMetadata";
+import { toggleFavorite, isFavorite, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup } from "../../constants/exerciseMetadata";
 
 const TABS = [
   { id: 'recent',    label: 'Recientes' },
@@ -109,20 +109,12 @@ const ExerciseSelectorModal = ({
     return sizes;
   }, [familyOf]);
 
-  // Muscle of a name for the tabs: its own; if it has none (a new variant that only lives in the
-  // table) the one its family-mates agree on.
+  // Muscle of a name for the tabs: see resolveMuscleGroup (the group of its family rules when the table
+  // has one; otherwise the catalogue's, then the exercise's own).
   const muscleOf = useCallback((name) => {
-    const own = catalogMuscleFor(name) || getExerciseMeta(name)?.muscleGroup;
-    if (own) return own;
-    const key = normalizeExerciseName(familyOf.get(name) ?? name);
-    const mates = new Set();
-    for (const [n, f] of familyOf) {
-      if (n === name || normalizeExerciseName(f) !== key) continue;
-      const m = catalogMuscleFor(n) || getExerciseMeta(n)?.muscleGroup;
-      if (m) mates.add(m);
-    }
-    return mates.size === 1 ? [...mates][0] : null;
-  }, [familyOf]);
+    const { group, source } = resolveMuscleGroup(name);
+    return source === 'familia' ? group : (catalogMuscleFor(name) || group || null);
+  }, [favVersion]);
 
   // Recent: exercises used in last 4 weeks
   const recentExercises = useMemo(() => {
@@ -161,13 +153,15 @@ const ExerciseSelectorModal = ({
     }
   }, [search, activeTab, allExerciseNames, recentExercises, favVersion, familyOf, muscleOf]);
 
-  // Grouped by family (collapsible) except in the flat lists (search, Recientes, Favoritos). A family
+  // Grouped by family (collapsible) except in the flat lists (Recientes, Favoritos). When searching, the
+  // families with matches are expanded by themselves. A family
   // with a single variant is a plain row.
-  const flat = !!search.trim() || activeTab === 'recent' || activeTab === 'favorites';
+  const searching = !!search.trim();
+  const flat = activeTab === 'recent' || activeTab === 'favorites';
   const [openFamilies, setOpenFamilies] = useState(() => new Set());
   const toggleFamily = (key) => setOpenFamilies(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const groups = useMemo(() => {
-    if (flat) return [];
+    if (flat && !searching) return [];
     const byKey = new Map();
     for (const n of filteredExercises) {
       const label = familyOf.get(n) ?? n;
@@ -175,8 +169,15 @@ const ExerciseSelectorModal = ({
       if (!byKey.has(key)) byKey.set(key, { key, label, names: [], total: familySize.get(key) || 1 });
       byKey.get(key).names.push(n);
     }
-    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label, 'es'));
-  }, [flat, filteredExercises, familyOf, familySize]);
+    const list = [...byKey.values()];
+    for (const g of list) {
+      // Icon of the family = its muscle group: the family's default, else the most common one of its variants.
+      const counts = new Map();
+      for (const n of g.names) { const m = muscleOf(n); if (m) counts.set(m, (counts.get(m) || 0) + 1); }
+      g.group = familyGroup(g.label) || [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    }
+    return list.sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [flat, searching, filteredExercises, familyOf, familySize, muscleOf]);
 
   const removeCustom = (e, exName) => {
     e.stopPropagation();
@@ -281,23 +282,31 @@ const ExerciseSelectorModal = ({
                       />
                     );
                   };
-                  if (flat) return filteredExercises.map(row);
+                  if (flat && !searching) return filteredExercises.map(row);
                   return groups.map(g => {
                     if (g.total <= 1 && g.names.length === 1) return row(g.names[0]);
-                    const open = openFamilies.has(g.key);
+                    const open = searching || openFamilies.has(g.key);
+                    const details = getGroupDetails(g.group);
                     return (
                       <div key={g.key}>
-                        <button
-                          type="button"
-                          onClick={() => toggleFamily(g.key)}
+                        <div
+                          role="button"
+                          tabIndex={0}
                           aria-expanded={open}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800 text-left"
+                          onClick={() => !searching && toggleFamily(g.key)}
+                          onKeyDown={(e) => { if (!searching && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleFamily(g.key); } }}
+                          className="flex items-center justify-between p-3 bg-slate-800/40 hover:bg-slate-800 rounded-xl cursor-pointer transition-colors"
                         >
-                          {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
-                          <span className="text-slate-300 font-bold text-sm">{g.label}</span>
-                          <span className="text-slate-500 text-xs">({g.names.length})</span>
-                        </button>
-                        {open && <div className="pl-4 space-y-0.5">{g.names.map(row)}</div>}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className={`p-2 rounded-lg border shrink-0 ${details.bg} ${details.border} ${details.color}`}>{details.icon}</div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-slate-100 font-bold text-sm truncate">{g.label}</span>
+                              <span className={`text-[9px] uppercase font-bold tracking-widest opacity-80 ${details.color}`}>{g.names.length} {g.names.length === 1 ? 'variante' : 'variantes'}</span>
+                            </div>
+                          </div>
+                          {open ? <ChevronDown size={16} className="text-slate-400 shrink-0 ml-2" /> : <ChevronRight size={16} className="text-slate-400 shrink-0 ml-2" />}
+                        </div>
+                        {open && <div className="ml-5 pl-2 border-l border-slate-700/60 space-y-0.5">{g.names.map(row)}</div>}
                       </div>
                     );
                   });

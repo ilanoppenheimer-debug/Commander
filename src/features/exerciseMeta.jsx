@@ -1,7 +1,7 @@
 import React from "react";
 import { Dumbbell } from "lucide-react";
 import { ChestIcon, BackIcon, LegsIcon, ShouldersIcon, ArmsIcon, CoreIcon } from '../components/icons/MuscleIcons';
-import { getExerciseMeta } from '../constants/exerciseMetadata';
+import { getExerciseMeta, resolveMuscleGroup } from '../constants/exerciseMetadata';
 
 const GENERAL_DETAILS = { icon: <Dumbbell size={18} />, color: "text-slate-400", bg: "bg-slate-800", border: "border-slate-700", label: "General", dotBg: "bg-slate-500" };
 
@@ -16,14 +16,17 @@ const DETAILS_BY_MUSCLE_GROUP = {
   core:      { icon: <CoreIcon size={18} />,      color: "text-emerald-400", bg: "bg-emerald-900/20", border: "border-emerald-500/30", label: "Core",   dotBg: "bg-emerald-400" },
 };
 
+// Icon / colours of a muscle group id (MUSCLE_GROUP_OPTIONS); general when it has none.
+export const getGroupDetails = (group) => DETAILS_BY_MUSCLE_GROUP[group] || GENERAL_DETAILS;
+
 export const getExerciseDetails = (name) => {
   if (!name) return GENERAL_DETAILS;
 
-  // Saved muscleGroup wins — the user (or Coach import) already classified this
-  // exercise; keyword matching is a fallback for exercises never explicitly tagged.
-  const savedGroup = getExerciseMeta(name)?.muscleGroup;
-  if (savedGroup && DETAILS_BY_MUSCLE_GROUP[savedGroup]) {
-    return DETAILS_BY_MUSCLE_GROUP[savedGroup];
+  // The resolved group wins (the group of its family — see resolveMuscleGroup); keyword matching on the name is only the fallback for
+  // exercises with no group at all.
+  const { group: resolvedGroup } = resolveMuscleGroup(name);
+  if (resolvedGroup && DETAILS_BY_MUSCLE_GROUP[resolvedGroup]) {
+    return DETAILS_BY_MUSCLE_GROUP[resolvedGroup];
   }
 
   const n = String(name).toLowerCase();

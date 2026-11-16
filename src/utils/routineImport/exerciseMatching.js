@@ -28,21 +28,14 @@ const scoreSimilarity = (candidateLoose, importedLoose, importedWords) => {
  *  - probable: equal once punctuation and filler words are ignored, and only ONE catalog
  *              name qualifies — applied by default, visible and changeable in the wizard.
  *  - fuzzy:    similar names, no default — pending until the athlete picks (or the Coach's
- *              name is kept as a new exercise).
+ *              name is kept as a new exercise). `contained` = the candidates whose whole name
+ *              contains (or is contained in) the imported one — the only fuzzy ones worth a
+ *              "¿Es X?" prompt when creating an exercise by hand.
  *  - none:     nothing similar.
+ * Synchronous and pure: `allNames` is the pool to compare against.
  */
-export const findExerciseMatch = async (importedName) => {
+export const scoreCandidates = (importedName, allNames) => {
   if (!importedName) return { type: 'none' };
-
-  let customNames = [];
-  try {
-    const rows = await db.customExercises.toArray();
-    customNames = rows.map(r => r.name).filter(Boolean);
-  } catch { /* ignore */ }
-
-  // The families table's variants count too (a YAML with "Sissy Squat" is not a new exercise), the
-  // hidden ones included: they still resolve to their name.
-  const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...FAMILY_TABLE.map(r => r.name), ...customNames])];
 
   const identity = normalizeExerciseName(importedName);
   const exact = allNames.find(n => normalizeExerciseName(n) === identity);
@@ -66,8 +59,29 @@ export const findExerciseMatch = async (importedName) => {
     };
   }
 
-  if (ranked.length > 0) return { type: 'fuzzy', candidates: ranked.slice(0, 5).map(c => c.name) };
+  if (ranked.length > 0) {
+    const contained = ranked
+      .filter(c => { const k = looseKey(c.name); return importedLoose && k && (k.includes(importedLoose) || importedLoose.includes(k)); })
+      .sort((a, b) => b.score - a.score || a.name.length - b.name.length)
+      .map(c => c.name);
+    return { type: 'fuzzy', candidates: ranked.slice(0, 5).map(c => c.name), contained };
+  }
   return { type: 'none' };
+};
+
+export const findExerciseMatch = async (importedName) => {
+  if (!importedName) return { type: 'none' };
+
+  let customNames = [];
+  try {
+    const rows = await db.customExercises.toArray();
+    customNames = rows.map(r => r.name).filter(Boolean);
+  } catch { /* ignore */ }
+
+  // The families table's variants count too (a YAML with "Sissy Squat" is not a new exercise), the
+  // hidden ones included: they still resolve to their name.
+  const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...FAMILY_TABLE.map(r => r.name), ...customNames])];
+  return scoreCandidates(importedName, allNames);
 };
 
 export const matchRoutineExercises = async (routine) => {

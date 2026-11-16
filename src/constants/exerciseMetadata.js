@@ -1,5 +1,5 @@
 import { normalizeExerciseName } from '../utils/exerciseName';
-import { getFamilyEntry } from './exerciseFamilies';
+import { getFamilyEntry, familyGroup } from './exerciseFamilies';
 
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
@@ -210,6 +210,28 @@ export function getMeasurement(name) {
 // the exercise's own name (a family of one).
 export function resolveFamily(name) {
   return getExerciseMeta(name).family || getFamilyEntry(name)?.family || String(name ?? '');
+}
+
+// Muscle group an exercise is shown / classified under, and where it comes from. READ ONLY.
+// The group belongs to the FAMILY, not to the variant:
+//  - If the family the exercise resolves to has a group in the families table, that group rules —
+//    whatever the exercise's own metadata.muscleGroup says (it is not deleted: it is simply not read
+//    while the family has a table group, so the change can be undone by reading it again).
+//  - Otherwise (a family of the athlete's own) the exercise's metadata.muscleGroup, which the form writes
+//    to every variant of the family at once.
+// Never inferred from words in the name. Returns { group, source } with source in
+// 'familia' | 'metadata' | null.
+export function resolveMuscleGroup(name) {
+  const fam = familyGroup(resolveFamily(name));
+  if (fam) return { group: fam, source: 'familia' };
+  const own = getExerciseMeta(name).muscleGroup;
+  return own ? { group: own, source: 'metadata' } : { group: undefined, source: null };
+}
+
+// Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a
+// default: the exercise's own metadata.muscleGroup, when there is one, always wins over it.
+export function familyDefaultGroup(name) {
+  return familyGroup(resolveFamily(name));
 }
 
 // Companion metric — only meaningful when measurement === 'time'. Tri-state: undefined
