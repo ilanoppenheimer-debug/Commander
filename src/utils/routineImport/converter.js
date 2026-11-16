@@ -1,6 +1,6 @@
 import { saveRoutine } from '../../db/repository';
 import { db } from '../../db/database';
-import { saveExerciseMeta, getExerciseMeta, getMeasurement } from '../../constants/exerciseMetadata';
+import { saveExerciseMeta, getExerciseMeta, getMeasurement, matchFamily } from '../../constants/exerciseMetadata';
 import { getFamilyEntry } from '../../constants/exerciseFamilies';
 import { normalizeExerciseName } from '../exerciseName';
 import { parseRestSeconds } from './parser';
@@ -131,7 +131,7 @@ export const syncExerciseMetadataFromImport = (importedEx, resolvedName = import
   // `familia:` of the YAML (grouping only). Written only when the exercise is NOT in the families table
   // and has no family of its own yet (chosen by the athlete, or from an earlier import): the table and the
   // athlete always win, and a family equal to the name is just the default.
-  const familia = typeof importedEx.familia === 'string' ? importedEx.familia.trim() : '';
+  const familia = typeof importedEx.familia === 'string' ? matchFamily(importedEx.familia).name : '';
   if (familia && !getFamilyEntry(name) && !existing?.family
       && normalizeExerciseName(familia) !== normalizeExerciseName(name)) {
     saveExerciseMeta(name, { family: familia, familyAssignedBy: 'coach-import', familyAssignedAt: new Date().toISOString() });

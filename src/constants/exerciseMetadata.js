@@ -1,5 +1,5 @@
 import { normalizeExerciseName } from '../utils/exerciseName';
-import { getFamilyEntry, familyGroup } from './exerciseFamilies';
+import { getFamilyEntry, familyGroup, FAMILY_NAMES } from './exerciseFamilies';
 
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
@@ -226,6 +226,18 @@ export function resolveMuscleGroup(name) {
   if (fam) return { group: fam, source: 'familia' };
   const own = getExerciseMeta(name).muscleGroup;
   return own ? { group: own, source: 'metadata' } : { group: undefined, source: null };
+}
+
+// Matches a family typed by someone else (the Coach's `familia:`) against the families that already
+// exist — the table's and the athlete's own — ignoring case and accents. { name, isNew }: `name` is the
+// existing spelling when there is a match, otherwise the text as given (a new family).
+export function matchFamily(text) {
+  const typed = String(text ?? '').trim();
+  if (!typed) return { name: '', isNew: false };
+  const key = normalizeExerciseName(typed);
+  const own = Object.values(loadExerciseMeta()).map(m => m?.family).filter(f => typeof f === 'string' && f.trim());
+  const found = [...FAMILY_NAMES, ...own].find(f => normalizeExerciseName(f) === key);
+  return found ? { name: found, isNew: false } : { name: typed, isNew: true };
 }
 
 // Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a

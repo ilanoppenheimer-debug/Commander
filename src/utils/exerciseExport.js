@@ -84,8 +84,10 @@ export function buildExerciseExport({ customExercises = [], history = [], now = 
       const offered = entry ? entry.equipment : (meta.equipment ? [meta.equipment] : []);
       const used = u ? [...u.byEquipment.entries()].filter(([e]) => e).sort((a, b) => b[1] - a[1]).map(([e]) => e) : [];
       const parts = [];
+      // Implement first, then the measurement: "Plancha — peso corporal · tiempo". A timed exercise is not
+      // split by implement, so what was used in the history is not listed for it.
+      if (offered.length) parts.push(offered.map(eqLabel).join(', '));
       if (time) parts.push('tiempo');
-      else if (offered.length) parts.push(offered.map(eqLabel).join(', '));
       const extra = used.filter(e => !offered.includes(e));
       if (!time && extra.length) parts.push(`${offered.length ? 'usado también con' : 'usado con'}: ${extra.map(eqLabel).join(', ')}`);
       else if (!time && !offered.length) parts.push('sin implemento definido');
