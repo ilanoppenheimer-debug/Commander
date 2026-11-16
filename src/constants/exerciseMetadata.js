@@ -1,5 +1,5 @@
 import { normalizeExerciseName } from '../utils/exerciseName';
-import { getFamilyEntry, familyGroup, FAMILY_NAMES } from './exerciseFamilies';
+import { getFamilyEntry, familyGroup, FAMILY_NAMES, tableUnilateralOf } from './exerciseFamilies';
 
 export const MOVEMENT_PATTERNS = [
   { id: 'horizontal_push',  label: 'Empuje horizontal' },
@@ -238,6 +238,25 @@ export function matchFamily(text) {
   const own = Object.values(loadExerciseMeta()).map(m => m?.family).filter(f => typeof f === 'string' && f.trim());
   const found = [...FAMILY_NAMES, ...own].find(f => normalizeExerciseName(f) === key);
   return found ? { name: found, isNew: false } : { name: typed, isNew: true };
+}
+
+// Unilateral = one side at a time (dumbbells moved together are bilateral). Spec of an exercise:
+// true (always), [implements] (only with those) or false.
+//  - A variant of the families table: the table rules (same principle as the muscle group); the athlete's
+//    own metadata is not read.
+//  - Any other exercise (the athlete's own): its metadata — `unilateral` (true | [implements]) or the
+//    inherited `bilateral:false` of the form's switch. Nothing is migrated or deleted.
+export function unilateralSpec(name) {
+  if (getFamilyEntry(name)) return tableUnilateralOf(name);
+  const meta = getExerciseMeta(name);
+  if (meta.unilateral === true || Array.isArray(meta.unilateral)) return Array.isArray(meta.unilateral) ? [...meta.unilateral] : true;
+  return meta.bilateral === false;
+}
+
+// Is this exercise, done with this implement, unilateral? `equipment` null/undefined = no implement known.
+export function isUnilateral(name, equipment) {
+  const spec = unilateralSpec(name);
+  return Array.isArray(spec) ? !!equipment && spec.includes(equipment) : spec === true;
 }
 
 // Default muscle group from the family (the athlete's choice or the table), or undefined. It is only a

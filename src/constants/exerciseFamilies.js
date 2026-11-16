@@ -7,7 +7,8 @@ import { normalizeExerciseName } from '../utils/exerciseName';
 //   name    -> the variant: the exercise name, and the numeric identity (phase 3).
 //   equipment -> implements the variant OFFERS (ids of EQUIPMENT_TYPES); [] = none declared
 //                ("sin definir"). Not a restriction: any implement can still be picked.
-//   bilateral -> only present (false) for unilateral variants.
+//   unilateral -> one side at a time. Absent = bilateral (dumbbells moved together are bilateral).
+//                true = always; [implements] = only with those (Elevaciones Laterales: ['cable']).
 //   measurement -> 'reps' | 'time'. Read as a FALLBACK by getMeasurement when the exercise has no
 //                metadata of its own (new time variants: Plancha Lateral, Front Lever *, Cardio...).
 //   inSelector -> false = hidden from the selector but still RESOLVES its family for the history.
@@ -24,7 +25,7 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "Sentadilla", name: "Sentadilla Péndulo", equipment: ["machine"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Sentadilla", name: "V Squat", equipment: ["machine"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Prensa", name: "Prensa de Piernas", equipment: ["machine"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Prensa", name: "Prensa de Piernas Unilateral", equipment: ["machine"], bilateral: false, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Prensa", name: "Prensa de Piernas Unilateral", equipment: ["machine"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Peso Muerto", name: "Peso Muerto", equipment: ["barbell"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "RDL", name: "RDL", equipment: ["barbell", "dumbbell", "smith"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "RDL", name: "RDL en Belt Squat", equipment: ["machine"], measurement: "reps", inSelector: true, status: "nueva" },
@@ -32,7 +33,7 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "RDL", name: "Buenos Días en Hack", equipment: ["machine"], measurement: "reps", inSelector: true, status: "nueva" },
   { family: "RDL", name: "Buenos Días en V Squat", equipment: ["machine"], measurement: "reps", inSelector: true, status: "nueva" },
   { family: "Hip Thrust", name: "Hip Thrust", equipment: ["barbell", "machine", "dumbbell", "bodyweight"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Split Squat", name: "Sentadilla Búlgara", equipment: ["dumbbell", "barbell", "smith", "bodyweight"], bilateral: false, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Split Squat", name: "Sentadilla Búlgara", equipment: ["dumbbell", "barbell", "smith", "bodyweight"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Press Banca", name: "Press Banca", equipment: ["barbell", "dumbbell", "smith"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Press Banca", name: "Press Banca Agarre Cerrado", equipment: ["barbell"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Press Banca", name: "Press Banca con Pausa", equipment: ["barbell"], measurement: "reps", inSelector: true, status: "historial" },
@@ -46,23 +47,23 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "Dominadas", name: "Dominadas", equipment: ["bodyweight"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Muscle-Up", name: "Muscle-Up", equipment: ["bodyweight"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Jalón", name: "Jalón al Pecho", equipment: ["machine", "cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Jalón", name: "Jalón a una mano", equipment: ["cable", "machine"], bilateral: false, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Jalón", name: "Jalón a una mano", equipment: ["cable", "machine"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Remo", name: "Remo con Barra", equipment: ["barbell"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Remo", name: "Remo Mancuerna", equipment: ["dumbbell"], bilateral: false, measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Remo", name: "Remo Landmine", equipment: ["landmine"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Remo", name: "Remo Mancuerna", equipment: ["dumbbell"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Remo", name: "Remo Landmine", equipment: ["landmine"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Remo", name: "Remo en Polea", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Remo", name: "Remo en T con apoyo", equipment: ["machine", "landmine"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Remo", name: "Remo Polea / Landmine (sin resolver)", equipment: [], measurement: "reps", inSelector: false, status: "historial" },
-  { family: "Curl de Bíceps", name: "Curl de Bíceps", equipment: ["barbell", "dumbbell", "cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Curl de Bíceps", name: "Curl Bayesiano", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Curl de Bíceps", name: "Hammer Curl", equipment: ["dumbbell", "cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Extensión de Tríceps", name: "Extensión de Tríceps", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Extensión de Tríceps", name: "Extensión Tríceps Katana", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Curl de Bíceps", name: "Curl de Bíceps", equipment: ["barbell", "dumbbell", "cable"], unilateral: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Curl de Bíceps", name: "Curl Bayesiano", equipment: ["cable"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Curl de Bíceps", name: "Hammer Curl", equipment: ["dumbbell", "cable"], unilateral: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Extensión de Tríceps", name: "Extensión de Tríceps", equipment: ["cable"], unilateral: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Extensión de Tríceps", name: "Extensión Tríceps Katana", equipment: ["cable"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Extensión de Tríceps", name: "Rompecráneos", equipment: ["barbell", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Elevaciones Laterales", name: "Elevaciones Laterales", equipment: ["dumbbell", "cable", "machine"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Elevaciones Frontales", name: "Reverse Front Fly", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Elevaciones Laterales", name: "Elevaciones Laterales", equipment: ["dumbbell", "cable", "machine"], unilateral: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Elevaciones Frontales", name: "Reverse Front Fly", equipment: ["cable"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Facepull", name: "Facepull", equipment: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Pájaros", name: "Pájaros", equipment: ["cable", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Pájaros", name: "Pájaros", equipment: ["cable", "dumbbell"], unilateral: ["cable"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Encogimientos", name: "Encogimientos", equipment: ["machine", "barbell", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Aperturas", name: "Aperturas", equipment: ["cable", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Curl Femoral", name: "Curl Femoral Sentado", equipment: ["machine"], measurement: "reps", inSelector: true, status: "historial" },
@@ -73,7 +74,7 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "Gemelos", name: "Elevación de Gemelos", equipment: ["machine"], measurement: "reps", inSelector: true, status: "historial" },
   { family: "Tibial Anterior", name: "Tibial Anterior", equipment: [], measurement: "reps", inSelector: true, status: "metadata" },
   { family: "Core", name: "Plancha", equipment: ["bodyweight"], measurement: "time", inSelector: true, status: "historial" },
-  { family: "Core", name: "Plancha Lateral", equipment: ["bodyweight"], bilateral: false, measurement: "time", inSelector: true, status: "nueva" },
+  { family: "Core", name: "Plancha Lateral", equipment: ["bodyweight"], unilateral: true, measurement: "time", inSelector: true, status: "nueva" },
   { family: "Core", name: "Knee Raises", equipment: ["bodyweight"], measurement: "reps", inSelector: true, status: "nueva" },
   { family: "Core", name: "Leg Raises", equipment: ["bodyweight"], measurement: "reps", inSelector: true, status: "nueva" },
   { family: "Core", name: "Ab Wheel", equipment: ["bodyweight"], measurement: "reps", inSelector: true, status: "nueva" },
@@ -87,11 +88,11 @@ export const FAMILY_TABLE = Object.freeze([
   { family: "Front Lever", name: "Front Lever One Leg", equipment: ["bodyweight"], measurement: "time", inSelector: true, status: "nueva" },
   { family: "Front Lever", name: "Front Lever Full", equipment: ["bodyweight"], measurement: "time", inSelector: true, status: "nueva" },
   { family: "Front Lever", name: "Front Lever con Ayuda", equipment: ["bodyweight"], measurement: "time", inSelector: true, status: "nueva" },
-  { family: "Manguito Rotador", name: "Manguito Rotador", equipment: ["cable", "dumbbell", "band"], measurement: "reps", inSelector: false, status: "historial" },
-  { family: "Manguito Rotador", name: "Rotación Interna", equipment: ["cable", "band", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Manguito Rotador", name: "Rotación Externa", equipment: ["cable", "band", "dumbbell"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Muñeca", name: "Extensión de Muñeca", equipment: ["dumbbell", "barbell", "cable"], measurement: "reps", inSelector: true, status: "historial" },
-  { family: "Muñeca", name: "Flexión de Muñeca", equipment: ["dumbbell", "barbell", "cable"], measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Manguito Rotador", name: "Manguito Rotador", equipment: ["cable", "dumbbell", "band"], unilateral: true, measurement: "reps", inSelector: false, status: "historial" },
+  { family: "Manguito Rotador", name: "Rotación Interna", equipment: ["cable", "band", "dumbbell"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Manguito Rotador", name: "Rotación Externa", equipment: ["cable", "band", "dumbbell"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Muñeca", name: "Extensión de Muñeca", equipment: ["dumbbell", "barbell", "cable"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
+  { family: "Muñeca", name: "Flexión de Muñeca", equipment: ["dumbbell", "barbell", "cable"], unilateral: true, measurement: "reps", inSelector: true, status: "historial" },
   { family: "Cardio", name: "Cardio (sin especificar)", equipment: [], measurement: "time", inSelector: false, status: "historial" },
   { family: "Cardio", name: "Bicicleta", equipment: ["machine"], measurement: "time", inSelector: true, status: "historial" },
   { family: "Cardio", name: "Trotadora", equipment: ["machine"], measurement: "time", inSelector: true, status: "nueva" },
@@ -161,4 +162,9 @@ export const isHiddenFromSelector = (name) => {
   return (e ? !e.inSelector : false) || removed.has(norm(name));
 };
 // Implements a variant offers, as EQUIPMENT_TYPES ids ([] when none declared).
+// Unilateral spec of a table variant: true (always), [implements] (only with those) or false (bilateral).
+export const tableUnilateralOf = (name) => {
+  const u = getFamilyEntry(name)?.unilateral;
+  return Array.isArray(u) ? [...u] : (u === true);
+};
 export const offeredEquipment = (name) => [...(getFamilyEntry(name)?.equipment ?? [])];

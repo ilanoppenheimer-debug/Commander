@@ -4,7 +4,7 @@
 // exist (the athlete's own exercises included, with the family they resolve to).
 import { DEFAULT_EXERCISE_DB, EQUIPMENT_TYPES } from '../constants/gymConstants';
 import { SELECTOR_TABLE_NAMES, isHiddenFromSelector, getFamilyEntry, familyGroup } from '../constants/exerciseFamilies';
-import { resolveFamily, resolveMuscleGroup, getMeasurement, getExerciseMeta, MUSCLE_GROUP_OPTIONS } from '../constants/exerciseMetadata';
+import { resolveFamily, resolveMuscleGroup, getMeasurement, getExerciseMeta, unilateralSpec, MUSCLE_GROUP_OPTIONS } from '../constants/exerciseMetadata';
 import { resolveHistoryEquipment, EQUIPMENT_LABEL_ES } from './exerciseVariant';
 import { normalizeExerciseName, sameExercise } from './exerciseName';
 
@@ -91,7 +91,9 @@ export function buildExerciseExport({ customExercises = [], history = [], now = 
       const extra = used.filter(e => !offered.includes(e));
       if (!time && extra.length) parts.push(`${offered.length ? 'usado también con' : 'usado con'}: ${extra.map(eqLabel).join(', ')}`);
       else if (!time && !offered.length) parts.push('sin implemento definido');
-      if (entry?.bilateral === false || meta.bilateral === false) parts.push('unilateral');
+      const uni = unilateralSpec(name);
+      if (Array.isArray(uni) && uni.length) parts.push(`unilateral con ${uni.map(eqLabel).join(', ')}`);
+      else if (uni === true) parts.push('unilateral');
       const flags = [];
       if (u) flags.push(`${u.sessions} ${u.sessions === 1 ? 'sesión' : 'sesiones'}`);
       if (!entry && !selectorNames.has(norm(name))) flags.push('fuera del selector');
