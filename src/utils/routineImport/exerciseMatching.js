@@ -45,8 +45,18 @@ const OLD_NAME_OVERRIDES = [
   { from: ['Plancha Abdominal', 'Core Anti-extensión'], to: 'Plancha', equipment: 'bodyweight' },
   // Catálogo 8.4 "Absorbe" without a single implement (the phase-2 rules leave them "sin resolver"):
   // Remo en Polea is the canonical one; Hammer curwl is the typo of Hammer curl (an exercise of its own).
-  { from: ['Remo Polea / Landmine', 'Remo en Polea / Landmine', 'Lanemine row'], to: 'Remo en Polea', equipment: null },
+  { from: ['Lanemine row'], to: 'Remo en Polea', equipment: null },
   { from: ['Hammer curwl'], to: 'Hammer Curl', equipment: null },
+  // Catálogo v2.0 8.4: names the phase-2 rules map without an implement (or do not know).
+  { from: ['Jalon al pecho unilateral'], to: 'Jalón a una mano', equipment: 'cable' },
+  { from: ['Press banca agarre cerado'], to: 'Press Banca Agarre Cerrado', equipment: 'barbell' },
+  { from: ['Press Militar Estricto'], to: 'Press Militar', equipment: 'barbell' },
+  { from: ['Push-Ups Pies Elevados'], to: 'Decline Push-Ups', equipment: 'bodyweight' },
+  { from: ['Push-Ups Pies Elevados + Paralelas'], to: 'Decline Push-Ups en Paralelas', equipment: 'bodyweight' },
+  { from: ['Remo Polea / Landmine', 'Remo en Polea / Landmine'], to: 'Remo en Polea', equipment: 'cable' },
+  { from: ['Prevención — Extensión de Muñeca'], to: 'Extensión de Muñeca', equipment: 'cable' },
+  { from: ['Handstand en Paralelas — Hold Máximo'], to: 'Handstand en Paralelas', equipment: 'bodyweight' },
+  { from: ['Pajaros rear delts'], to: 'Pájaros', equipment: 'cable' },
 ];
 const OLD_NAME_BY_KEY = (() => {
   const m = new Map();
@@ -54,6 +64,34 @@ const OLD_NAME_BY_KEY = (() => {
   for (const r of OLD_NAME_OVERRIDES) for (const from of r.from) m.set(normalizeExerciseName(from), { to: r.to, equipment: r.equipment });
   return m;
 })();
+
+// A part of a name around a long dash ("—") that is a ROLE or a PROTOCOL is not part of the name: it is taken
+// out, the rest is resolved, and the removed text goes to the exercise's note.
+const ROLES_AND_PROTOCOLS = ['prevencion', 'activacion', 'calentamiento', 'test maximo', 'hold maximo', 'amrap'].map(normalizeExerciseName);
+const stripRoleOrProtocol = (name) => {
+  const parts = String(name ?? '').split(/\s+[—–]\s+/).map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const isExtra = (p) => ROLES_AND_PROTOCOLS.includes(normalizeExerciseName(p));
+  const kept = parts.filter(p => !isExtra(p));
+  const removed = parts.filter(isExtra);
+  if (kept.length === 0 || removed.length === 0) return null;
+  return { name: kept.join(' — '), note: removed.join(', ') };
+};
+
+// The implement an exercise was last used with (the latest appearance that has one).
+const lastEquipmentOf = (history, name) => {
+  const key = normalizeExerciseName(name);
+  let best = null;
+  for (const session of Array.isArray(history) ? history : []) {
+    const t = Date.parse(session?.completedAt || session?.createdAt || '') || 0;
+    for (const ex of (Array.isArray(session?.exercises) ? session.exercises : [])) {
+      if (!ex?.name || normalizeExerciseName(ex.name) !== key) continue;
+      const eq = resolveHistoryEquipment(ex);
+      if (eq && (!best || t > best.t)) best = { t, eq };
+    }
+  }
+  return best ? best.eq : null;
+};
 
 // The athlete's own rows that are the same exercise as a variant of the table (normalized) are the table's
 // variant, not another exercise: they are left out of the pool (nothing is deleted or modified).
@@ -89,12 +127,16 @@ const lastUsedVariant = (history, names) => {
   return best;
 };
 
-export const scoreCandidates = (importedName, allNames, { history } = {}) => {
+const scoreCore = (importedName, allNames, history) => {
   if (!importedName) return { type: 'none' };
 
   const identity = normalizeExerciseName(importedName);
   const exact = allNames.find(n => normalizeExerciseName(n) === identity);
-  if (exact) return { type: 'exact', exerciseName: exact };
+  // A hidden, history-only variant that is also the name of a family with several variants (Manguito
+  // Rotador) is not "the exercise": the family's variants are offered instead.
+  const hiddenFamilyName = exact && getFamilyEntry(exact)?.inSelector === false
+    && familyVariants(exact).filter(r => r.inSelector).length > 1;
+  if (exact && !hiddenFamilyName) return { type: 'exact', exerciseName: exact };
 
   const importedWords = looseWords(importedName);
   const importedLoose = importedWords.join(' ');
@@ -153,6 +195,28 @@ export const scoreCandidates = (importedName, allNames, { history } = {}) => {
     return { type: 'fuzzy', candidates: ranked.slice(0, 5).map(c => c.name), contained };
   }
   return { type: 'none' };
+};
+
+// If the YAML does not declare `equipo`, the wizard suggests the last implement the resolved exercise was
+// used with (history); an implement carried by an old-name rule goes first.
+const withHistoryEquipment = (m, history) => {
+  if (!m?.exerciseName || m.suggestedEquipment) return m;
+  const eq = lastEquipmentOf(history, m.exerciseName);
+  return eq ? { ...m, suggestedEquipment: eq, suggestedFrom: 'historial' } : m;
+};
+
+export const scoreCandidates = (importedName, allNames, { history } = {}) => {
+  const stripped = stripRoleOrProtocol(importedName);
+  if (stripped) {
+    const r = scoreCore(stripped.name, allNames, history);
+    if (r.type === 'exact' || r.type === 'probable' || (r.type === 'fuzzy' && r.family)) {
+      // The implement of the whole old name (e.g. "Prevención — Extensión de Muñeca" -> cable) when it has one.
+      const old = OLD_NAME_BY_KEY.get(normalizeExerciseName(importedName));
+      const withRule = (!r.suggestedEquipment && old?.equipment) ? { ...r, suggestedEquipment: old.equipment, suggestedFrom: 'regla' } : r;
+      return { ...withHistoryEquipment(withRule, history), strippedNote: stripped.note, strippedName: stripped.name };
+    }
+  }
+  return withHistoryEquipment(scoreCore(importedName, allNames, history), history);
 };
 
 export const findExerciseMatch = async (importedName, { history } = {}) => {
