@@ -1,6 +1,7 @@
 import { db } from '../../db/database';
 import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
-import { FAMILY_TABLE } from '../../constants/exerciseFamilies';
+import { FAMILY_TABLE, FAMILY_NAMES, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
+import { TAXONOMY_RULES } from '../taxonomyMapping';
 import { normalizeExerciseName } from '../exerciseName';
 
 // Filler words that never identify an exercise ("Remo con mancuerna" ≈ "Remo mancuerna").
@@ -9,8 +10,10 @@ const STOPWORDS = new Set(['con', 'de', 'en', 'a', 'la', 'el']);
 // Looser than the app's identity: also ignores punctuation and filler words. Only used to
 // decide the "probable" tier and to score fuzzy candidates — never to treat two names as
 // the same exercise on its own.
+// Simple plural: "mancuernas" = "mancuerna" (words of 4+ letters ending in a single s; "press" stays).
+const singular = (w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
 const looseWords = (name) =>
-  normalizeExerciseName(name).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOPWORDS.has(w));
+  normalizeExerciseName(name).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOPWORDS.has(w)).map(singular);
 const looseKey = (name) => looseWords(name).join(' ');
 
 const scoreSimilarity = (candidateLoose, importedLoose, importedWords) => {
@@ -22,10 +25,29 @@ const scoreSimilarity = (candidateLoose, importedLoose, importedWords) => {
   return score;
 };
 
+// The old names of the phase-2 rules (taxonomyMapping.js) -> the variant they became. A rule with `all`
+// carries the implement of the variant ("Curl Femoral" -> Sentado, machine).
+const RULE_BY_OLD_NAME = (() => {
+  const m = new Map();
+  for (const r of TAXONOMY_RULES) for (const from of r.from) m.set(normalizeExerciseName(from), r);
+  return m;
+})();
+// Old names whose rule has no `all` but whose name declares the implement. Reviewed by hand; the rules
+// themselves are not touched (the phase-2 migration plan is hashed on them).
+const OLD_NAME_EQUIPMENT = { 'press inclinado mancuernas': 'dumbbell' };
+
+// The athlete's own rows that are the same exercise as a variant of the table (normalized) are the table's
+// variant, not another exercise: they are left out of the pool (nothing is deleted or modified).
+export const isTableDuplicate = (name) => !!getFamilyEntry(name);
+
 /**
  * Tiers, strongest first:
  *  - exact:    same exercise for the app (normalizeExerciseName equal) — applied silently.
- *  - probable: equal once punctuation and filler words are ignored, and only ONE catalog
+ *  - family:   the name is a family of the table (not a variant): with several variants it is `fuzzy` with
+ *              `family` set and the family's variants as the only options; with one it is `probable`.
+ *  - rule:     an old name of the phase-2 rules (taxonomyMapping.js): `probable`, preselecting the new
+ *              variant (`viaRule`), with the rule's implement as `ruleEquipment` when it has one.
+ *  - probable: equal once punctuation, filler words and simple plurals are ignored, and only ONE catalog
  *              name qualifies — applied by default, visible and changeable in the wizard.
  *  - fuzzy:    similar names, no default — pending until the athlete picks (or the Coach's
  *              name is kept as a new exercise). `contained` = the candidates whose whole name
@@ -43,6 +65,28 @@ export const scoreCandidates = (importedName, allNames) => {
 
   const importedWords = looseWords(importedName);
   const importedLoose = importedWords.join(' ');
+  const inPool = (n) => allNames.find(x => normalizeExerciseName(x) === normalizeExerciseName(n));
+
+  // A family name (and not a variant): only its variants are offered.
+  const familyName = FAMILY_NAMES.find(f => normalizeExerciseName(f) === identity);
+  if (familyName) {
+    const variants = familyVariants(familyName).filter(r => r.inSelector && inPool(r.name)).map(r => inPool(r.name));
+    if (variants.length === 1) return { type: 'probable', exerciseName: variants[0], alternatives: [], viaFamily: familyName };
+    if (variants.length > 1) return { type: 'fuzzy', candidates: variants, contained: [], family: familyName };
+  }
+
+  // An old name of the phase-2 rules.
+  const rule = RULE_BY_OLD_NAME.get(identity);
+  const ruleTarget = rule && inPool(rule.to);
+  if (ruleTarget) {
+    return {
+      type: 'probable',
+      exerciseName: ruleTarget,
+      alternatives: [],
+      viaRule: true,
+      ...((rule.all || OLD_NAME_EQUIPMENT[identity]) ? { ruleEquipment: rule.all || OLD_NAME_EQUIPMENT[identity] } : {}),
+    };
+  }
 
   const ranked = allNames
     .map(n => ({ name: n, score: scoreSimilarity(looseKey(n), importedLoose, importedWords) }))
@@ -75,7 +119,7 @@ export const findExerciseMatch = async (importedName) => {
   let customNames = [];
   try {
     const rows = await db.customExercises.toArray();
-    customNames = rows.map(r => r.name).filter(Boolean);
+    customNames = rows.map(r => r.name).filter(Boolean).filter(n => !isTableDuplicate(n));
   } catch { /* ignore */ }
 
   // The families table's variants count too (a YAML with "Sissy Squat" is not a new exercise), the
