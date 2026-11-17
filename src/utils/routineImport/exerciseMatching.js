@@ -3,6 +3,7 @@ import { DEFAULT_EXERCISE_DB } from '../../constants/gymConstants';
 import { FAMILY_TABLE, FAMILY_NAMES, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
 import { TAXONOMY_RULES } from '../taxonomyMapping';
 import { normalizeExerciseName } from '../exerciseName';
+import { resolveHistoryEquipment } from '../exerciseVariant';
 
 // Filler words that never identify an exercise ("Remo con mancuerna" ≈ "Remo mancuerna").
 const STOPWORDS = new Set(['con', 'de', 'en', 'a', 'la', 'el']);
@@ -64,7 +65,7 @@ export const isTableDuplicate = (name) => !!getFamilyEntry(name);
  *  - family:   the name is a family of the table (not a variant): with several variants it is `fuzzy` with
  *              `family` set and the family's variants as the only options; with one it is `probable`.
  *  - rule:     an old name of the phase-2 rules (taxonomyMapping.js): `probable`, preselecting the new
- *              variant (`viaRule`), with the rule's implement as `ruleEquipment` when it has one.
+ *              variant (`viaRule`), with the rule's implement as `suggestedEquipment` when it has one.
  *  - probable: equal once punctuation, filler words and simple plurals are ignored, and only ONE catalog
  *              name qualifies — applied by default, visible and changeable in the wizard.
  *  - fuzzy:    similar names, no default — pending until the athlete picks (or the Coach's
@@ -74,7 +75,21 @@ export const isTableDuplicate = (name) => !!getFamilyEntry(name);
  *  - none:     nothing similar.
  * Synchronous and pure: `allNames` is the pool to compare against.
  */
-export const scoreCandidates = (importedName, allNames) => {
+// The variant, among `names`, used most recently in the history, with the implement of that appearance.
+const lastUsedVariant = (history, names) => {
+  const byKey = new Map(names.map(n => [normalizeExerciseName(n), n]));
+  let best = null;
+  for (const session of Array.isArray(history) ? history : []) {
+    const t = Date.parse(session?.completedAt || session?.createdAt || '') || 0;
+    for (const ex of (Array.isArray(session?.exercises) ? session.exercises : [])) {
+      const name = ex?.name && byKey.get(normalizeExerciseName(ex.name));
+      if (name && (!best || t > best.t)) best = { t, name, equipment: resolveHistoryEquipment(ex) };
+    }
+  }
+  return best;
+};
+
+export const scoreCandidates = (importedName, allNames, { history } = {}) => {
   if (!importedName) return { type: 'none' };
 
   const identity = normalizeExerciseName(importedName);
@@ -88,16 +103,25 @@ export const scoreCandidates = (importedName, allNames) => {
   // An old name (phase-2 rules + Catálogo 8.4): the variant it became and the implement it carried.
   const old = OLD_NAME_BY_KEY.get(identity);
   const oldTarget = old && inPool(old.to);
-  const oldFields = oldTarget ? { viaRule: true, ...(old.equipment ? { ruleEquipment: old.equipment } : {}) } : {};
+  const oldFields = oldTarget ? { viaRule: true, ...(old.equipment ? { suggestedEquipment: old.equipment, suggestedFrom: 'regla' } : {}) } : {};
 
-  // A family name (and not a variant): only its variants are offered. When it is also an old name, the
-  // variant of the rule comes preselected (`probable`), with the family's other variants as the options.
+  // A family name (and not a variant): only its variants are offered (the history-only ones — hidden rows
+  // such as "Cardio (sin especificar)" — are not). Preselected: the variant of the family used most recently
+  // in the history (with the implement of that use); a family with no history, the variant of the old-name
+  // rule when there is one; otherwise none.
   const familyName = FAMILY_NAMES.find(f => normalizeExerciseName(f) === identity);
   if (familyName) {
     const variants = familyVariants(familyName).filter(r => r.inSelector && inPool(r.name)).map(r => inPool(r.name));
     if (variants.length === 1) return { type: 'probable', exerciseName: variants[0], alternatives: [], viaFamily: familyName, ...oldFields };
     if (variants.length > 1) {
-      if (oldTarget && familyVariants(familyName).some(r => normalizeExerciseName(r.name) === normalizeExerciseName(oldTarget))) {
+      const used = lastUsedVariant(history, variants);
+      if (used) {
+        return {
+          type: 'probable', exerciseName: used.name, alternatives: variants.filter(v => v !== used.name), family: familyName, viaHistory: true,
+          ...(used.equipment ? { suggestedEquipment: used.equipment, suggestedFrom: 'historial' } : {}),
+        };
+      }
+      if (oldTarget && variants.includes(oldTarget)) {
         return { type: 'probable', exerciseName: oldTarget, alternatives: variants.filter(v => v !== oldTarget), family: familyName, ...oldFields };
       }
       return { type: 'fuzzy', candidates: variants, contained: [], family: familyName };
@@ -131,7 +155,7 @@ export const scoreCandidates = (importedName, allNames) => {
   return { type: 'none' };
 };
 
-export const findExerciseMatch = async (importedName) => {
+export const findExerciseMatch = async (importedName, { history } = {}) => {
   if (!importedName) return { type: 'none' };
 
   let customNames = [];
@@ -143,7 +167,9 @@ export const findExerciseMatch = async (importedName) => {
   // The families table's variants count too (a YAML with "Sissy Squat" is not a new exercise), the
   // hidden ones included: they still resolve to their name.
   const allNames = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERCISE_DB : []), ...FAMILY_TABLE.map(r => r.name), ...customNames])];
-  return scoreCandidates(importedName, allNames);
+  let hist = history;
+  if (hist === undefined) { try { hist = await db.history.toArray(); } catch { hist = []; } }
+  return scoreCandidates(importedName, allNames, { history: hist });
 };
 
 export const matchRoutineExercises = async (routine) => {
@@ -151,9 +177,11 @@ export const matchRoutineExercises = async (routine) => {
 
   const mappings = {};
   let exactCount = 0;
+  let history = [];
+  try { history = await db.history.toArray(); } catch { /* ignore */ }
 
   for (const ex of routine.exercises) {
-    const match = await findExerciseMatch(ex.name);
+    const match = await findExerciseMatch(ex.name, { history });
     mappings[ex.name] = match;
     if (match.type === 'exact') exactCount++;
   }

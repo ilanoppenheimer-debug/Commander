@@ -513,10 +513,10 @@ function StepPreview({
                 </div>
               </button>
 
-              {m?.ruleEquipment && !ex.equipment && !overrides[ex.name] && (
+              {m?.suggestedEquipment && !ex.equipment && !overrides[ex.name] && (
                 <div data-testid="rule-equipment" className="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-sky-300">
-                  <span>Equipo sugerido por la regla: {EQUIPMENT_TYPES.find(e => e.id === m.ruleEquipment)?.label || m.ruleEquipment}</span>
-                  <button type="button" onClick={() => onUseEquipment?.(ex.name, m.ruleEquipment)} className="px-2 py-0.5 rounded bg-sky-900/40 border border-sky-500/40 font-bold">Usar</button>
+                  <span>Equipo sugerido {m.suggestedFrom === 'historial' ? 'por tu historial' : 'por la regla'}: {EQUIPMENT_TYPES.find(e => e.id === m.suggestedEquipment)?.label || m.suggestedEquipment}</span>
+                  <button type="button" onClick={() => onUseEquipment?.(ex.name, m.suggestedEquipment)} className="px-2 py-0.5 rounded bg-sky-900/40 border border-sky-500/40 font-bold">Usar</button>
                 </div>
               )}
 
