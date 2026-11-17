@@ -3,8 +3,8 @@ import { X, ChevronDown, AlertTriangle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { TAG_LABELS } from '../../constants/blockTemplates';
-import { MUSCLE_GROUP_OPTIONS, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup } from '../../constants/exerciseMetadata';
-import { FAMILY_NAMES, familyGroup, familyVariants, getFamilyEntry } from '../../constants/exerciseFamilies';
+import { MUSCLE_GROUP_OPTIONS, saveExerciseMeta, getExerciseMeta, resolveFamily, resolveMuscleGroup, isUnilateral, tableIsUnilateral, clearMetaFields } from '../../constants/exerciseMetadata';
+import { FAMILY_NAMES, familyGroup, familyVariants, getFamilyEntry, offeredEquipment } from '../../constants/exerciseFamilies';
 import { scoreCandidates } from '../../utils/routineImport/exerciseMatching';
 import { previewRenameExercise, renameExercise } from '../../utils/exerciseRename';
 import { sameExercise, normalizeExerciseName } from '../../utils/exerciseName';
@@ -82,7 +82,9 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
   const [muscleGroup, setMuscleGroup] = useState('');
   // No preselected implement: creating requires choosing one. '' = sin definir.
   const [equipment, setEquipment] = useState('');
-  const [bilateral, setBilateral] = useState(true);
+  // "Unilateral con:" — implements marked as one side at a time (ids). Starts as what the exercise resolves to
+  // today (the table, or the athlete's override).
+  const [uniMarked, setUniMarked] = useState([]);
   const [duplicate, setDuplicate] = useState({ exact: null, suggest: null });
   // Family: null = "Nueva familia: <name>" (a family of one, nothing is written). In edit mode it starts
   // as the family the exercise resolves to today.
@@ -106,7 +108,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       const g = resolveMuscleGroup(existingName).group || meta.muscleGroup;
       if (g) setMuscleGroup(g);
       if (meta.equipment) setEquipment(meta.equipment);
-      if (meta.bilateral !== undefined) setBilateral(meta.bilateral);
+      setUniMarked(EQUIPMENT_TYPES.map(e => e.id).filter(e => isUnilateral(existingName, e)));
     }
   }, [isEdit, existingName]);
 
@@ -207,6 +209,27 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     if (getExerciseMeta(selfName).muscleGroup !== shownGroup) saveExerciseMeta(selfName, ownGroupStamp());
   };
 
+  // "Unilateral con:" — the implements the row offers. A variant of the table: the ones it offers. An own
+  // exercise: the ones its family suggests plus its own (all of them while there is nothing to go on).
+  const uniOptions = (() => {
+    if (tableVariantEdit) return offeredEquipment(existingName);
+    const ids = new Set([...suggestedEquipment, ...(equipment ? [equipment] : [])]);
+    const list = EQUIPMENT_TYPES.map(e => e.id).filter(e => ids.size === 0 || ids.has(e));
+    return list;
+  })();
+  const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+  // The table is the default: what is marked is saved as the athlete's override ONLY when it differs from
+  // what the exercise resolves to today; going back to the default drops the override (nothing stays saved).
+  const writeUnilateral = (name) => {
+    const desired = uniOptions.filter(e => uniMarked.includes(e));
+    const current = uniOptions.filter(e => isUnilateral(name, e));
+    if (sameSet(desired, current)) return;
+    const base = tableVariantEdit ? uniOptions.filter(e => tableIsUnilateral(name, e)) : [];
+    const legacyUni = !getFamilyEntry(name) && getExerciseMeta(name).bilateral === false;
+    if (sameSet(desired, base) && !legacyUni) clearMetaFields(name, ['unilateral']);
+    else saveExerciseMeta(name, { unilateral: desired.length ? desired : false });
+  };
+
   // Keys with no value are left OUT, not set to undefined: saveExerciseMeta merges
   // {...stored, ...data}, so an undefined key would erase what is already stored.
   const buildMeta = () => {
@@ -221,7 +244,6 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
         equipmentAssignedAt: new Date().toISOString(),
         equipmentAssignedBy: 'user-manual',
       } : {}),
-      bilateral,
       ...(isEdit ? {} : { isCustom: true, createdAt: new Date().toISOString() }),
       ...(familyToWrite ? { family: familyToWrite } : {}),
       ...(!tableGroup && shownGroup ? ownGroupStamp() : {}),
@@ -236,6 +258,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       // Only the family (and, when it moves to a family of the athlete's, that family's group).
       if (familyToWrite) saveExerciseMeta(existingName, { family: familyToWrite });
       writeFamilyGroup(existingName);
+      writeUnilateral(existingName);
       onSave(existingName, null);
       return;
     }
@@ -245,6 +268,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
       // up the freshest values as the "source" side, not whatever was there on open.
       saveExerciseMeta(existingName, buildMeta());
       writeFamilyGroup(existingName);
+      writeUnilateral(existingName);
       const preview = await previewRenameExercise(existingName, name.trim());
       if (!preview.ok) { setRenameError(preview.reason); return; }
       setRenamePreview(preview);
@@ -255,6 +279,7 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
     const meta = buildMeta();
     saveExerciseMeta(finalName, meta);
     writeFamilyGroup(finalName);
+    writeUnilateral(finalName);
     onSave(finalName, meta);
   };
 
@@ -466,21 +491,31 @@ export default function CreateExerciseModal({ existingName, allExerciseNames = [
             </div>
           </div>
 
-          {/* Bilateral toggle */}
-          <div className="flex items-center justify-between bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
-            <span className="text-sm text-white font-medium">Unilateral</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={!bilateral}
-              onClick={() => setBilateral(v => !v)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${!bilateral ? 'bg-accent-600' : 'bg-slate-700'}`}
-            >
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${!bilateral ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
-          </div>
-
           </>)}
+
+          {/* Unilateral con: implements done one side at a time. Preloaded with what the exercise resolves to. */}
+          {uniOptions.length > 0 && (
+            <div data-testid="unilateral-row">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Unilateral con:</label>
+              <div className="flex flex-wrap gap-1.5">
+                {uniOptions.map(id => {
+                  const on = uniMarked.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setUniMarked(m => (m.includes(id) ? m.filter(x => x !== id) : [...m, id]))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${on ? 'bg-accent-600 border-accent-500 text-black' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
+                    >
+                      {EQUIPMENT_TYPES.find(e => e.id === id)?.label || id}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
 
         <div className="p-4 border-t border-slate-800 flex gap-2 shrink-0">
