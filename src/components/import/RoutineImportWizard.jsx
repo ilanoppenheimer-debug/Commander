@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { EQUIPMENT_TYPES } from '../../constants/gymConstants';
 import { X, AlertTriangle, Info, Check, ChevronDown, ChevronRight, Loader2, Play, Save, FileText, Layers } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { parseRoutineMarkdown } from '../../utils/routineImport/parser';
@@ -252,6 +253,7 @@ export default function RoutineImportWizard({ onClose, onSaved, onStartSession, 
               setMeasurementOverrides={setMeasurementOverrides}
               measurementPickerFor={measurementPickerFor}
               setMeasurementPickerFor={setMeasurementPickerFor}
+              onUseEquipment={(exName, eq) => setParsed(p => ({ ...p, exercises: (p.exercises || []).map(e => (e.name === exName ? { ...e, equipment: eq } : e)) }))}
               onBack={() => setStep('paste')}
               onImport={handleImport}
               onStartNow={handleStartNow}
@@ -318,14 +320,16 @@ function StepPreview({
   parsed, warnings, mappings, overrides, setOverrides, existing, saveMode, setSaveMode,
   existingBlock, existingBlockSessionCount, expandedEx, setExpandedEx,
   measurementNotices, measurementOverrides, setMeasurementOverrides, measurementPickerFor, setMeasurementPickerFor,
-  onBack, onImport, onStartNow, processing,
+  onUseEquipment, onBack, onImport, onStartNow, processing,
 }) {
+  const [showAllWarnings, setShowAllWarnings] = useState(false);
   const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
 
   const matchBadge = (exName) => {
     const override = overrides[exName];
     if (override) return { label: override, color: 'text-emerald-400', bg: 'bg-emerald-900/20 border-emerald-500/30' };
     const m = mappings[exName];
+    if (m?.family) return { label: 'familia · elegí variante', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     if (!m || m.type === 'none') return { label: 'Nuevo', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     if (m.type === 'exact') return { label: '✓ ' + m.exerciseName, color: 'text-emerald-400', bg: 'bg-emerald-900/20 border-emerald-500/30' };
     if (m.type === 'probable') return { label: '≈ probable · ' + m.exerciseName, color: 'text-sky-300', bg: 'bg-sky-900/30 border-sky-500/40' };
@@ -460,12 +464,21 @@ function StepPreview({
       {/* Warnings */}
       {warnings.length > 0 && (
         <div className="space-y-1">
-          {warnings.slice(0, 5).map((w, i) => (
+          {(showAllWarnings ? warnings : warnings.slice(0, 5)).map((w, i) => (
             <div key={i} className="flex items-start gap-2 bg-slate-800 border border-slate-700 rounded-lg p-2 text-[10px] text-slate-400">
               <AlertTriangle size={10} className="mt-0.5 shrink-0 text-amber-400" /> {w}
             </div>
           ))}
-          {warnings.length > 5 && <p className="text-[10px] text-slate-500 text-center">+{warnings.length - 5} más</p>}
+          {warnings.length > 5 && (
+            <button
+              type="button"
+              data-testid="warnings-toggle"
+              onClick={() => setShowAllWarnings(v => !v)}
+              className="w-full text-[10px] text-slate-400 hover:text-white text-center underline underline-offset-2"
+            >
+              {showAllWarnings ? 'Ver menos' : `+${warnings.length - 5} más`}
+            </button>
+          )}
         </div>
       )}
 
@@ -486,10 +499,11 @@ function StepPreview({
                 onClick={() => setExpandedEx(isExpanded ? null : ex.name)}
                 className="w-full px-3 py-2.5 flex items-center justify-between text-left"
               >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-white text-sm font-medium truncate">{ex.name}</span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${badge.bg} ${badge.color}`}>
-                    {badge.label.length > 28 ? badge.label.slice(0, 28) + '…' : badge.label}
+                {/* The Coach's full name; the badge goes below when it does not fit next to it. */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 min-w-0">
+                  <span data-testid="ex-name" className="text-white text-sm font-medium break-words min-w-0">{ex.name}</span>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${badge.bg} ${badge.color}`}>
+                    {badge.label}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -498,6 +512,13 @@ function StepPreview({
                   <ChevronDown size={12} className={`text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                 </div>
               </button>
+
+              {m?.suggestedEquipment && !ex.equipment && !overrides[ex.name] && (
+                <div data-testid="rule-equipment" className="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-sky-300">
+                  <span>Equipo sugerido {m.suggestedFrom === 'historial' ? 'por tu historial' : 'por la regla'}: {EQUIPMENT_TYPES.find(e => e.id === m.suggestedEquipment)?.label || m.suggestedEquipment}</span>
+                  <button type="button" onClick={() => onUseEquipment?.(ex.name, m.suggestedEquipment)} className="px-2 py-0.5 rounded bg-sky-900/40 border border-sky-500/40 font-bold">Usar</button>
+                </div>
+              )}
 
               {isExpanded && (
                 <div className="border-t border-slate-700 p-3 space-y-2 bg-slate-900/50">
@@ -532,9 +553,9 @@ function StepPreview({
 
                   {m?.type === 'fuzzy' && !overrides[ex.name] && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Sugerencias (ninguna elegida):</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">{m.family ? `Familia ${m.family} — elegí variante:` : 'Sugerencias (ninguna elegida):'}</p>
                       <div className="space-y-1">
-                        {m.candidates.slice(0, 4).map(c => (
+                        {(m.family ? m.candidates : m.candidates.slice(0, 4)).map(c => (
                           <button
                             key={c}
                             onClick={() => setOverrides(prev => ({ ...prev, [ex.name]: c }))}
@@ -587,7 +608,7 @@ function StepPreview({
                         <div key={si} className="flex items-center gap-2 text-[10px] text-slate-500 px-1">
                           <span className="w-4 shrink-0 font-mono">{si + 1}</span>
                           <span className={`w-12 shrink-0 font-bold ${s.type === 'warmup' ? 'text-blue-400' : s.type === 'top' ? 'text-amber-400' : 'text-slate-400'}`}>{s.type}</span>
-                          <span>{s.weight || s.planned?.weight || '–'}kg</span>
+                          <span>{/^PC/i.test(s.planned?.weight || '') ? s.planned.weight : `${s.weight || s.planned?.weight || '–'}kg`}</span>
                           <span>×{s.reps || s.planned?.reps || '–'}</span>
                           {(s.rpe || s.planned?.rpeText) && <span>@{s.rpe || s.planned.rpeText}</span>}
                           {s.notes && <span className="text-[9px] italic truncate">{s.notes}</span>}
