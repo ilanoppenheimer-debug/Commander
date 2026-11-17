@@ -90,7 +90,8 @@ const ExerciseSelectorModal = ({
   // Catalogue + families table (the new variants live only there) + the athlete's own exercises,
   // without the ones taken out of the selector (old / duplicated / hidden: see exerciseFamilies.js).
   const allExerciseNames = useMemo(() => {
-    const safeCustom = Array.isArray(customExercises) ? customExercises.filter(Boolean) : [];
+    // A custom row that is the same exercise as a variant of the table (normalized) is that variant: left out.
+    const safeCustom = Array.isArray(customExercises) ? customExercises.filter(Boolean).filter(n => !getFamilyEntry(n)) : [];
     const deduped = [...DEFAULT_EXERCISE_DB, ...SELECTOR_TABLE_NAMES, ...safeCustom]
       .filter(e => !isHiddenFromSelector(e))
       .filter((e, _, arr) => arr.findIndex(x => sameExercise(x, e)) === arr.indexOf(e));

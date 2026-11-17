@@ -57,6 +57,9 @@ const SESSION_NAME_RED_FLAG_WORDS = ['bloque', 'fase', 'tramo', 'semana', 'calib
 // Narrow shape guard for the "reps no parseable" branch below — deliberately stricter
 // than parseRestSeconds' bare-number fallback (which would wrongly accept a plain
 // number here). Only a value with an explicit s/seg/sec/min unit counts as duration-shaped.
+// "PC" / "PC+10" / "PC + 10": bodyweight, with optional added load (kg).
+const BODYWEIGHT_LOAD_PATTERN = /^PC(?:\s*\+\s*(\d+(?:\.\d+)?))?$/i;
+
 const TIME_SHAPE_PATTERN = /^\d+(?:\s*[-–—]\s*\d+)?\s*(s|seg|sec|min)\b/i;
 
 // ── Block YAML helpers ────────────────────────────────────────────────────────
@@ -419,8 +422,10 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
 
   // No equipo, or one the app doesn't know, is "sin definir" (null) — never a guessed
   // barbell: a made-up implement would split or pollute the exercise's numbers later.
-  const equipment = VALID_EQUIPMENT.includes(metadata.equipo) ? metadata.equipo : null;
-  if (metadata.equipo && !VALID_EQUIPMENT.includes(metadata.equipo)) {
+  // Compared ignoring case ("Landmine", "Barbell"); the ids are the app's English ones, no Spanish aliases.
+  const equipoKey = typeof metadata.equipo === 'string' ? metadata.equipo.trim().toLowerCase() : '';
+  const equipment = VALID_EQUIPMENT.includes(equipoKey) ? equipoKey : null;
+  if (metadata.equipo && !VALID_EQUIPMENT.includes(equipoKey)) {
     warnings.push(`Equipo desconocido "${metadata.equipo}" en "${name}" — queda sin definir`);
   } else if (!metadata.equipo) {
     warnings.push(`Ejercicio "${name}" sin equipo — queda sin definir (el Coach debe declararlo)`);
@@ -506,8 +511,14 @@ const parseSet = ({ type, peso, reps, rpe, descanso }, idx, warnings) => {
 
   const pesoTrimmed = (peso || '').trim();
   if (pesoTrimmed && pesoTrimmed !== '-') {
+    const pc = pesoTrimmed.match(BODYWEIGHT_LOAD_PATTERN);
     if (/^\d+(\.\d+)?$/.test(pesoTrimmed)) {
       set.weight = pesoTrimmed;
+    } else if (pc) {
+      // "PC" = bodyweight with no added load: the app stores that as NO weight (a set is bodyweight when its
+      // weight is empty/0 — formatSetSummary prints it "PC"). "PC+10" = bodyweight plus 10 kg of ballast: the
+      // app stores the ADDED load as the set's weight ("10"). The Coach's text stays in set.planned.weight.
+      set.weight = pc[1] || '';
     } else if (/^\d+(\.\d+)?-\d+(\.\d+)?$/.test(pesoTrimmed)) {
       // (planned text lives in set.planned, not in the athlete's notes field)
     } else {
