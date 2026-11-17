@@ -1,222 +1,287 @@
 # Iron Commander — Catálogo de ejercicios y lógica de nombres
-**v1.7 · 12 octubre 2026 · Sección 8 del Contrato YAML app ↔ Coach**
+**v2.0 · 17 noviembre 2026 · Sección 8 del Contrato YAML app ↔ Coach (v1.8)**
 
 > Se agrega al documento "Iron Commander — Contrato YAML app ↔ Coach".
-> El Coach se mueve por este catálogo. Si necesita un movimiento que no está, lo declara explícitamente en vez de inventar el nombre.
-> **v1.5:** la app ya no distingue mayúsculas ni tildes (8.1). Se resuelve 8.3b: el catálogo adopta los nombres con historial real y suma los nuevos de 3A. Curl de Bíceps Bayesiano confirmado como ejercicio propio. Handstand sin "— Progresión".
-> **v1.6:** Core Anti-extensión se retira como nombre de ejercicio (decisión del 8 oct); el ejercicio de core vigente es Plancha Abdominal.
-> **v1.7:** 8.7 actualizado a las secciones actuales del CONTEXTO PARA COACH.
+> El Coach se mueve por este catálogo. Si necesita un movimiento que no está, lo declara explícitamente y lo manda con `familia:` (8.5).
+> **v2.0 (taxonomía):** el catálogo se reorganiza en **familia → variante → implemento**. Los nombres ya no llevan el implemento (va en `equipo`). La app separa los números por nombre **e** implemento. Muchos nombres cambiaron: ver la tabla de equivalencias (8.4). La lista viva está en la app (Ajustes → Datos → **Exportar ejercicios**); este documento fija las reglas.
 
 ---
 
-## 8.1 Por qué esto importa
+## 8.1 Cómo identifica la app un ejercicio
 
-**El nombre del ejercicio es lo único que segmenta el historial.** La app agrupa sets, volumen y 1RM estimado **por nombre**, no por equipo. El campo `equipo` sirve para el ícono y los incrementos del teclado: **no separa historiales**.
+Tres niveles:
 
-**Qué cuenta como "mismo nombre" (desde el 8 oct 2026):** la app compara **sin mayúsculas, sin tildes y sin espacios repetidos**. "Jalón al Pecho" y "Jalón al pecho" son el mismo ejercicio; "Curl de Bíceps Bayesiano" y "Curl de biceps bayesiano", también. **Cualquier otra diferencia crea un ejercicio nuevo**: "Remo con mancuerna" ≠ "Remo mancuerna"; "Curl de bicep con barra" ≠ "Curl de biceps con barra"; "Curl Femoral sentado" ≠ "Curl Femoral".
+| Nivel | Qué es | Para qué sirve | Ejemplo |
+|---|---|---|---|
+| **Familia** | Grupo de variantes que el Coach intercambia entre sí | Agrupa en el selector y **define el grupo muscular** | Curl de Bíceps |
+| **Variante** | El **nombre** del ejercicio | Identidad: historial, 1RM, top sets | Curl Bayesiano |
+| **Implemento** | El campo `equipo` | **Separa los números** dentro de la variante | `barbell` / `dumbbell` / `cable` |
 
-Consecuencia: cada vez que el mismo movimiento se escribe distinto (más allá de mayúsculas y tildes), nace un ejercicio nuevo con su propio historial y su propio 1RM. Caso real: el remo horizontal quedó repartido en **cuatro nombres** ("Remo Polea / Landmine", "Remo en Polea / Landmine", "Lanemine row", "Remo en Punta") con 17 sets fragmentados.
-
-Origen del problema: **alternativas escritas dentro del nombre.** El slash de "Remo Polea / Landmine" convirtió una alternativa en identidad.
+- **El nombre es la variante, sin implemento.** "Curl de Bíceps" con `equipo: dumbbell` y "Curl de Bíceps" con `equipo: barbell` son la misma variante con números separados (1RM, top sets, último registro). Nunca "Curl de Bíceps con Barra": eso es otro nombre y nace un ejercicio nuevo.
+- **Comparación de nombres:** sin mayúsculas, sin tildes y sin espacios repetidos. Cualquier otra diferencia ("con", plural, palabras de más) es otro ejercicio.
+- **Excepciones al implemento:** en **peso corporal** y en **ejercicios por tiempo** el implemento no separa números. En peso corporal la carga es el lastre (columna Peso).
+- **Historial viejo sin implemento** cuenta para cualquier implemento de esa variante.
+- En los reportes, cuando una variante tiene más de un implemento, la app lo muestra como **"Curl de Bíceps · barra"**.
 
 ---
 
 ## 8.2 La regla
 
-> **Dos entradas son el mismo ejercicio si un peso registrado en una es comparable con un peso registrado en la otra.**
-
-Test de decisión, una sola pregunta:
-
-> ¿Un peso registrado acá es comparable con uno registrado allá?
-> **Sí** → mismo nombre. **No** → nombres distintos.
-
-**"Transferible" no es "comparable".** Un movimiento puede servir de referencia para otro (el curl bayesiano informa al curl de bíceps) sin que sus pesos sean comparables. Si no son comparables, nombres distintos; el Coach usa uno como referencia del otro en su criterio, no en el historial.
-
-### Al nombre SÍ va
-
-- **El movimiento**: Press Banca, Remo, Sentadilla.
-- **El implemento, cuando cambia la carga**: Press Banca ≠ Press Inclinado Mancuernas. Remo en Polea ≠ Remo con Landmine ≠ Remo en Punta (T-bar).
-- **La palanca o el ángulo**: Press Banca Inclinado, Push-Ups Pies Elevados, Curl Femoral ≠ Curl femoral acostado.
+> **Misma variante** si un peso registrado en una sirve de referencia directa para la otra (mismo movimiento, misma palanca). El implemento distinto **no** crea variante: lo resuelve `equipo`.
+> **Misma familia** si el Coach las intercambia en la programación.
+> **Variante propia** cuando cambia el ángulo, la palanca o el lado de forma significativa: Press Inclinado ≠ Press Banca; Curl Femoral Acostado ≠ Sentado; Prensa de Piernas Unilateral ≠ Prensa de Piernas; Sentadilla Hack ≠ V Squat.
 
 ### Al nombre NO va
 
 | Qué | Dónde va | Ejemplo |
 |---|---|---|
-| **Técnica** | `nota_ejercicio` | "estricto", "tempo 3-1-1" |
-| **Protocolo** | `nota_ejercicio` | "test máximo", "hold máximo", "AMRAP" |
-| **Alternativas** | `nota_ejercicio` | "si no hay polea, landmine" |
-| **Unilateral, si la carga es comparable** | `nota_ejercicio` | "unilateral, cada lado" |
-| **Posición, si la máquina es la misma** | `nota_ejercicio` | "sentado" en el Curl Femoral de siempre |
+| **Implemento** | `equipo` | barra, mancuernas, polea |
+| **Técnica / protocolo** | `nota_ejercicio` | "estricto", "tempo 3-1-1", "test máximo", "hold máximo" |
+| **Alternativas** | `nota_ejercicio` | "si no hay polea, landmine". **Nunca slashes en el nombre.** |
+| **Posición, si la máquina es la misma** | `nota_ejercicio` | — |
 
-**Nunca usar slashes en el nombre.** Una alternativa no es un ejercicio.
+*Excepción vigente:* **Press Banca con Pausa** lleva la pausa en el nombre porque cambia la carga.
 
-*Excepción ya registrada:* **Press Banca con Pausa** lleva la pausa en el nombre porque la pausa cambia la carga (no es comparable con la banca normal). Es la regla, no una contradicción: técnica que cambia la carga → nombre propio.
-
-### Límite conocido: máquinas
-
-La regla funciona limpio para **barra, mancuerna y peso corporal**: 100 kg es 100 kg en cualquier gimnasio.
-
-**Para máquina y polea no.** "Prensa de Piernas" en un gimnasio y en otro no son comparables aunque el número coincida. Ponerle el gimnasio al nombre no resuelve nada.
-
-- Para ejercicios de máquina, **el 1RM estimado es referencia débil y no debería usarse para decidir cargas.**
-- Lo que sí sirve es la **progresión sesión a sesión en la misma máquina**.
-- **Si se cambia de máquina, se anota en `nota_ejercicio`.** Ahí la serie se corta y el Coach lo interpreta.
+### Máquinas
+Para máquina y polea el peso no es comparable entre gimnasios. El 1RM de máquina es referencia débil; lo útil es la progresión sesión a sesión en la misma máquina. Un cambio de máquina se anota en `nota_ejercicio`.
 
 ---
 
-## 8.3 Catálogo canónico
+## 8.3 Catálogo canónico (16-nov-2026)
 
-Nombres que el Coach puede usar, **tal cual**. Principio: **el Catálogo sigue a la app**; donde un nombre ya acumula historial, se adopta ese nombre. Las mayúsculas y tildes de esta tabla son las recomendadas, pero la app no las distingue.
+Nombres que el Coach usa **tal cual**. Columna Implementos: los que la app ofrece para esa variante (en el YAML van en inglés, ver tabla de valores al final). **Unilateral** según 8.6. ● = con historial.
 
 ### Piernas
 
-| Canónico | Notas |
-|---|---|
-| **Peso Muerto** | Barra |
-| **Sentadilla** | Barra |
-| **Sentadilla Hack** | Máquina |
-| **Sentadilla Péndulo** | Máquina, distinta de la hack |
-| **Prensa de Piernas** | Máquina |
-| **Prensa de piernas unilateral** | Máquina. No comparable con la bilateral |
-| **Curl Femoral** | Máquina, sentado (el de siempre). "Sentado" no va al nombre |
-| **Curl femoral acostado** | Máquina. Palanca distinta al sentado |
-| **Extensiones de Cuádriceps** | Máquina |
-| **Elevación de Gemelos** | Máquina |
-| **RDL** | Barra. Peso muerto rumano |
-| **Buenos Días** | Barra. Alterna con RDL como secundario de Legs |
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Sentadilla | ● **Sentadilla** | barra, multipower | |
+| | **Sentadilla Frontal** | barra, multipower | |
+| | **Sentadilla Goblet** | mancuerna, kettlebell | |
+| | ● **Sentadilla Hack** | máquina | |
+| | ● **Sentadilla Péndulo** | máquina | |
+| | ● **V Squat** | máquina | |
+| | **Sissy Squat** | peso corporal, máquina | |
+| Split Squat | **Sentadilla Búlgara** | mancuerna, barra, multipower, peso corporal | sí |
+| Prensa | ● **Prensa de Piernas** | máquina | |
+| | ● **Prensa de Piernas Unilateral** | máquina | sí |
+| Peso Muerto | ● **Peso Muerto** | barra | |
+| RDL | ● **RDL** | barra, mancuerna, multipower | |
+| | ● **Buenos Días** | barra, multipower | |
+| | **Buenos Días en Hack** | máquina | |
+| | **Buenos Días en V Squat** | máquina | |
+| | **RDL en Belt Squat** | máquina | |
+| Hip Thrust | ● **Hip Thrust** | barra, máquina, mancuerna, peso corporal | |
+| Curl Femoral | ● **Curl Femoral Sentado** | máquina | |
+| | ● **Curl Femoral Acostado** | máquina | |
+| | **Nordic Curl** | peso corporal | |
+| Extensión de Cuádriceps | ● **Extensión de Cuádriceps** | máquina | |
+| Abducción | ● **Abducción de Piernas** | máquina | |
+| Gemelos | ● **Elevación de Gemelos** | máquina | |
+| Tibial Anterior | **Tibial Anterior** | sin definir | |
 
-### Empuje
+### Pecho
 
-| Canónico | Notas |
-|---|---|
-| **Press Banca** | Barra |
-| **Press Banca con Pausa** | Barra. Pausa de 2-3 s en el pecho; carga no comparable con la banca normal. Nuevo en 3A (día DL) |
-| **Press Banca Inclinado** | Barra |
-| **Press Inclinado Mancuernas** | Mancuernas. Reemplaza a "Press Banca Inclinado Mancuernas" (0 usos) |
-| **Press Militar** | Barra. Parkeado en 3A |
-| **Extensión de Tríceps** | Polea |
-| **Extensión tríceps katana** | Polea. Palanca distinta a la extensión en polea |
-| **Extensión de Tríceps con Mancuerna** | Sobre la cabeza, una mancuerna. Nuevo en 3A |
-| **Rompecráneos** | Barra (confirmar si alguna vez fue mancuerna) |
-| **Cruce de Poleas** | Polea |
-| **Push-Ups** | Peso corporal |
-| **Push-Ups Pies Elevados** | Palanca distinta → nombre propio |
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Press Banca | ● **Press Banca** | barra, mancuerna, multipower | |
+| | ● **Press Banca con Pausa** | barra | |
+| | ● **Press Banca Agarre Cerrado** | barra | |
+| Press Inclinado | ● **Press Inclinado** | barra, mancuerna, multipower | |
+| Aperturas | ● **Aperturas** | polea, mancuerna | |
+| Flexiones | ● **Push-Ups** | peso corporal (lastre) | |
+| | **Push-Ups en Paralelas** | peso corporal (lastre) | |
+| Flexiones Declinadas | ● **Decline Push-Ups** | peso corporal (lastre) | |
+| | ● **Decline Push-Ups en Paralelas** | peso corporal (lastre) | |
 
-### Tirón
+### Espalda
 
-| Canónico | Notas |
-|---|---|
-| **Dominadas** | Peso corporal o lastradas. El lastre va en la columna Peso (PC + X) |
-| **Jalón al Pecho** | Polea |
-| **Jalón en Polea a una mano** | Polea |
-| **Remo con Barra** | Barra. Fuera de 3A |
-| **Remo mancuerna** | Mancuerna, apoyado en banco. **No** "Remo con mancuerna" |
-| **Remo en Polea** | Absorbe "Remo Polea / Landmine", "Remo en Polea / Landmine", "Lanemine row" |
-| **Remo con Landmine** | Implemento distinto → nombre propio |
-| **Remo en Punta** | T-bar. Implemento distinto → nombre propio |
-| **Pull-over con Polea** | Polea |
-| **Curl de Bíceps** | Mancuerna |
-| **Hammer curl** | Mancuernas, agarre neutro |
-| **Curl de Bíceps con Barra** | Barra |
-| **Curl de Bíceps en Polea** | Polea |
-| **Curl de Bíceps Bayesiano** | Polea baja, banco detrás del punto de apoyo. **Ejercicio propio**: transferible como referencia al Curl de Bíceps, pero sus cargas no son comparables |
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Dominadas | ● **Dominadas** | peso corporal (lastre) | |
+| Muscle-Up | ● **Muscle-Up** | peso corporal (lastre) | |
+| Jalón | ● **Jalón al Pecho** | máquina, polea | |
+| | ● **Jalón a una mano** | polea, máquina | sí |
+| Remo | ● **Remo con Barra** | barra | |
+| | ● **Remo Mancuerna** | mancuerna | sí |
+| | ● **Remo en Polea** | polea | |
+| | ● **Remo Landmine** | landmine | sí |
+| | ● **Remo en T con apoyo** | máquina, landmine | |
+| Pull-over | **Pull-over con Polea** | polea | |
+| Front Lever | ● **Front Lever Tuck** | peso corporal · tiempo | |
+| | ● **Front Lever Advanced Tuck** | peso corporal · tiempo | |
+| | **Front Lever One Leg** | peso corporal · tiempo | |
+| | **Front Lever Full** | peso corporal · tiempo | |
+| | **Front Lever con Ayuda** | peso corporal · tiempo | |
 
-### Hombro y prevención
+### Hombros
 
-| Canónico | Notas |
-|---|---|
-| **Elevaciones Laterales** | Mancuerna |
-| **Elevaciones laterales con polea** | Polea. Nombre propio: carga no comparable con mancuerna |
-| **Facepull** | Polea alta |
-| **Prevención — Manguito Rotador** | |
-| **Prevención — Extensión de Muñeca** | |
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Press Militar | ● **Press Militar** | barra, mancuerna | |
+| | **Press Militar Sentado** | barra, mancuerna, máquina | |
+| Elevaciones Laterales | ● **Elevaciones Laterales** | mancuerna, polea, máquina | con polea |
+| Elevaciones Frontales | ● **Reverse Front Fly** | polea | sí |
+| Pájaros | ● **Pájaros** | polea, mancuerna | con polea |
+| Facepull | ● **Facepull** | polea | |
+| Encogimientos | ● **Encogimientos** | máquina, barra, mancuerna | |
+| Manguito Rotador | ● **Rotación Externa** | polea, banda, mancuerna | sí |
+| | ● **Rotación Interna** | polea, banda, mancuerna | sí |
+| Handstand | ● **Handstand** | peso corporal · tiempo | |
+| | ● **Handstand en Paralelas** | peso corporal · tiempo | |
 
-### Core y calistenia
+*Reverse Front Fly:* deltoides anterior, agarre supino, polea. No es Pájaros (posterior).
 
-| Canónico | Notas |
-|---|---|
-| **Plancha Abdominal** | Medida en segundos. «Anti-extensión» es el patrón, no el ejercicio: otro ejercicio de core (rueda abdominal, dead bug) va con su propio nombre |
-| **Handstand** | Medido en segundos. La variante (pared, paralelas, libre) va en la nota — ver 8.7 |
-| **Tuck Front Lever** | Medido en segundos. "Hold máximo" es protocolo → nota |
-| **Muscle-Up** | |
-| **Cardio** | Medido en segundos, compañero FC. Modalidad en la nota |
+### Brazos
 
----
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Curl de Bíceps | ● **Curl de Bíceps** | barra, mancuerna, polea | con polea |
+| | ● **Curl Bayesiano** | polea | sí |
+| | ● **Hammer Curl** | mancuerna, polea | con polea |
+| | **Curl Predicador** | barra, mancuerna, máquina | |
+| Extensión de Tríceps | ● **Extensión de Tríceps** | polea | sí (polea) |
+| | ● **Extensión Tríceps Katana** | polea | sí |
+| | ● **Rompecráneos** | barra, mancuerna | |
+| Muñeca | ● **Extensión de Muñeca** | mancuerna, barra, polea | sí |
+| | ● **Flexión de Muñeca** | mancuerna, barra, polea | sí |
 
-## 8.3b Pendientes de decisión (8 octubre 2026)
+*Rompecráneos:* acostado, a la frente (skullcrusher), con barra o mancuernas. No hay extensión de tríceps sobre la cabeza con mancuerna en el catálogo.
 
-*Lo resuelto el 5-8 oct ya está en la tabla de 8.3.*
+### Core
 
-| Tema | Estado |
-|---|---|
-| **"Curl de bicep con barra" (3 usos) vs "Curl de Bíceps con Barra"** | Difieren en "bicep/biceps": la app los trata como distintos. Usar **Curl de Bíceps con Barra** hacia adelante; los 3 sets viejos quedan separados salvo que el atleta los renombre en la app |
-| **Otros ~20 nombres con historial** | Variantes de curl con barra, «Flexion de piernas», «V squat», «Pajaros rear delts», etc. Cada unificación se decide con el atleta y se hace con el renombre de la app; ninguna se aplica sola |
+| Familia | Variante | Implementos | Unilateral |
+|---|---|---|---|
+| Core | ● **Plancha** | peso corporal · tiempo | |
+| | **Plancha Lateral** | peso corporal · tiempo | sí |
+| | **Crunch Abdominal** | peso corporal, polea, máquina | |
+| | **Knee Raises** | peso corporal | |
+| | **Leg Raises** | peso corporal | |
+| | **Ab Wheel** | peso corporal | |
+| | **Dragon Flag** | peso corporal | |
 
----
+### Cardio
 
-## 8.4 Duplicados a unificar
-
-**El pasado queda fragmentado salvo que el atleta lo renombre en la app; lo que importa es que no nazcan nuevos.**
-
-| Canónico | Absorbe | Estado |
+| Familia | Variante | Implementos |
 |---|---|---|
-| **Remo en Polea** | Remo Polea / Landmine · Remo en Polea / Landmine · Lanemine row | Fragmentado |
-| **Extensión de Tríceps** | Extension de triceps *(sin tildes)* | **Unificado automáticamente** (8 oct) |
-| **Jalón al Pecho** | Jalón al pecho *(minúscula)* | **Unificado automáticamente** (8 oct) |
-| **Remo en Punta** | Remo en punta *(minúscula)* | **Unificado automáticamente** (8 oct) |
-| **Press Militar** | Press Militar Estricto | Fragmentado |
-| **Curl de Bíceps** | Hammer curwl *(typo)* | Fragmentado. Hammer curl es hoy ejercicio propio |
-| **Curl de Bíceps** *(mancuerna, desde 27-ago)* | Historial previo mezclado con barra/polea/bayesiano bajo el mismo nombre | Corte hacia adelante, no se reconstruye |
+| Cardio | ● **Bicicleta** | máquina · tiempo |
+| | **Trotadora** | máquina · tiempo |
+| | **Elíptica** | máquina · tiempo |
+| | **Escalera** | máquina · tiempo |
 
-**Se mantienen separados** (implemento o palanca distinta): Remo en Punta · Remo con Landmine · Press Inclinado Mancuernas · Push-Ups Pies Elevados · Curl de Bíceps con Barra · Curl de Bíceps en Polea · Curl de Bíceps Bayesiano · Curl femoral acostado · Elevaciones laterales con polea · Prensa de piernas unilateral.
+*Cardio (sin especificar)* existe solo como historial (21 sesiones); no se prescribe. La modalidad va en el nombre.
+
+### Solo historial (no se prescriben)
+
+**Cardio (sin especificar)** · **Remo Polea / Landmine (sin resolver)**. Aparecen en los reportes con sus datos viejos.
+
+*Manguito Rotador* (genérico, 2 sesiones) sigue existiendo en la familia, pero hacia adelante se prescribe **Rotación Externa** o **Rotación Interna**.
+
+### Valores de `equipo` (YAML)
+
+| En la app | En el YAML |
+|---|---|
+| barra | `barbell` |
+| mancuerna | `dumbbell` |
+| polea | `cable` |
+| máquina | `machine` |
+| multipower | `smith` |
+| kettlebell | `kettlebell` |
+| landmine | `landmine` |
+| banda elástica | `band` |
+| peso corporal (con o sin lastre) | `bodyweight` |
+
+Se escriben **en minúsculas, exactamente así**. Un valor desconocido queda sin definir (con aviso).
 
 ---
 
-## 8.5 Fuera del catálogo
+## 8.4 Equivalencias: nombres viejos → nombres nuevos
 
-Ejercicios usados una o dos veces y abandonados hace meses. Si el Coach quiere volver a usarlos, los declara explícitamente:
+El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan los nombres de la derecha.** Un nombre viejo en un YAML sale **sin resolver** en el wizard (con sugerencias); si el atleta no elige, se crea un ejercicio nuevo con historial vacío.
 
-Abducción de piernas · Core Anti-extensión *(retirado el 8 oct; 11 usos hasta el 11-ago, el historial queda como está)* · Pájaros rear delts · V Squat · Remo en T con Apoyo · Press Banca Agarre Cerrado (sustituto documentado de la pausa si hay dolor costal) · Flexión de Piernas *(20 sets, sin uso desde mayo)*
+| Nombre viejo (Catálogo v1.7 o historial) | Nombre nuevo | `equipo` |
+|---|---|---|
+| Curl Femoral · Flexión de Piernas | **Curl Femoral Sentado** | machine |
+| Curl femoral acostado | **Curl Femoral Acostado** | machine |
+| Extensiones de Cuádriceps | **Extensión de Cuádriceps** | machine |
+| Prensa de piernas unilateral | **Prensa de Piernas Unilateral** | machine |
+| Abducción de piernas | **Abducción de Piernas** | machine |
+| Press Banca Inclinado | **Press Inclinado** | barbell |
+| Press Inclinado Mancuernas | **Press Inclinado** | dumbbell |
+| Press banca agarre cerado | **Press Banca Agarre Cerrado** | barbell |
+| Press Militar Estricto | **Press Militar** | barbell |
+| Cruce de Poleas | **Aperturas** | cable |
+| Push-Ups Pies Elevados | **Decline Push-Ups** | bodyweight |
+| Push-Ups Pies Elevados + Paralelas | **Decline Push-Ups en Paralelas** | bodyweight |
+| Jalón en Polea a una mano · Jalon al pecho unilateral | **Jalón a una mano** | cable |
+| Remo mancuerna | **Remo Mancuerna** | dumbbell |
+| Remo en Punta · Remo con Landmine | **Remo Landmine** | landmine |
+| Remo Polea / Landmine · Remo en Polea / Landmine | **Remo en Polea** (hacia adelante) | cable |
+| Curl de Bíceps con Barra · Curl de bicep(s) con barra | **Curl de Bíceps** | barbell |
+| Curl de Bíceps en Polea | **Curl de Bíceps** | cable |
+| Curl de Bíceps Bayesiano | **Curl Bayesiano** | cable |
+| Hammer curl | **Hammer Curl** | dumbbell |
+| Extensión tríceps katana | **Extensión Tríceps Katana** | cable |
+| Extensión de Tríceps con Mancuerna | **Rompecráneos** | dumbbell |
+| Elevaciones laterales con polea | **Elevaciones Laterales** | cable |
+| Pájaros rear delts | **Pájaros** | cable / dumbbell |
+| Encogimientos de Hombros | **Encogimientos** | machine |
+| Prevención — Manguito Rotador · Rotaciones internas/externas de hombro | **Rotación Externa** / **Rotación Interna** | cable |
+| Prevención — Extensión de Muñeca · Extensión de muñecas | **Extensión de Muñeca** | cable |
+| Curl de Muñeca | **Flexión de Muñeca** | cable |
+| Plancha Abdominal · Core Anti-extensión | **Plancha** | bodyweight |
+| Tuck Front Lever | **Front Lever Tuck** | bodyweight |
+| Handstand en Paralelas — Hold Máximo | **Handstand en Paralelas** (protocolo → nota) | bodyweight |
+| Dominadas — Test Máximo | **Dominadas** (protocolo → nota) | bodyweight |
+| Cardio | **Bicicleta / Trotadora / Elíptica / Escalera** | machine |
 
 ---
 
-## 8.6 Regla operativa para el Coach
+## 8.5 Ejercicio que no está en el catálogo
 
-1. **Usar los nombres del catálogo, tal cual están escritos.** Sin agregar "con", sin plurales distintos, sin descriptores de posición.
-2. **Alternativas en `nota_ejercicio`**, nunca en el nombre. Nunca slashes.
-3. **Técnica y protocolo en `nota_ejercicio`**, salvo que cambien la carga (8.2).
-4. **Si hace falta un movimiento que no está en el catálogo**, declararlo explícitamente al proponerlo ("esto es un ejercicio nuevo, no está en tu catálogo").
-5. **El nombre en inglés está permitido** si es el nombre real del movimiento (front lever, muscle-up, handstand, hammer curl). Lo que no se permite es la misma cosa escrita de dos formas.
-6. **Para prescribir tiempo** (holds, cardio): escribir el tiempo en la columna de reps con formato `"25s"` o `"10min"`. Ver 8.7.
+1. Declararlo al proponerlo ("ejercicio nuevo, no está en tu catálogo").
+2. Nombre = la variante, sin implemento, sin slashes.
+3. Agregar **`- familia: <Familia>`** en el ejercicio del YAML (Contrato §3) con una familia existente de este catálogo. Con eso la app lo ubica en el selector y le asigna el grupo muscular de la familia.
+4. Si no pertenece a ninguna familia, omitir `familia:` o declarar una nueva: la app la crea y el atleta le asigna el grupo.
+
+---
+
+## 8.6 Unilateral y registro del peso
+
+**Unilateral = un lado a la vez** (el otro lado descansa o espera). **Mancuernas simultáneas son bilaterales.**
+
+- En un ejercicio unilateral, **reps y peso son por lado**: `3 × 10 @ 15 kg` = tres series de 10 por lado, 15 kg en cada lado. Una serie = ambos lados hechos.
+- **El peso se anota por mancuerna** (o por lado en polea a un brazo), **nunca sumado**: press con dos mancuernas de 30 kg → `30`.
+- Algunas variantes son unilaterales **solo con un implemento**: el Curl de Bíceps con polea es a una mano; con barra o mancuernas es bilateral (ver columna Unilateral en 8.3).
+- La app sabe qué es unilateral por su tabla y por lo que configura el atleta. **El Coach no lo declara en el YAML**; si la prescripción es distinta a lo habitual, va en `nota_ejercicio`.
+- **Holds por tiempo unilaterales:** un set por lado (Contrato §4b).
+
+---
+
+## 8.7 Regla operativa para el Coach
+
+1. **Nombres de 8.3, tal cual.** Sin "con", sin implemento, sin descriptores de posición.
+2. **`equipo` siempre**, en inglés (tabla de 8.3). Es lo que separa los números.
+3. **Alternativas, técnica y protocolo en `nota_ejercicio`**, salvo que cambien la carga.
+4. **Ejercicio nuevo:** declararlo y mandar `familia:` (8.5).
+5. **Nombre en inglés** permitido si es el nombre real (front lever, muscle-up, handstand, hammer curl, push-ups). Lo que no se permite es la misma cosa escrita de dos formas.
+6. **Tiempo** en la columna Reps (`"25s"`, `"10min"`, `máx s`). Ver 8.8 y Contrato §4b.
 7. **La plantilla de fase también sigue el catálogo.** Un nombre que entra a la plantilla termina en un YAML.
+8. **Ante la duda, pedir al atleta el export** (Ajustes → Datos → Exportar ejercicios): es la lista viva, con implementos, unilateral y qué tiene historial.
 
 ---
 
-## 8.7 Ejercicios medidos en tiempo — resuelto
+## 8.8 Ejercicios medidos en tiempo
 
-Handstand, front lever, planchas y holds isométricos, más cardio, se registran con **tiempo estructurado** (segundos) en vez de peso/reps.
+Handstand, front lever, planchas, holds isométricos y cardio se registran en **segundos** en vez de peso/reps.
 
-### Cómo funciona
+Dos campos viven en la configuración del ejercicio en la app:
+- **`medición`**: `reps` o `tiempo`. Las variantes de tiempo del catálogo ya vienen configuradas.
+- **`compañero`**: con `tiempo`, `dificultad` (3 niveles) o `fc` (frecuencia cardíaca a mano).
 
-Dos campos viven en la configuración del ejercicio en la app, por nombre:
+**El Coach nunca declara estos campos en el YAML.** Prescribe el tiempo en Reps; si el ejercicio es nuevo, la app lo autoconfigura como Tiempo y lo muestra en el wizard; si ya tenía otra configuración, alerta en vez de sobreescribir.
 
-- **`medición`**: `reps` (default) o `tiempo`.
-- **`compañero`**: solo si `medición: tiempo`. `dificultad` (3 niveles, tipo semáforo) o `fc` (frecuencia cardíaca, ingresada a mano).
-
-**El Coach nunca declara estos campos en el YAML.** Dos caminos:
-
-1. **Vía import:** el Coach prescribe tiempo en la columna de reps (`"25s"`, `"10min"`). Si el ejercicio es nuevo, la app lo autoconfigura como Tiempo y lo muestra en el wizard con botón "Cambiar". Si ya tenía otra configuración, alerta en vez de sobreescribir.
-2. **Vía chip manual:** para ejercicios agregados a mano en sesión activa.
-
-### Qué ve el atleta
-
-Una fila de registro de tiempo con timer dedicado: countdown de 5 s, cuenta ascendente, persistente contra que el navegador suspenda la pantalla. Al detener, el valor queda como sugerencia editable; el atleta confirma. Un tiempo sin confirmar no pasa a la sesión siguiente.
-
-### Qué ve el Coach
-
-El reporte de bloque, el export de sesión y el CONTEXTO PARA COACH muestran el tiempo real (ej. `42s`) más el compañero, sin línea "Plan:". En el CONTEXTO aparecen en "Últimos registros por ejercicio" (últimas 8 semanas), igual que el resto de los ejercicios no-main (Contrato §5). El volumen no incluye estos sets.
-
-**La escala de dificultad mide qué tan difícil fue la variante o la ejecución, no la calidad técnica** (Esqueleto §5).
+**Qué ve el Coach:** el tiempo real (ej. `42 s`) más el compañero, sin línea "Plan:", y el sufijo de plan cuando se aparta (`25 s · Media · plan 38s`). El volumen no incluye estos sets. La escala de dificultad mide qué tan difícil fue la variante o la ejecución, no la calidad técnica (Esqueleto §5).
 
 ---
 
