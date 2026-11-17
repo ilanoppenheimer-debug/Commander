@@ -513,6 +513,12 @@ function StepPreview({
                 </div>
               </button>
 
+              {m?.strippedNote && overrides[ex.name] !== ex.name && (
+                <div data-testid="stripped-note" className="px-3 pb-2 -mt-1 text-[10px] text-slate-400">
+                  Se resuelve como «{m.strippedName}» · «{m.strippedNote}» va a la nota del ejercicio
+                </div>
+              )}
+
               {m?.suggestedEquipment && !ex.equipment && !overrides[ex.name] && (
                 <div data-testid="rule-equipment" className="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-sky-300">
                   <span>Equipo sugerido {m.suggestedFrom === 'historial' ? 'por tu historial' : 'por la regla'}: {EQUIPMENT_TYPES.find(e => e.id === m.suggestedEquipment)?.label || m.suggestedEquipment}</span>

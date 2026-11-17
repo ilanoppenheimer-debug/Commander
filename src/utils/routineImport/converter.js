@@ -9,6 +9,14 @@ import { parseRestSeconds } from './parser';
  * Converts a parsed routine + name resolutions into an app-storable routine.
  * replaceMode: 'new' | 'replace' | 'temporary'
  */
+// The role / protocol taken out of a name ("Prevención — X" -> note "Prevención") goes at the START of the
+// exercise's note, never over it. Not when the athlete chose to keep the Coach's name as a new exercise.
+const withStrippedNote = (notes, strippedNote, keptAsNew) => {
+  const existing = (notes || '').trim();
+  if (!strippedNote || keptAsNew || existing.startsWith(strippedNote)) return notes || '';
+  return existing ? `${strippedNote}\n${existing}` : strippedNote;
+};
+
 export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nameOverrides = {}, replaceMode = 'new') => {
   if (!parsedRoutine) return null;
 
@@ -21,7 +29,7 @@ export const convertImportedToRoutine = async (parsedRoutine, mappings = {}, nam
       tag: impEx.tagSuggested || null,
       restSeconds: impEx.restSeconds || 90,
       ...(impEx.backoffPct != null ? { backoffPct: impEx.backoffPct } : {}),
-      notes: impEx.notes || '',
+      notes: withStrippedNote(impEx.notes, mappings[impEx.name]?.strippedNote, nameOverrides[impEx.name] === impEx.name),
       decisionAdaptativa: impEx.decisionAdaptativa || null,
       unilateral: !!impEx.unilateral,
       _supersetGroup: impEx.supersetGroup || null, // consumed below, not persisted
