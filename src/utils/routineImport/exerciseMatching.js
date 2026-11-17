@@ -25,16 +25,34 @@ const scoreSimilarity = (candidateLoose, importedLoose, importedWords) => {
   return score;
 };
 
-// The old names of the phase-2 rules (taxonomyMapping.js) -> the variant they became. A rule with `all`
-// carries the implement of the variant ("Curl Femoral" -> Sentado, machine).
-const RULE_BY_OLD_NAME = (() => {
+// Old names -> the variant they became (+ the implement they carried). Starts from the phase-2 rules
+// (taxonomyMapping.js: `to`, and `all` when the variant has one implement) and is completed with the old
+// names of the Catálogo 8.4 (implement when they carry one; reviewed by hand; the rules are not touched, the
+// phase-2 migration plan is hashed on them).
+const OLD_NAME_OVERRIDES = [
+  { from: ['Press Banca Inclinado'], to: 'Press Inclinado', equipment: 'barbell' },
+  { from: ['Press Inclinado Mancuernas'], to: 'Press Inclinado', equipment: 'dumbbell' },
+  { from: ['Curl de Bíceps con Barra', 'Curl de bicep con barra', 'Curl de biceps con barra'], to: 'Curl de Bíceps', equipment: 'barbell' },
+  { from: ['Curl de Bíceps en Polea'], to: 'Curl de Bíceps', equipment: 'cable' },
+  { from: ['Curl de Bíceps Bayesiano'], to: 'Curl Bayesiano', equipment: 'cable' },
+  { from: ['Elevaciones laterales con polea'], to: 'Elevaciones Laterales', equipment: 'cable' },
+  { from: ['Cruce de Poleas'], to: 'Aperturas', equipment: 'cable' },
+  { from: ['Remo en Punta', 'Remo con Landmine'], to: 'Remo Landmine', equipment: 'landmine' },
+  { from: ['Extensión de Tríceps con Mancuerna'], to: 'Rompecráneos', equipment: 'dumbbell' },
+  { from: ['Jalón en Polea a una mano'], to: 'Jalón a una mano', equipment: 'cable' },
+  { from: ['Tuck Front Lever'], to: 'Front Lever Tuck', equipment: 'bodyweight' },
+  { from: ['Plancha Abdominal', 'Core Anti-extensión'], to: 'Plancha', equipment: 'bodyweight' },
+  // Catálogo 8.4 "Absorbe" without a single implement (the phase-2 rules leave them "sin resolver"):
+  // Remo en Polea is the canonical one; Hammer curwl is the typo of Hammer curl (an exercise of its own).
+  { from: ['Remo Polea / Landmine', 'Remo en Polea / Landmine', 'Lanemine row'], to: 'Remo en Polea', equipment: null },
+  { from: ['Hammer curwl'], to: 'Hammer Curl', equipment: null },
+];
+const OLD_NAME_BY_KEY = (() => {
   const m = new Map();
-  for (const r of TAXONOMY_RULES) for (const from of r.from) m.set(normalizeExerciseName(from), r);
+  for (const r of TAXONOMY_RULES) for (const from of r.from) m.set(normalizeExerciseName(from), { to: r.to, equipment: r.all || null });
+  for (const r of OLD_NAME_OVERRIDES) for (const from of r.from) m.set(normalizeExerciseName(from), { to: r.to, equipment: r.equipment });
   return m;
 })();
-// Old names whose rule has no `all` but whose name declares the implement. Reviewed by hand; the rules
-// themselves are not touched (the phase-2 migration plan is hashed on them).
-const OLD_NAME_EQUIPMENT = { 'press inclinado mancuernas': 'dumbbell' };
 
 // The athlete's own rows that are the same exercise as a variant of the table (normalized) are the table's
 // variant, not another exercise: they are left out of the pool (nothing is deleted or modified).
@@ -67,26 +85,26 @@ export const scoreCandidates = (importedName, allNames) => {
   const importedLoose = importedWords.join(' ');
   const inPool = (n) => allNames.find(x => normalizeExerciseName(x) === normalizeExerciseName(n));
 
-  // A family name (and not a variant): only its variants are offered.
+  // An old name (phase-2 rules + Catálogo 8.4): the variant it became and the implement it carried.
+  const old = OLD_NAME_BY_KEY.get(identity);
+  const oldTarget = old && inPool(old.to);
+  const oldFields = oldTarget ? { viaRule: true, ...(old.equipment ? { ruleEquipment: old.equipment } : {}) } : {};
+
+  // A family name (and not a variant): only its variants are offered. When it is also an old name, the
+  // variant of the rule comes preselected (`probable`), with the family's other variants as the options.
   const familyName = FAMILY_NAMES.find(f => normalizeExerciseName(f) === identity);
   if (familyName) {
     const variants = familyVariants(familyName).filter(r => r.inSelector && inPool(r.name)).map(r => inPool(r.name));
-    if (variants.length === 1) return { type: 'probable', exerciseName: variants[0], alternatives: [], viaFamily: familyName };
-    if (variants.length > 1) return { type: 'fuzzy', candidates: variants, contained: [], family: familyName };
+    if (variants.length === 1) return { type: 'probable', exerciseName: variants[0], alternatives: [], viaFamily: familyName, ...oldFields };
+    if (variants.length > 1) {
+      if (oldTarget && familyVariants(familyName).some(r => normalizeExerciseName(r.name) === normalizeExerciseName(oldTarget))) {
+        return { type: 'probable', exerciseName: oldTarget, alternatives: variants.filter(v => v !== oldTarget), family: familyName, ...oldFields };
+      }
+      return { type: 'fuzzy', candidates: variants, contained: [], family: familyName };
+    }
   }
 
-  // An old name of the phase-2 rules.
-  const rule = RULE_BY_OLD_NAME.get(identity);
-  const ruleTarget = rule && inPool(rule.to);
-  if (ruleTarget) {
-    return {
-      type: 'probable',
-      exerciseName: ruleTarget,
-      alternatives: [],
-      viaRule: true,
-      ...((rule.all || OLD_NAME_EQUIPMENT[identity]) ? { ruleEquipment: rule.all || OLD_NAME_EQUIPMENT[identity] } : {}),
-    };
-  }
+  if (oldTarget) return { type: 'probable', exerciseName: oldTarget, alternatives: [], ...oldFields };
 
   const ranked = allNames
     .map(n => ({ name: n, score: scoreSimilarity(looseKey(n), importedLoose, importedWords) }))

@@ -329,10 +329,10 @@ function StepPreview({
     const override = overrides[exName];
     if (override) return { label: override, color: 'text-emerald-400', bg: 'bg-emerald-900/20 border-emerald-500/30' };
     const m = mappings[exName];
+    if (m?.family) return { label: 'familia · elegí variante', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     if (!m || m.type === 'none') return { label: 'Nuevo', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     if (m.type === 'exact') return { label: '✓ ' + m.exerciseName, color: 'text-emerald-400', bg: 'bg-emerald-900/20 border-emerald-500/30' };
     if (m.type === 'probable') return { label: '≈ probable · ' + m.exerciseName, color: 'text-sky-300', bg: 'bg-sky-900/30 border-sky-500/40' };
-    if (m.family) return { label: 'familia · elegí variante', color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
     const n = m.candidates.length;
     return { label: `sin resolver · ${n} sugerencia${n !== 1 ? 's' : ''}`, color: 'text-amber-400', bg: 'bg-amber-900/20 border-amber-500/30' };
   };
