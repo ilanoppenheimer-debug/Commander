@@ -147,7 +147,9 @@ Sale del **Catálogo** (sección 8), siempre. Tres niveles: **familia** (agrupa 
 
 - **El nombre es la variante, sin implemento.** `Curl de Bíceps` + `equipo: barbell`, nunca "Curl de Bíceps con Barra". El mismo nombre con otro `equipo` es la misma variante con **números separados** (§5).
 - La app compara nombres **ignorando mayúsculas, tildes y espacios repetidos**. Cualquier otra diferencia es otro ejercicio.
-- **Nombres viejos** (v1.7 y antes) ya no existen en la app: ver la tabla de equivalencias (Catálogo 8.4). Un nombre viejo sale **sin resolver** con sugerencias ("Curl Femoral" → Curl Femoral Sentado / Acostado); si el atleta no elige, nace un ejercicio nuevo con historial vacío.
+- **Nombres viejos** (v1.7 y antes): el wizard conoce las equivalencias (Catálogo 8.4) y los muestra como **probable**, con la variante nueva preseleccionada y el equipo sugerido ("Press Inclinado Mancuernas" → Press Inclinado + dumbbell). Igual hay que usar los nombres nuevos: la equivalencia es una red de seguridad.
+- **Nombre de familia** ("Curl Femoral", "Front Lever", "Cardio"): el wizard ofrece solo las variantes de esa familia, con la usada más recientemente preseleccionada. Mejor escribir la variante.
+- **Nombre desconocido** (ej. un ejercicio nuevo): sale **sin resolver** con sugerencias; si el atleta no elige, nace un ejercicio nuevo con historial vacío.
 - Al importar, el wizard clasifica cada nombre: **Exacto** (se asigna solo), **Probable** (preseleccionado, el atleta confirma), **Sin resolver** (el atleta elige; si no, se guarda como ejercicio nuevo con historial desde cero). El matcher es una red de seguridad, no un reemplazo del Catálogo.
 
 ### `equipo`
@@ -156,9 +158,9 @@ Valores canónicos, **en inglés**:
 
 `barbell` · `dumbbell` · `cable` · `machine` · `smith` · `kettlebell` · `landmine` · `band` · `bodyweight`
 
-Se escriben **exactamente así, en minúsculas**: `Landmine` o `mancuernas` son valores desconocidos (quedan sin definir, con aviso). `other` existe pero no tiene equivalente en la app: evitarlo.
+Se aceptan sin distinguir mayúsculas (`Landmine` = `landmine`), pero **solo en inglés**: `mancuernas` o `barra` son valores desconocidos (quedan sin definir, con aviso). `other` existe pero no tiene equivalente en la app: evitarlo.
 
-**Siempre especificar `equipo`.** Es lo que separa los números dentro de una variante (1RM, top sets, último registro). Si se omite (o el valor es desconocido), la app **no asume barra**: el ejercicio queda con implemento sin definir, el wizard avisa ("queda sin definir") y sus números se calculan por nombre, mezclando implementos. El wizard muestra solo los primeros 5 avisos: con muchos faltantes, los individuales se pierden. Con `bodyweight` la carga es el lastre (columna Peso). En peso corporal y en ejercicios por tiempo el implemento no separa números.
+**Siempre especificar `equipo`.** Es lo que separa los números dentro de una variante (1RM, top sets, último registro). Si se omite (o el valor es desconocido), la app **no asume barra**: el ejercicio queda con implemento sin definir, el wizard avisa ("queda sin definir") y, si el ejercicio tiene historial, sugiere el último implemento usado. Sin `equipo`, los números se calculan por nombre, mezclando implementos. Con `bodyweight` la carga es el lastre (columna Peso). En peso corporal y en ejercicios por tiempo el implemento no separa números.
 
 El `equipo` también define los incrementos del teclado y el ícono.
 
@@ -251,6 +253,10 @@ Todos los valores sugeridos son **placeholders grises**: no se registran como da
 **Plan por set.** Al importar, Peso, Reps y RPE de la tabla se guardan además como **plan** del set (rangos incluidos). Si el atleta los cambia, el plan no se pierde. Prioridad del RPE mostrado: valor real > RPE planificado (o límite inferior del rango) > cálculo de la app.
 
 **Back-off que sigue al top:** el peso sugerido del back se recalcula cada vez que cambia el peso real del top, hasta que el atleta **escribe un peso en el back o confirma ese set**. Hasta que el top tiene un peso real, el back queda vacío.
+
+### Peso
+
+Número en kg (`137.5`). En peso corporal: **`PC`** sin lastre y **`PC+10`** (o `PC + 10`) con 10 kg de lastre, igual que lo muestra el reporte. Con mancuernas, el peso de **una** mancuerna.
 
 ### Formatos que la app no parsea (pero no rompen)
 

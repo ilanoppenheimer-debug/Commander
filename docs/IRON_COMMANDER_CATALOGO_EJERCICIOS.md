@@ -191,13 +191,13 @@ Nombres que el Coach usa **tal cual**. Columna Implementos: los que la app ofrec
 | banda elástica | `band` |
 | peso corporal (con o sin lastre) | `bodyweight` |
 
-Se escriben **en minúsculas, exactamente así**. Un valor desconocido queda sin definir (con aviso).
+Se aceptan sin distinguir mayúsculas, pero **solo en inglés**. Un valor desconocido queda sin definir (con aviso). En peso corporal, la columna Peso lleva `PC` o `PC+10` (lastre).
 
 ---
 
 ## 8.4 Equivalencias: nombres viejos → nombres nuevos
 
-El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan los nombres de la derecha.** Un nombre viejo en un YAML sale **sin resolver** en el wizard (con sugerencias); si el atleta no elige, se crea un ejercicio nuevo con historial vacío.
+El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan los nombres de la derecha.** El wizard conoce estas equivalencias: un nombre viejo sale como **probable**, con la variante nueva preseleccionada y el equipo sugerido. Es una red de seguridad, no un permiso: el Coach usa los nombres nuevos.
 
 | Nombre viejo (Catálogo v1.7 o historial) | Nombre nuevo | `equipo` |
 |---|---|---|
@@ -224,7 +224,7 @@ El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan l
 | Extensión tríceps katana | **Extensión Tríceps Katana** | cable |
 | Extensión de Tríceps con Mancuerna | **Rompecráneos** | dumbbell |
 | Elevaciones laterales con polea | **Elevaciones Laterales** | cable |
-| Pájaros rear delts | **Pájaros** | cable / dumbbell |
+| Pájaros rear delts | **Pájaros** | cable |
 | Encogimientos de Hombros | **Encogimientos** | machine |
 | Prevención — Manguito Rotador · Rotaciones internas/externas de hombro | **Rotación Externa** / **Rotación Interna** | cable |
 | Prevención — Extensión de Muñeca · Extensión de muñecas | **Extensión de Muñeca** | cable |
