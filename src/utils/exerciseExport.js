@@ -7,6 +7,7 @@ import { SELECTOR_TABLE_NAMES, isHiddenFromSelector, getFamilyEntry, familyGroup
 import { resolveFamily, resolveMuscleGroup, getMeasurement, getExerciseMeta, unilateralSpec, MUSCLE_GROUP_OPTIONS } from '../constants/exerciseMetadata';
 import { resolveHistoryEquipment, EQUIPMENT_LABEL_ES } from './exerciseVariant';
 import { normalizeExerciseName, sameExercise } from './exerciseName';
+import { localDateStr } from './localDate';
 
 const norm = normalizeExerciseName;
 const eqLabel = (id) => EQUIPMENT_LABEL_ES[id] || EQUIPMENT_TYPES.find(e => e.id === id)?.label || id;
@@ -103,7 +104,8 @@ export function buildExerciseExport({ customExercises = [], history = [], now = 
     lines.push('');
   }
 
-  const day = now.toISOString().slice(0, 10);
+  // Local date, the same helper the file name uses (downloadNaming -> localDateStr).
+  const day = localDateStr(now);
   const header = [
     `EJERCICIOS — Iron Commander (${day})`,
     `${rows.length} familias · ${variantCount} variantes · ${withHistory} con historial`,
