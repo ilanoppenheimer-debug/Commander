@@ -2,6 +2,7 @@ import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 import { getCompanion } from '../../constants/exerciseMetadata';
+import { canonicalExerciseName } from '../../constants/exerciseFamilies';
 import { localDateStr } from '../localDate';
 import { resolveExerciseTag } from '../blockReport';
 import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
@@ -46,6 +47,67 @@ export const classifySessionType = (name) => extractPrefix(name) || 'Sin clasifi
 const sessionTypeKey = (name) => {
   const prefix = extractPrefix(name);
   return prefix ? singularizeFirstWord(prefix).toLowerCase() : 'sin clasificar';
+};
+
+// ── Series por ejercicio ─────────────────────────────────────────────────────
+// Raw count of sets per exercise in the last 7 days and the 7 before (8–14), counted backwards from `nowMs`,
+// split by the kind of session: "Split" (LEGS / TORSO / DL), "ACCESORIOS" and "Otras" (any other session
+// name). A set counts when it is not a warmup, not explicitly incomplete — the same "incompleto" as the 1RM
+// (`completed === false`, strengthMath.js isPredictiveSet) and exerciseHistoryLines.js isWorkSet — and carries
+// data (reps, weight or seconds > 0: `completed` alone is not enough; the block report's hasData plus seconds).
+// Nothing is excluded by exercise (cardio, skills and timed holds count; a unilateral hold is one row per side).
+// The name printed is the table's when the history spelling is the same exercise (normalized).
+// Names carry the implement only when the exercise had more than one in the window (createVariantIndex.labelFor,
+// same as the other sections). The app does not group by muscle: the Coach does, with his Plantilla.
+const seriesHasData = (st) => parseFloat(st?.reps) > 0 || parseFloat(st?.weight) > 0 || parseFloat(st?.seconds) > 0;
+const SERIES_SPLIT_KEYS = new Set(['leg', 'torso', 'dl']);
+const SERIES_BLOCKS = [['split', 'Split (LEGS / TORSO / DL)'], ['accesorios', 'ACCESORIOS'], ['otras', 'Otras']];
+const seriesBlockOf = (sessionName) => {
+  const key = sessionTypeKey(sessionName);
+  if (SERIES_SPLIT_KEYS.has(key)) return 'split';
+  if (key === 'accesorio') return 'accesorios';
+  return 'otras';
+};
+
+export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
+  const DAY = 86400000;
+  const sessions = [];
+  for (const s of (Array.isArray(allHistory) ? allHistory : [])) {
+    const t = Date.parse(s?.completedAt || s?.createdAt || '');
+    if (!Number.isFinite(t)) continue;
+    const age = nowMs - t;
+    if (age < 0 || age >= 14 * DAY) continue;
+    sessions.push({ s, window: age < 7 * DAY ? 'w7' : 'w14' });
+  }
+  if (sessions.length === 0) return ['## Series por ejercicio (sin warmups, completadas)', 'Sin sesiones en los últimos 14 días.', ''];
+
+  const index = createVariantIndex(sessions.flatMap(({ s }) => (Array.isArray(s.exercises) ? s.exercises : []).filter(e => e?.name)));
+  const blocks = { split: new Map(), accesorios: new Map(), otras: new Map() };
+  for (const { s, window } of sessions) {
+    const rows = blocks[seriesBlockOf(s.name)];
+    for (const ex of (Array.isArray(s.exercises) ? s.exercises : [])) {
+      if (!ex?.name) continue;
+      const n = (Array.isArray(ex.sets) ? ex.sets : []).filter(st => st && st.type !== 'warmup' && st.completed !== false && seriesHasData(st)).length;
+      if (n === 0) continue;
+      const { key, equipment } = index.keyOf(ex);
+      const row = rows.get(key) || { w7: 0, w14: 0, name: ex.name, equipment, t: 0 };
+      row[window] += n;
+      const t = Date.parse(s.completedAt || s.createdAt || '') || 0;
+      if (t >= row.t) { row.t = t; row.name = ex.name; row.equipment = equipment; }
+      rows.set(key, row);
+    }
+  }
+
+  const out = [];
+  for (const [id, title] of SERIES_BLOCKS) {
+    // Most series first (both columns together), then the recent one, then by name: the big movements on top.
+    const list = [...blocks[id].values()].sort((a, b) => (b.w7 + b.w14) - (a.w7 + a.w14) || b.w7 - a.w7 || a.name.localeCompare(b.name, 'es'));
+    if (list.length === 0) continue;
+    out.push(`${title}:`);
+    for (const r of list) out.push(`  - ${index.labelFor(canonicalExerciseName(r.name), r.equipment)}: 7 días ${r.w7} · 8–14 días ${r.w14}`);
+  }
+  if (out.length === 0) return ['## Series por ejercicio (sin warmups, completadas)', 'Sin series completadas en los últimos 14 días.', ''];
+  return ['## Series por ejercicio (sin warmups, completadas)', ...out, ''];
 };
 
 // Most recent session attributed to this block, regardless of whether it carries
@@ -113,7 +175,7 @@ export const generateCoachContext = async () => {
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
           bestAxisValue(s) > bestAxisValue(best) ? s : best, completed[0]);
-        entries.push(`  - ${ex.name}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
+        entries.push(`  - ${canonicalExerciseName(ex.name)}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
       }
       const skipped = exes.length - entries.length;
       lines.push(`Ejercicios: ${entries.length}${skipped > 0 ? ` (${skipped} sin datos, omitido${skipped > 1 ? 's' : ''})` : ''}`);
@@ -178,7 +240,7 @@ export const generateCoachContext = async () => {
         const { name, equipment } = latestNameAt[key];
         topByEx[key].name = name;
         topByEx[key].equipment = equipment;
-        topByEx[key].label = vIndex.labelFor(name, equipment);
+        topByEx[key].label = vIndex.labelFor(canonicalExerciseName(name), equipment);
       }
 
       const rankedEntries = (byEx) => Object.entries(byEx)
@@ -279,6 +341,12 @@ export const generateCoachContext = async () => {
       }
     }
   } catch { lines.push('(Error leyendo bloques)\n'); }
+
+  // ── Series por ejercicio (7 y 8–14 días) ───────────────────────────────────
+  try {
+    const seriesLines = buildSeriesPorEjercicio(await db.history.toArray(), Date.now());
+    lines.push(...seriesLines);
+  } catch { lines.push('(Error leyendo series por ejercicio)\n'); }
 
   // ── Frecuencia ─────────────────────────────────────────────────────────────
   try {
