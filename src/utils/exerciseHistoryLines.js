@@ -4,6 +4,7 @@ import { computeExercise1RM } from './strengthMath';
 import { makeVariantMatcher, createVariantIndex, variantLabel, resolveHistoryEquipment, isTimeMeasured, EQUIPMENT_LABEL_ES } from './exerciseVariant';
 import { getExerciseMeta } from '../constants/exerciseMetadata';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
+import { canonicalExerciseName } from '../constants/exerciseFamilies';
 
 // ONE formatter for "what did I do on this exercise, session by session". Used by the
 // Coach context ("Últimos registros por ejercicio") and by "Enviar al Coach" in the
@@ -93,7 +94,7 @@ export const collectAppearances = (history, { sinceMs = 0, include = () => true 
   for (const { session, iso, time, ex, sets } of items) {
     const { key, equipment } = index.keyOf(ex);
     if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment, rawEquipment: resolveHistoryEquipment(ex), label: index.labelFor(ex.name, equipment), sets });
+    byKey.get(key).push({ time, iso, sessionName: session.name || '', sessionType: extractPrefix(session.name), name: ex.name, equipment, rawEquipment: resolveHistoryEquipment(ex), label: index.labelFor(canonicalExerciseName(ex.name), equipment), sets });
   }
   for (const apps of byKey.values()) apps.sort((a, b) => b.time - a.time);
   return byKey;

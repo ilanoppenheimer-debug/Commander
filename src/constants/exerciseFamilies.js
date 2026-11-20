@@ -162,6 +162,10 @@ export const isHiddenFromSelector = (name) => {
   return (e ? !e.inSelector : false) || removed.has(norm(name));
 };
 // Implements a variant offers, as EQUIPMENT_TYPES ids ([] when none declared).
+// DISPLAY only: the table's spelling of an exercise when the name is the same variant (normalized), else the
+// name as it is. Never used to store or to group anything.
+export const canonicalExerciseName = (name) => getFamilyEntry(name)?.name ?? name;
+
 // Unilateral spec of a table variant: true (always), [implements] (only with those) or false (bilateral).
 export const tableUnilateralOf = (name) => {
   const u = getFamilyEntry(name)?.unilateral;

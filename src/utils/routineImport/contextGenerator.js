@@ -2,7 +2,7 @@ import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 import { getCompanion } from '../../constants/exerciseMetadata';
-import { getFamilyEntry } from '../../constants/exerciseFamilies';
+import { canonicalExerciseName } from '../../constants/exerciseFamilies';
 import { localDateStr } from '../localDate';
 import { resolveExerciseTag } from '../blockReport';
 import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
@@ -104,7 +104,7 @@ export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
     const list = [...blocks[id].values()].sort((a, b) => (b.w7 + b.w14) - (a.w7 + a.w14) || b.w7 - a.w7 || a.name.localeCompare(b.name, 'es'));
     if (list.length === 0) continue;
     out.push(`${title}:`);
-    for (const r of list) out.push(`  - ${index.labelFor(getFamilyEntry(r.name)?.name ?? r.name, r.equipment)}: 7 días ${r.w7} · 8–14 días ${r.w14}`);
+    for (const r of list) out.push(`  - ${index.labelFor(canonicalExerciseName(r.name), r.equipment)}: 7 días ${r.w7} · 8–14 días ${r.w14}`);
   }
   if (out.length === 0) return ['## Series por ejercicio (sin warmups, completadas)', 'Sin series completadas en los últimos 14 días.', ''];
   return ['## Series por ejercicio (sin warmups, completadas)', ...out, ''];
@@ -175,7 +175,7 @@ export const generateCoachContext = async () => {
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
           bestAxisValue(s) > bestAxisValue(best) ? s : best, completed[0]);
-        entries.push(`  - ${ex.name}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
+        entries.push(`  - ${canonicalExerciseName(ex.name)}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
       }
       const skipped = exes.length - entries.length;
       lines.push(`Ejercicios: ${entries.length}${skipped > 0 ? ` (${skipped} sin datos, omitido${skipped > 1 ? 's' : ''})` : ''}`);
@@ -240,7 +240,7 @@ export const generateCoachContext = async () => {
         const { name, equipment } = latestNameAt[key];
         topByEx[key].name = name;
         topByEx[key].equipment = equipment;
-        topByEx[key].label = vIndex.labelFor(name, equipment);
+        topByEx[key].label = vIndex.labelFor(canonicalExerciseName(name), equipment);
       }
 
       const rankedEntries = (byEx) => Object.entries(byEx)
