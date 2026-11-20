@@ -2,6 +2,7 @@ import { db } from '../../db/database';
 import { getActiveBlocks, getSessionCountsByBlock } from '../../db/blocks';
 import { formatSetSummary } from '../formatters';
 import { getCompanion } from '../../constants/exerciseMetadata';
+import { getFamilyEntry } from '../../constants/exerciseFamilies';
 import { localDateStr } from '../localDate';
 import { resolveExerciseTag } from '../blockReport';
 import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
@@ -51,11 +52,14 @@ const sessionTypeKey = (name) => {
 // ── Series por ejercicio ─────────────────────────────────────────────────────
 // Raw count of sets per exercise in the last 7 days and the 7 before (8–14), counted backwards from `nowMs`,
 // split by the kind of session: "Split" (LEGS / TORSO / DL), "ACCESORIOS" and "Otras" (any other session
-// name). A set counts when it is not a warmup and not explicitly incomplete — the same "incompleto" as the
-// 1RM (`completed === false`, strengthMath.js isPredictiveSet) and exerciseHistoryLines.js isWorkSet. Nothing
-// is excluded by exercise (cardio, skills and timed holds count; a unilateral hold is one row per side).
+// name). A set counts when it is not a warmup, not explicitly incomplete — the same "incompleto" as the 1RM
+// (`completed === false`, strengthMath.js isPredictiveSet) and exerciseHistoryLines.js isWorkSet — and carries
+// data (reps, weight or seconds > 0: `completed` alone is not enough; the block report's hasData plus seconds).
+// Nothing is excluded by exercise (cardio, skills and timed holds count; a unilateral hold is one row per side).
+// The name printed is the table's when the history spelling is the same exercise (normalized).
 // Names carry the implement only when the exercise had more than one in the window (createVariantIndex.labelFor,
 // same as the other sections). The app does not group by muscle: the Coach does, with his Plantilla.
+const seriesHasData = (st) => parseFloat(st?.reps) > 0 || parseFloat(st?.weight) > 0 || parseFloat(st?.seconds) > 0;
 const SERIES_SPLIT_KEYS = new Set(['leg', 'torso', 'dl']);
 const SERIES_BLOCKS = [['split', 'Split (LEGS / TORSO / DL)'], ['accesorios', 'ACCESORIOS'], ['otras', 'Otras']];
 const seriesBlockOf = (sessionName) => {
@@ -75,7 +79,7 @@ export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
     if (age < 0 || age >= 14 * DAY) continue;
     sessions.push({ s, window: age < 7 * DAY ? 'w7' : 'w14' });
   }
-  if (sessions.length === 0) return [];
+  if (sessions.length === 0) return ['## Series por ejercicio (sin warmups, completadas)', 'Sin sesiones en los últimos 14 días.', ''];
 
   const index = createVariantIndex(sessions.flatMap(({ s }) => (Array.isArray(s.exercises) ? s.exercises : []).filter(e => e?.name)));
   const blocks = { split: new Map(), accesorios: new Map(), otras: new Map() };
@@ -83,7 +87,7 @@ export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
     const rows = blocks[seriesBlockOf(s.name)];
     for (const ex of (Array.isArray(s.exercises) ? s.exercises : [])) {
       if (!ex?.name) continue;
-      const n = (Array.isArray(ex.sets) ? ex.sets : []).filter(st => st && st.type !== 'warmup' && st.completed !== false).length;
+      const n = (Array.isArray(ex.sets) ? ex.sets : []).filter(st => st && st.type !== 'warmup' && st.completed !== false && seriesHasData(st)).length;
       if (n === 0) continue;
       const { key, equipment } = index.keyOf(ex);
       const row = rows.get(key) || { w7: 0, w14: 0, name: ex.name, equipment, t: 0 };
@@ -100,9 +104,9 @@ export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
     const list = [...blocks[id].values()].sort((a, b) => (b.w7 + b.w14) - (a.w7 + a.w14) || b.w7 - a.w7 || a.name.localeCompare(b.name, 'es'));
     if (list.length === 0) continue;
     out.push(`${title}:`);
-    for (const r of list) out.push(`  - ${index.labelFor(r.name, r.equipment)}: 7 días ${r.w7} · 8–14 días ${r.w14}`);
+    for (const r of list) out.push(`  - ${index.labelFor(getFamilyEntry(r.name)?.name ?? r.name, r.equipment)}: 7 días ${r.w7} · 8–14 días ${r.w14}`);
   }
-  if (out.length === 0) return [];
+  if (out.length === 0) return ['## Series por ejercicio (sin warmups, completadas)', 'Sin series completadas en los últimos 14 días.', ''];
   return ['## Series por ejercicio (sin warmups, completadas)', ...out, ''];
 };
 
@@ -341,7 +345,7 @@ export const generateCoachContext = async () => {
   // ── Series por ejercicio (7 y 8–14 días) ───────────────────────────────────
   try {
     const seriesLines = buildSeriesPorEjercicio(await db.history.toArray(), Date.now());
-    if (seriesLines.length > 0) lines.push(...seriesLines);
+    lines.push(...seriesLines);
   } catch { lines.push('(Error leyendo series por ejercicio)\n'); }
 
   // ── Frecuencia ─────────────────────────────────────────────────────────────
