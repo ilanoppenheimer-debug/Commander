@@ -401,12 +401,17 @@ const parseExerciseBlock = ({ name, content }, idx, warnings) => {
     const isTimed = sets.some(s => s._rawReps) || getMeasurement(name) === 'time';
     if (!isTimed) {
       let converted = 0;
+      let other = 0; // sets of another type (warmup, top, back, drop...) that cannot be AMRAP
       for (const s of maxSets) {
         if (s.type === 'normal') { s.type = 'amrap'; converted++; }
+        else if (s.type !== 'amrap') other++; // an AMRAP set with "máx" is exactly the expected case: no warning
       }
-      warnings.push(converted > 0
-        ? `"máx" en "${name}" se importó como AMRAP (${converted} set${converted > 1 ? 's' : ''}). Si es un ejercicio de tiempo, marcá su medición como "Tiempo" y volvé a importar`
-        : `Reps no parseables: "máx" en "${name}" (set que no es normal) — queda sin reps`);
+      if (converted > 0) {
+        warnings.push(`"máx" en "${name}" se importó como AMRAP (${converted} set${converted > 1 ? 's' : ''}). Si es un ejercicio de tiempo, marcá su medición como "Tiempo" y volvé a importar`);
+      }
+      if (other > 0) {
+        warnings.push(`Reps no parseables: "máx" en "${name}" (set que no es normal) — queda sin reps`);
+      }
     }
   }
 
