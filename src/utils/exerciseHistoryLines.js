@@ -180,7 +180,7 @@ export const buildExerciseShareText = (exName, history, { count = 6, equipment: 
     }
   }
 
-  out.push(`Últimas ${apps.length} apariciones:`);
+  out.push(apps.length === 1 ? 'Última aparición:' : `Últimas ${apps.length} apariciones:`);
   for (const a of apps) {
     const eq = mixed ? (EQUIPMENT_LABEL_ES[a.rawEquipment] || a.rawEquipment || 'sin equipo') : null;
     out.push(`- ${formatAppearance(a, companion, eq)}`);

@@ -110,6 +110,29 @@ export const buildSeriesPorEjercicio = (allHistory, nowMs = Date.now()) => {
   return ['## Series por ejercicio (sin warmups, completadas)', ...out, ''];
 };
 
+// READ ONLY. Sessions since the block started that are not part of it: not stamped with its id and with no
+// exercise whose tag is in the block's `aplica_a` (so the attribution rule — and the data — are left alone).
+// Same shape as getSessionTypeBreakdown. Used to tell the Coach that e.g. ACCESORIOS happened outside the block.
+export const getSessionsOutsideBlock = (block, allHistory) => {
+  const startMs = Date.parse(block?.startedAt || '');
+  if (!Number.isFinite(startMs)) return [];
+  const tags = new Set(Array.isArray(block.appliesTo) ? block.appliesTo : []);
+  const byType = new Map();
+  for (const s of (Array.isArray(allHistory) ? allHistory : [])) {
+    const date = s.completedAt || s.createdAt || null;
+    const t = Date.parse(date || '');
+    if (!Number.isFinite(t) || t < startMs) continue;
+    if (Array.isArray(s.blockIds) && s.blockIds.includes(block.id)) continue;
+    if ((Array.isArray(s.exercises) ? s.exercises : []).some(e => e?.name && tags.has(resolveExerciseTag(e)))) continue;
+    const key = sessionTypeKey(s.name);
+    const entry = byType.get(key) || { count: 0, lastDate: null, label: classifySessionType(s.name) };
+    entry.count++;
+    if (!entry.lastDate || date > entry.lastDate) { entry.lastDate = date; entry.label = classifySessionType(s.name); }
+    byType.set(key, entry);
+  }
+  return [...byType.values()].sort((a, b) => b.count - a.count);
+};
+
 // Most recent session attributed to this block, regardless of whether it carries
 // sessionNum — old sessions predate that field, and reaching further back for a stale
 // one that happens to have it would misreport which cycle the Coach is actually in.
@@ -331,11 +354,20 @@ export const generateCoachContext = async () => {
       // active block. Never suggests what's next — that's the Coach's call.
       for (const b of activeBlocks) {
         const sortedTypes = getSessionTypeBreakdown(b.id, allHistoryForBlocks);
-        if (sortedTypes.length === 0) continue;
+        const outside = getSessionsOutsideBlock(b, allHistoryForBlocks);
+        if (sortedTypes.length === 0 && outside.length === 0) continue;
 
-        lines.push(activeBlocks.length > 1 ? `## Sesiones por tipo — ${b.name}` : '## Sesiones del bloque por tipo');
-        for (const { label, count, lastDate } of sortedTypes) {
-          lines.push(`  - ${label}: ${count} (última: ${formatShortDate(lastDate)})`);
+        if (sortedTypes.length > 0) {
+          lines.push(activeBlocks.length > 1 ? `## Sesiones por tipo — ${b.name}` : '## Sesiones del bloque por tipo');
+          for (const { label, count, lastDate } of sortedTypes) {
+            lines.push(`  - ${label}: ${count} (última: ${formatShortDate(lastDate)})`);
+          }
+        }
+        if (outside.length > 0) {
+          lines.push(`Fuera del bloque (sin ejercicios de aplica_a), desde el inicio del bloque${activeBlocks.length > 1 ? ` — ${b.name}` : ''}:`);
+          for (const { label, count, lastDate } of outside) {
+            lines.push(`  - ${label}: ${count} (última: ${formatShortDate(lastDate)})`);
+          }
         }
         lines.push('');
       }
