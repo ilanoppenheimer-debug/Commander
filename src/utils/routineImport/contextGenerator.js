@@ -354,10 +354,11 @@ export const generateCoachContext = async () => {
     const now = Date.now();
     const last7  = allHistory.filter(s => now - new Date(s.completedAt || 0).getTime() < 7  * 86400000).length;
     const last14 = allHistory.filter(s => now - new Date(s.completedAt || 0).getTime() < 14 * 86400000).length;
+    const sesiones = (n) => `${n} ${n === 1 ? 'sesión' : 'sesiones'}`;
     lines.push('## Frecuencia de entrenamiento');
-    lines.push(`  - Últimos 7 días: ${last7} sesiones`);
-    lines.push(`  - Últimas 2 semanas: ${last14} sesiones`);
-    lines.push(`  - Total registrado: ${allHistory.length} sesiones`);
+    lines.push(`  - Últimos 7 días: ${sesiones(last7)}`);
+    lines.push(`  - Últimas 2 semanas: ${sesiones(last14)}`);
+    lines.push(`  - Total registrado: ${sesiones(allHistory.length)}`);
     lines.push('');
   } catch { /* ignore */ }
 
