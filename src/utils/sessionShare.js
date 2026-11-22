@@ -1,4 +1,5 @@
 import { buildFilename } from './downloadNaming';
+import { makeSessionLabeler } from './exerciseVariant';
 
 export const formatSessionAsText = (session, barUnit = 'kg') => {
   if (!session) return '';
@@ -6,12 +7,13 @@ export const formatSessionAsText = (session, barUnit = 'kg') => {
   const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('es-CL') : '';
   const lines = [`🏋️ ${session.name || 'Entrenamiento'} · ${date}`, ''];
   let totalSets = 0, totalVolume = 0;
+  const labelOf = makeSessionLabeler(safeExercises); // "Nombre · polea" when the name repeats with another implement
 
   safeExercises.forEach(ex => {
     if (!ex) return;
     const safeSets = Array.isArray(ex.sets) ? ex.sets : [];
     if (safeSets.length === 0) return;
-    lines.push(`${ex.name}`);
+    lines.push(`${labelOf(ex)}`);
     safeSets.forEach((s, i) => {
       const w = parseFloat(s?.weight) || 0;
       const r = parseFloat(s?.reps) || 0;

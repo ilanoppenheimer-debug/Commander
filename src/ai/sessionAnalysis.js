@@ -1,6 +1,6 @@
 import { calculate1RM } from "../utils/strengthMath";
 import { sameExercise } from "../utils/exerciseName";
-import { makeVariantMatcher } from "../utils/exerciseVariant";
+import { makeVariantMatcher, makeSessionLabeler } from "../utils/exerciseVariant";
 import { getExerciseMeta } from "../constants/exerciseMetadata";
 import { isComparable1RMEquipment } from "../constants/gymConstants";
 
@@ -59,6 +59,7 @@ const bestSetStats = (sets) => {
 export const findPRs = (currentExercises, history) => {
   const prs = [];
   const safeHistory = Array.isArray(history) ? history : [];
+  const labelOf = makeSessionLabeler(currentExercises); // display: "Nombre · polea" when the name repeats with another implement
 
   (currentExercises || []).forEach((ex) => {
     if (!ex?.name) return;
@@ -109,7 +110,7 @@ export const findPRs = (currentExercises, history) => {
       });
     }
     if (exercisePRs.length > 0) {
-      prs.push({ exercise: ex.name, records: exercisePRs });
+      prs.push({ exercise: labelOf(ex), records: exercisePRs });
     }
   });
 
@@ -124,6 +125,7 @@ export const compareWithLastSession = (
   if (!currentSessionName || !Array.isArray(history)) return null;
   const matches = history.filter((h) => h?.name === currentSessionName);
   if (matches.length === 0) return null;
+  const labelOf = makeSessionLabeler(currentExercises); // display only
 
   const last = matches.reduce((latest, s) => {
     const t = new Date(s?.completedAt || 0).getTime();
@@ -143,7 +145,7 @@ export const compareWithLastSession = (
     const pastStats = bestSetStats(pastEx.sets);
     if (currentStats.bestWeight === 0 && pastStats.bestWeight === 0) return;
     exerciseComparisons.push({
-      name: ex.name,
+      name: labelOf(ex),
       currentTop: currentStats.bestWeight,
       pastTop: pastStats.bestWeight,
       currentReps: currentStats.bestReps,
