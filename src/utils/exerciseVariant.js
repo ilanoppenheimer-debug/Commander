@@ -103,6 +103,26 @@ export const createVariantIndex = (exercises) => {
   return { keyOf, isMulti, labelFor };
 };
 
+// Label of each exercise of ONE session (a report of a single session): a name done with more than one
+// implement in that session always carries it ("Elevaciones Laterales · polea" / "· mancuerna"); anything else
+// keeps its name. Time-measured exercises never split. `nameOf` lets a caller print another spelling of the
+// name (display only). Returns (ex) => label.
+export const makeSessionLabeler = (exercises, nameOf = (n) => n) => {
+  const implementsByName = new Map();
+  for (const e of Array.isArray(exercises) ? exercises : []) {
+    if (!e?.name || isTimeMeasured(e.name)) continue;
+    const eq = resolveHistoryEquipment(e);
+    if (!eq) continue;
+    const k = normalizeExerciseName(e.name);
+    implementsByName.set(k, (implementsByName.get(k) || new Set()).add(eq));
+  }
+  return (e) => {
+    const eq = resolveHistoryEquipment(e);
+    const name = nameOf(e.name);
+    return eq && (implementsByName.get(normalizeExerciseName(e.name))?.size || 0) > 1 ? variantLabel(name, eq) : name;
+  };
+};
+
 // ── Implement offered / default when ADDING an exercise ──────────────────────────────
 // Implements most recently used on this variant in the history (newest first, unique).
 const usedImplements = (name, history) => {
