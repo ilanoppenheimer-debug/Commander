@@ -4,8 +4,7 @@ import { formatPlannedSet, planDeviates } from './plannedSets';
 import { getExerciseMeta, getCompanion, getMeasurement } from '../constants/exerciseMetadata';
 import { localDateStr } from './localDate';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
-import { isTimeMeasured, resolveHistoryEquipment, variantLabel } from './exerciseVariant';
-import { normalizeExerciseName } from './exerciseName';
+import { makeSessionLabeler } from './exerciseVariant';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -133,20 +132,8 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     }
   }
 
-  // A name done with more than one implement in THIS session always carries it ("Elevaciones Laterales · polea"
-  // / "· mancuerna"), whatever the period rule says elsewhere (Contrato §5). Time-measured exercises never split.
-  const implementsByName = new Map();
-  for (const e of exercises) {
-    if (!e?.name || isTimeMeasured(e.name)) continue;
-    const eq = resolveHistoryEquipment(e);
-    if (!eq) continue;
-    const k = normalizeExerciseName(e.name);
-    implementsByName.set(k, (implementsByName.get(k) || new Set()).add(eq));
-  }
-  const reportName = (e) => {
-    const eq = resolveHistoryEquipment(e);
-    return eq && (implementsByName.get(normalizeExerciseName(e.name))?.size || 0) > 1 ? variantLabel(e.name, eq) : e.name;
-  };
+  // A name done with more than one implement in THIS session always carries it (Contrato §5).
+  const reportName = makeSessionLabeler(exercises);
 
   const supersetTimeDone = new Set(); // supersets whose single "Tiempo" line is already out
 

@@ -4,7 +4,7 @@
 // deleted, in case AI returns with a different role (pattern detection, not
 // proposing workouts).
 import { callGeminiAPI } from "../services/aiService";
-import { makeVariantMatcher } from "../utils/exerciseVariant";
+import { makeVariantMatcher, makeSessionLabeler } from "../utils/exerciseVariant";
 import { localDateStr } from "../utils/localDate";
 
 const MAX_HISTORY_PER_EXERCISE = 5;
@@ -46,6 +46,7 @@ const summarizeExerciseHistory = (exerciseName, history, equipment = null) => {
 };
 
 const buildSystemContext = ({ mode, exercises, history, athleteProfile }) => {
+  const labelOf = makeSessionLabeler(exercises); // display: "Nombre · polea" when the name repeats with another implement
   const exerciseSummaries = (exercises || [])
     .filter((e) => e?.name)
     .map((e) => {
@@ -59,7 +60,7 @@ const buildSystemContext = ({ mode, exercises, history, athleteProfile }) => {
               )
               .join("; ")
           : "sin historial";
-      return `- ${e.name}: ${pastText}`;
+      return `- ${labelOf(e)}: ${pastText}`;
     })
     .join("\n");
 

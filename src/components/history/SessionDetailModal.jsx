@@ -9,6 +9,7 @@ import { UpdateRoutineModal } from '../routineUpdate/UpdateRoutineModal';
 import { db } from '../../db/database';
 import { getMeasurement, getCompanion } from '../../constants/exerciseMetadata';
 import { formatSetSummary } from '../../utils/formatters';
+import { EQUIPMENT_LABEL_ES } from '../../utils/exerciseVariant';
 
 function formatSet(s, barUnit = 'kg') {
   const type = s.type && s.type !== 'normal' ? s.type.toUpperCase() : '';
@@ -142,7 +143,7 @@ export default function SessionDetailModal({ session, barUnit = 'kg', onClose, o
                       <span className="font-bold text-white text-sm">{ex?.name || 'Ejercicio'}</span>
                       {ex?.equipment && (
                         <span className="ml-2 text-[9px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                          {ex.equipment}
+                          {EQUIPMENT_LABEL_ES[ex.equipment] || ex.equipment}
                         </span>
                       )}
                     </div>

@@ -7,7 +7,7 @@ import { localDateStr } from '../localDate';
 import { resolveExerciseTag } from '../blockReport';
 import { collectAppearances, formatLatestEntry, formatShortDate, extractPrefix, formatPlainSet } from '../exerciseHistoryLines';
 import { computeExercise1RM } from '../strengthMath';
-import { createVariantIndex } from '../exerciseVariant';
+import { createVariantIndex, makeSessionLabeler } from '../exerciseVariant';
 import { confianza1RM } from '../sessionExport';
 
 // The "how big was this set" axis for topSet selection below — weight for loaded/
@@ -192,13 +192,14 @@ export const generateCoachContext = async () => {
       // Every exercise is listed; one with no completed set carrying data (nothing to
       // summarize) is skipped, and the header says so instead of counting it as listed.
       const entries = [];
+      const labelOf = makeSessionLabeler(exes, canonicalExerciseName); // implement suffix when a name repeats with another implement
       for (const ex of exes) {
         if (!ex?.name || !Array.isArray(ex.sets)) continue;
         const completed = ex.sets.filter(s => s?.completed && bestAxisValue(s) > 0);
         if (completed.length === 0) continue;
         const topSet = completed.reduce((best, s) =>
           bestAxisValue(s) > bestAxisValue(best) ? s : best, completed[0]);
-        entries.push(`  - ${canonicalExerciseName(ex.name)}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
+        entries.push(`  - ${labelOf(ex)}: ${formatSetSummary(topSet, 'kg', getCompanion(ex.name))}`);
       }
       const skipped = exes.length - entries.length;
       lines.push(`Ejercicios: ${entries.length}${skipped > 0 ? ` (${skipped} sin datos, omitido${skipped > 1 ? 's' : ''})` : ''}`);
