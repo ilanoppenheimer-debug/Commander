@@ -11,7 +11,7 @@ const POOL = [...new Set([...(Array.isArray(DEFAULT_EXERCISE_DB) ? DEFAULT_EXERC
 const score = (name, opts) => scoreCandidates(name, POOL, opts);
 const offered = (m) => [m.exerciseName, ...(m.alternatives || []), ...(m.candidates || [])].filter(Boolean);
 
-// Contrato v1.8.3 §3 (Nombre del ejercicio) y Catálogo 8.1 / 8.4.
+// Contrato v1.8.4 §3 (Nombre del ejercicio) y Catálogo 8.1 / 8.4.
 describe('exacto: misma identidad (sin mayúsculas, tildes ni espacios repetidos)', () => {
   it('el nombre del Catálogo tal cual', () => {
     expect(score('Press Banca')).toEqual({ type: 'exact', exerciseName: 'Press Banca' });
@@ -103,10 +103,56 @@ describe('prefijo de rol y sufijo de protocolo: se quitan y van a la nota (8.4, 
 });
 
 describe('nombre de familia: ofrece SOLO las variantes de esa familia (Contrato §3)', () => {
-  it('sin historial ofrece las variantes de la familia (el Contrato no fija cuál queda preseleccionada)', () => {
+  // Contrato v1.8.4 §3: sin historial, preselecciona la variante de la equivalencia vieja, salvo que sea
+  // solo-historial; si no hay, ninguna.
+  it('sin historial: preselecciona la variante de la regla vieja ("Curl Femoral" → Curl Femoral Sentado, machine)', () => {
     const m = score('Curl Femoral');
-    expect(m.family).toBe('Curl Femoral');
-    expect(offered(m).sort()).toEqual(['Curl Femoral Acostado', 'Curl Femoral Sentado', 'Nordic Curl']);
+    expect(m).toMatchObject({ type: 'probable', exerciseName: 'Curl Femoral Sentado', family: 'Curl Femoral', viaRule: true });
+    expect(m.suggestedEquipment).toBe('machine');
+    expect(m.suggestedFrom).toBe('regla');
+    expect(m.alternatives.sort()).toEqual(['Curl Femoral Acostado', 'Nordic Curl']);
+  });
+
+  it('sin historial: "Front Lever" preselecciona la variante de la regla (Front Lever Advanced Tuck)', () => {
+    const m = score('Front Lever');
+    expect(m).toMatchObject({ type: 'probable', exerciseName: 'Front Lever Advanced Tuck', family: 'Front Lever', viaRule: true });
+    expect(m.alternatives.sort()).toEqual(['Front Lever Full', 'Front Lever One Leg', 'Front Lever Tuck', 'Front Lever con Ayuda']);
+  });
+
+  it('Catálogo 8.4: "Front Lever" sin historial sugiere el equipo bodyweight (regla)', () => {
+    const m = score('Front Lever');
+    expect(m).toMatchObject({ exerciseName: 'Front Lever Advanced Tuck', suggestedEquipment: 'bodyweight', suggestedFrom: 'regla' });
+  });
+
+  it('con historial: "Front Lever" preselecciona la variante usada más recientemente, con su implemento (8.4)', () => {
+    const history = [
+      session('2026-01-05T12:00:00Z', [ex('Front Lever Advanced Tuck', 'bodyweight')]),
+      session('2026-01-12T12:00:00Z', [ex('Front Lever Tuck', 'bodyweight')]),
+    ];
+    const m = score('Front Lever', { history });
+    expect(m).toMatchObject({ type: 'probable', exerciseName: 'Front Lever Tuck', viaHistory: true, family: 'Front Lever' });
+    expect(m.suggestedEquipment).toBe('bodyweight');
+    expect(m.suggestedFrom).toBe('historial');
+  });
+
+  it('sin historial: si la regla apunta a una variante solo-historial ("Cardio" → Cardio (sin especificar)), no se preselecciona ninguna', () => {
+    const m = score('Cardio');
+    expect(m.type).toBe('fuzzy');
+    expect(m.exerciseName).toBeUndefined();
+    expect(m.family).toBe('Cardio');
+    expect(m.candidates).not.toContain('Cardio (sin especificar)');
+  });
+
+  it('sin historial y sin regla ("Remo"): ninguna preseleccionada, solo las variantes de la familia', () => {
+    const m = score('Remo');
+    expect(m.type).toBe('fuzzy');
+    expect(m.exerciseName).toBeUndefined();
+    expect(m.candidates.sort()).toEqual(['Remo Landmine', 'Remo Mancuerna', 'Remo con Barra', 'Remo en Polea', 'Remo en T con apoyo']);
+  });
+
+  it('el historial manda sobre la regla: con "Nordic Curl" usado, "Curl Femoral" lo preselecciona', () => {
+    const history = [session('2026-01-12T12:00:00Z', [ex('Nordic Curl', 'bodyweight')])];
+    expect(score('Curl Femoral', { history })).toMatchObject({ exerciseName: 'Nordic Curl', viaHistory: true });
   });
 
   it('con historial preselecciona la variante usada más recientemente, con su implemento', () => {

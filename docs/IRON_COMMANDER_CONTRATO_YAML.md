@@ -1,5 +1,5 @@
 # Iron Commander — Contrato YAML app ↔ Coach
-**v1.8 · 17 noviembre 2026** *(v1.3: 4 oct, una fase = un bloque. v1.4: 5 oct, header y notas de `backoff_pct` / `aplica_a`. v1.5: `backoff_pct` por ejercicio; back-off que sigue al top; identidad de nombres sin mayúsculas ni tildes; "Tiempo" es por ejercicio; 1RM por ventana móvil. v1.6: secciones del CONTEXTO PARA COACH y "Enviar al Coach". v1.7: formato único; dónde se ve cada texto del Coach; rangos de RPE y plan por set; Top sets con último top y 1RM; sufijo "plan". v1.7.1: ejercicios por tiempo. v1.7.2: tipo de set y variantes de `máx s`; unilaterales por tiempo.)*
+**v1.8.4 · 23 noviembre 2026** *(v1.3: 4 oct, una fase = un bloque. v1.4: 5 oct, header y notas de `backoff_pct` / `aplica_a`. v1.5: `backoff_pct` por ejercicio; back-off que sigue al top; identidad de nombres sin mayúsculas ni tildes; "Tiempo" es por ejercicio; 1RM por ventana móvil. v1.6: secciones del CONTEXTO PARA COACH y "Enviar al Coach". v1.7: formato único; dónde se ve cada texto del Coach; rangos de RPE y plan por set; Top sets con último top y 1RM; sufijo "plan". v1.7.1: ejercicios por tiempo. v1.7.2: tipo de set y variantes de `máx s`; unilaterales por tiempo.)*
 
 > **Qué cambió en v1.8 (taxonomía de ejercicios):**
 > - El nombre es la **variante sin implemento**; el implemento va en `equipo` y **separa los números** (§3, Catálogo 8.1). Nombres nuevos: Catálogo 8.4.
@@ -8,6 +8,14 @@
 > - **Unilateral** = un lado a la vez; **peso por mancuerna o por lado, nunca sumado** (§3).
 > - 1RM y top sets por nombre **+ implemento**; formato "Curl de Bíceps · barra" (§5).
 > - Línea `Tiempo superset` y ejemplo de sufijo en tiempos (§5). **Exportar ejercicios** como lista viva (§5).
+>
+> **v1.8.1 (17-nov, misma fecha):** el wizard reconoce nombres viejos (probable) y nombres de familia (variantes, con la más reciente preseleccionada); `equipo` sin distinguir mayúsculas; sugerencia de equipo por historial; `PC` / `PC+10` en Peso; prefijos de rol y sufijos de protocolo (`Prevención —`, `— Test Máximo`) van a la nota.
+>
+> **v1.8.2 (20-nov):** sección «Series por ejercicio» en el CONTEXTO PARA COACH (§5); todo el CONTEXTO muestra el nombre canónico del Catálogo.
+>
+> **v1.8.3 (22-nov):** un nombre con dos implementos **en la misma sesión** lleva siempre sufijo (reporte de sesión, «Última sesión», compartir sesión); línea «Fuera del bloque» en el CONTEXTO (§5).
+>
+> **v1.8.4 (23-nov):** `descanso` faltante → 90 s **con aviso**; `backoff` es sinónimo de `back`; nombre de familia sin historial → variante de la regla vieja (§3). Verificado con los tests automatizados.
 
 > Documento de referencia única para el formato de rutinas que el Coach entrega y la app importa.
 > Vive en dos lugares: el repo de la app (`docs/`) y el conocimiento del Project del Coach.
@@ -148,7 +156,8 @@ Sale del **Catálogo** (sección 8), siempre. Tres niveles: **familia** (agrupa 
 - **El nombre es la variante, sin implemento.** `Curl de Bíceps` + `equipo: barbell`, nunca "Curl de Bíceps con Barra". El mismo nombre con otro `equipo` es la misma variante con **números separados** (§5).
 - La app compara nombres **ignorando mayúsculas, tildes y espacios repetidos**. Cualquier otra diferencia es otro ejercicio.
 - **Nombres viejos** (v1.7 y antes): el wizard conoce las equivalencias (Catálogo 8.4) y los muestra como **probable**, con la variante nueva preseleccionada y el equipo sugerido ("Press Inclinado Mancuernas" → Press Inclinado + dumbbell). Igual hay que usar los nombres nuevos: la equivalencia es una red de seguridad.
-- **Nombre de familia** ("Curl Femoral", "Front Lever", "Cardio"): el wizard ofrece solo las variantes de esa familia, con la usada más recientemente preseleccionada. Mejor escribir la variante.
+- **Nombre de familia** ("Curl Femoral", "Front Lever", "Cardio"): el wizard ofrece solo las variantes de esa familia, con la usada más recientemente preseleccionada. Sin historial, preselecciona la variante de la equivalencia vieja (Catálogo 8.4), salvo que sea solo-historial; si no hay, ninguna. Mejor escribir la variante.
+- **Rol o protocolo en el nombre** (`Prevención — Manguito Rotador`, `Dominadas — Test Máximo`): el wizard lo quita, resuelve el resto y pasa ese texto a la nota. Mejor escribirlo directamente en `nota_ejercicio`.
 - **Nombre desconocido** (ej. un ejercicio nuevo): sale **sin resolver** con sugerencias; si el atleta no elige, nace un ejercicio nuevo con historial vacío.
 - Al importar, el wizard clasifica cada nombre: **Exacto** (se asigna solo), **Probable** (preseleccionado, el atleta confirma), **Sin resolver** (el atleta elige; si no, se guarda como ejercicio nuevo con historial desde cero). El matcher es una red de seguridad, no un reemplazo del Catálogo.
 
@@ -213,7 +222,7 @@ Opcional. Reemplaza al `backoff_pct` del bloque **solo para ese ejercicio en esa
 Texto libre para todo lo que **no** tiene campo propio: mantenimiento, sustituciones, técnica, protocolo, advertencias. Línea simple o bloque multilínea (`nota_ejercicio: |`).
 
 ### `descanso`
-Siempre presente (`180s`, `90s`, `2min`). **Si falta, la app asume 90 s sin avisar.** En un superset cuenta el del **último** ejercicio del grupo.
+Siempre presente (`180s`, `90s`, `2min`). **Si falta, la app asume 90 s y lo avisa en el wizard.** En un superset cuenta el del **último** ejercicio del grupo.
 
 ## 3b. Dónde ve el atleta cada texto del Coach
 
@@ -228,7 +237,7 @@ En la sesión activa todo aparece **plegado**: el atleta lo abre cuando lo neces
 | `# CALENTAMIENTO` | **No se muestra** |
 | Tabla de sets (plan) | Chip "Objetivo ▸" del ejercicio (resumen por tipo de set, sin warmups) |
 
-Regla práctica: las reglas de un ejercicio van en `## Decisión adaptativa` de ese ejercicio; las de la sesión (recortes por tiempo, ajustes por mal sueño) van en `contexto`.
+Regla práctica: las reglas de un ejercicio van en `## Decisión adaptativa` de ese ejercicio; las de la sesión (recortes por tiempo, prioridades si falta tiempo) van en `contexto`.
 
 ---
 
@@ -243,7 +252,7 @@ Regla práctica: las reglas de un ejercicio van en `## Decisión adaptativa` de 
 |---|---|---|---|
 | `warmup` | Viene del plan (la app no calcula) | **No** | **No** |
 | `top` | Referencia histórica | Sí | Sí |
-| `back` / `backoff` | Se **calcula** desde el top real del día × `backoff_pct`. Si hay varios `top`, usa el **último** | Sí | Sí |
+| `back` (o su sinónimo `backoff`) | Se **calcula** desde el top real del día × `backoff_pct`. Si hay varios `top`, usa el **último** | Sí | Sí |
 | `normal` | Copia el último set del mismo ejercicio en esta sesión | Sí | Sí |
 | `amrap` | Hereda el peso; **reps y RPE quedan vacíos a propósito** | Sí | Sí |
 | `drop` | Sin lógica propia | Sí | **No** |
@@ -299,7 +308,7 @@ El tiempo va en la columna **Reps**. Es el **objetivo** del set: cuenta regresiv
   Tiempo: 24 min
 ```
 
-- **Nombre con implemento:** cuando un nombre tiene más de un implemento en el período del reporte, se muestra como **"Curl de Bíceps · barra"**, y sus números (1RM, top sets, último registro) son de ese implemento. Con un solo implemento en el período, sale el nombre a secas.
+- **Nombre con implemento:** cuando un nombre tiene más de un implemento en el período del reporte, se muestra como **"Curl de Bíceps · barra"**, y sus números (1RM, top sets, último registro) son de ese implemento. Con un solo implemento en el período, sale el nombre a secas. **Si el mismo nombre aparece con dos implementos en una sesión** (ej. Elevaciones Laterales con polea en un superset y con mancuerna en otro), esa sesión siempre los separa: `Elevaciones Laterales · polea` / `· mancuerna`.
 - **`PC`** en la columna de peso = peso corporal sin carga externa.
 - **`Tiempo`** = minutos **de ese ejercicio**: desde que se cerró el anterior (o el inicio de la sesión) hasta que se cerró este. El primero incluye el calentamiento general.
 - **Supersets:** cada miembro lleva `[superset A]` en el encabezado y el grupo tiene **una sola línea de tiempo**, en el primer miembro: `Tiempo superset A (2 ejercicios): 7 min` (desde el cierre del ejercicio anterior hasta el último cierre del grupo). Las letras se regeneran por orden de aparición en la sesión, no son las del YAML. Si falta algún cierre, la línea se omite.
@@ -330,7 +339,7 @@ Press Banca [secondary] · n=2
 
 ### CONTEXTO PARA COACH
 
-Lo que el atleta pega al pedir una sesión. Secciones, en orden:
+Lo que el atleta pega al pedir una sesión. Todos los nombres salen con la grafía canónica del Catálogo, aunque el historial tenga otra. Secciones, en orden:
 
 | Sección | Qué trae |
 |---|---|
@@ -338,7 +347,8 @@ Lo que el atleta pega al pedir una sesión. Secciones, en orden:
 | **Top sets recientes (últimas 8 semanas)** | Solo main lifts. Por lift (e implemento, si en esas 8 semanas hubo más de uno, como "Press Banca · mancuerna"): **mejor** set y **último** top; debajo, el **1RM estimado** con N, confianza y "ventana 12 semanas". |
 | **Últimos registros por ejercicio (últimas 8 semanas, sin main lifts)** | Una línea por ejercicio (e implemento, si en esas 8 semanas hubo más de uno; los de tiempo nunca se separan) con su última aparición: sets de trabajo (máx. 4), fecha y tipo de sesión. Ejercicios de tiempo con su compañero. Si la última aparición de un ejercicio con lastre fue sin carga, se agrega la última con carga. |
 | **Bloques activos** | Bloque, tipo, params, sesiones, fase, tags de `aplica_a`. |
-| **Sesiones del bloque por tipo** | Conteo por tipo de sesión. |
+| **Sesiones del bloque por tipo** | Conteo por tipo de sesión. Debajo, **«Fuera del bloque»**: sesiones desde el inicio del bloque que no quedaron asociadas a él porque no tienen ningún ejercicio con tag de `aplica_a` (hoy, las ACCESORIOS), con conteo y última fecha. Solo lectura. |
+| **Series por ejercicio (sin warmups, completadas)** | Conteo crudo de series por ejercicio en dos ventanas hacia atrás desde que se genera el contexto: **7 días** y **8–14 días**. Separado en **Split** (LEGS / TORSO / DL), **ACCESORIOS** y **Otras**. Serie = no warmup, no marcada incompleta y con datos (reps, peso o segundos). Sin reglas de planificación: incluye skills y cardio; un hold unilateral por tiempo cuenta por fila (un set por lado = 2). El implemento aparece solo si hubo más de uno en la ventana. **La app no agrupa por músculo**: el agrupamiento lo hace el Coach con su Plantilla. Sin sesiones en 14 días, lo dice explícitamente. |
 | **Frecuencia** | Sesiones en 7 días, 14 días y total. |
 
 **Fuera de la ventana de 8 semanas:** el atleta lo manda a pedido con **"Enviar al Coach"** desde el historial del ejercicio (últimas 6 apariciones, equipo en cada línea, 1RM si es barra o mancuerna).
@@ -368,4 +378,4 @@ No puede detectar bugs de interfaz ni de persistencia. Pero las incoherencias en
 
 ---
 
-**Fin del contrato v1.8**
+**Fin del contrato v1.8.4**

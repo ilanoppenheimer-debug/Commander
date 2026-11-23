@@ -1,9 +1,11 @@
 # Iron Commander — Catálogo de ejercicios y lógica de nombres
-**v2.0 · 17 noviembre 2026 · Sección 8 del Contrato YAML app ↔ Coach (v1.8)**
+**v2.0.2 · 23 noviembre 2026 · Sección 8 del Contrato YAML app ↔ Coach (v1.8.4)**
 
 > Se agrega al documento "Iron Commander — Contrato YAML app ↔ Coach".
 > El Coach se mueve por este catálogo. Si necesita un movimiento que no está, lo declara explícitamente y lo manda con `familia:` (8.5).
 > **v2.0 (taxonomía):** el catálogo se reorganiza en **familia → variante → implemento**. Los nombres ya no llevan el implemento (va en `equipo`). La app separa los números por nombre **e** implemento. Muchos nombres cambiaron: ver la tabla de equivalencias (8.4). La lista viva está en la app (Ajustes → Datos → **Exportar ejercicios**); este documento fija las reglas.
+> **v2.0.2 (23-nov):** fila "Front Lever" en 8.4.
+> **v2.0.1 (17-nov):** el wizard reconduce nombres viejos y nombres de familia (8.1, 8.4); Pájaros, muñeca, rotaciones y encogimientos con su implemento real.
 
 ---
 
@@ -18,7 +20,7 @@ Tres niveles:
 | **Implemento** | El campo `equipo` | **Separa los números** dentro de la variante | `barbell` / `dumbbell` / `cable` |
 
 - **El nombre es la variante, sin implemento.** "Curl de Bíceps" con `equipo: dumbbell` y "Curl de Bíceps" con `equipo: barbell` son la misma variante con números separados (1RM, top sets, último registro). Nunca "Curl de Bíceps con Barra": eso es otro nombre y nace un ejercicio nuevo.
-- **Comparación de nombres:** sin mayúsculas, sin tildes y sin espacios repetidos. Cualquier otra diferencia ("con", plural, palabras de más) es otro ejercicio.
+- **Comparación de nombres:** sin mayúsculas, sin tildes y sin espacios repetidos. Cualquier otra diferencia ("con", plural, palabras de más) es otro ejercicio. El wizard intenta reconducirlo ("probable", equivalencias de 8.4, variantes de una familia), pero solo si el atleta confirma o deja la preselección: no hay garantía, así que el Coach usa siempre el nombre de 8.3.
 - **Excepciones al implemento:** en **peso corporal** y en **ejercicios por tiempo** el implemento no separa números. En peso corporal la carga es el lastre (columna Peso).
 - **Historial viejo sin implemento** cuenta para cualquier implemento de esa variante.
 - En los reportes, cuando una variante tiene más de un implemento, la app lo muestra como **"Curl de Bíceps · barra"**.
@@ -47,7 +49,7 @@ Para máquina y polea el peso no es comparable entre gimnasios. El 1RM de máqui
 
 ---
 
-## 8.3 Catálogo canónico (16-nov-2026)
+## 8.3 Catálogo canónico (lista al 16-nov-2026)
 
 Nombres que el Coach usa **tal cual**. Columna Implementos: los que la app ofrece para esa variante (en el YAML van en inglés, ver tabla de valores al final). **Unilateral** según 8.6. ● = con historial.
 
@@ -201,7 +203,7 @@ El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan l
 
 | Nombre viejo (Catálogo v1.7 o historial) | Nombre nuevo | `equipo` |
 |---|---|---|
-| Curl Femoral · Flexión de Piernas | **Curl Femoral Sentado** | machine |
+| Curl Femoral *(es nombre de familia: el wizard ofrece sus variantes con la más reciente preseleccionada)* · Flexión de Piernas | **Curl Femoral Sentado** | machine |
 | Curl femoral acostado | **Curl Femoral Acostado** | machine |
 | Extensiones de Cuádriceps | **Extensión de Cuádriceps** | machine |
 | Prensa de piernas unilateral | **Prensa de Piernas Unilateral** | machine |
@@ -226,14 +228,15 @@ El historial ya se renombró en la app (10-nov). **Hacia adelante solo se usan l
 | Elevaciones laterales con polea | **Elevaciones Laterales** | cable |
 | Pájaros rear delts | **Pájaros** | cable |
 | Encogimientos de Hombros | **Encogimientos** | machine |
-| Prevención — Manguito Rotador · Rotaciones internas/externas de hombro | **Rotación Externa** / **Rotación Interna** | cable |
+| Prevención — Manguito Rotador *(familia: "Prevención" va a la nota)* · Rotaciones internas/externas de hombro | **Rotación Externa** / **Rotación Interna** | cable |
 | Prevención — Extensión de Muñeca · Extensión de muñecas | **Extensión de Muñeca** | cable |
 | Curl de Muñeca | **Flexión de Muñeca** | cable |
 | Plancha Abdominal · Core Anti-extensión | **Plancha** | bodyweight |
 | Tuck Front Lever | **Front Lever Tuck** | bodyweight |
+| Front Lever *(nombre de familia: con historial preselecciona la variante más reciente; sin historial, Advanced Tuck)* | **Front Lever Advanced Tuck** | bodyweight |
 | Handstand en Paralelas — Hold Máximo | **Handstand en Paralelas** (protocolo → nota) | bodyweight |
 | Dominadas — Test Máximo | **Dominadas** (protocolo → nota) | bodyweight |
-| Cardio | **Bicicleta / Trotadora / Elíptica / Escalera** | machine |
+| Cardio *(nombre de familia: el wizard preselecciona la variante más reciente)* | **Bicicleta / Trotadora / Elíptica / Escalera** | machine |
 
 ---
 

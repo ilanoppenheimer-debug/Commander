@@ -1,4 +1,4 @@
-// Catálogo v2.0.1 (Contrato v1.8.3, sección 8), transcrito a mano. Es la FUENTE de los tests de
+// Catálogo v2.0.2 (Contrato v1.8.4, sección 8), transcrito a mano. Es la FUENTE de los tests de
 // tabla de familias y de matcher: si el código se aparta de estas filas, el test falla.
 // Implementos en español como en 8.3; "·tiempo" = ejercicio medido en tiempo.
 
