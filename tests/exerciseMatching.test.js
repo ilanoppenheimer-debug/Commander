@@ -119,13 +119,9 @@ describe('nombre de familia: ofrece SOLO las variantes de esa familia (Contrato 
     expect(m.alternatives.sort()).toEqual(['Front Lever Full', 'Front Lever One Leg', 'Front Lever Tuck', 'Front Lever con Ayuda']);
   });
 
-  // DIFERENCIA CON EL CATÁLOGO (reportada, no ajustada). Catálogo v2.0.2, 8.4: "Front Lever → Front Lever
-  // Advanced Tuck · bodyweight". La regla de taxonomyMapping.js:63 no trae implemento, así que sin historial
-  // el wizard no sugiere `bodyweight`.
-  it.fails('DIFERENCIA-CATÁLOGO 8.4: "Front Lever" sin historial sugiere el equipo bodyweight (regla)', () => {
+  it('Catálogo 8.4: "Front Lever" sin historial sugiere el equipo bodyweight (regla)', () => {
     const m = score('Front Lever');
-    expect(m.suggestedEquipment).toBe('bodyweight');
-    expect(m.suggestedFrom).toBe('regla');
+    expect(m).toMatchObject({ exerciseName: 'Front Lever Advanced Tuck', suggestedEquipment: 'bodyweight', suggestedFrom: 'regla' });
   });
 
   it('con historial: "Front Lever" preselecciona la variante usada más recientemente, con su implemento (8.4)', () => {

@@ -43,6 +43,9 @@ const OLD_NAME_OVERRIDES = [
   { from: ['Jalón en Polea a una mano'], to: 'Jalón a una mano', equipment: 'cable' },
   { from: ['Tuck Front Lever'], to: 'Front Lever Tuck', equipment: 'bodyweight' },
   { from: ['Plancha Abdominal', 'Core Anti-extensión'], to: 'Plancha', equipment: 'bodyweight' },
+  // Catálogo v2.0.2, 8.4: "Front Lever" (nombre de familia) -> Advanced Tuck, bodyweight. The phase-2 rule
+  // (taxonomyMapping.js, hashed) has the variant but no implement.
+  { from: ['Front Lever'], to: 'Front Lever Advanced Tuck', equipment: 'bodyweight' },
   // Catálogo 8.4 "Absorbe" without a single implement (the phase-2 rules leave them "sin resolver"):
   // Remo en Polea is the canonical one; Hammer curwl is the typo of Hammer curl (an exercise of its own).
   { from: ['Lanemine row'], to: 'Remo en Polea', equipment: null },
