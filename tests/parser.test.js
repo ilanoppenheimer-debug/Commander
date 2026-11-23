@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseRoutineMarkdown, parseRestSeconds } from '../src/utils/routineImport/parser.js';
 import { routineMd, exBlock, simpleEx, setMeta } from './fixtures/builders.js';
 
-// Contrato v1.8.3 §1, §3, §4, §4b.
+// Contrato v1.8.4 §1, §3, §4, §4b.
 const parse = (md) => parseRoutineMarkdown(md);
 const firstEx = (md) => parse(md).routine.exercises[0];
 const withRows = (rows, bullets = ['equipo: barbell', 'descanso: 90s'], name = 'Press Banca') =>
@@ -231,10 +231,12 @@ describe('RPE y tipo de set (Contrato §4)', () => {
     expect(oneSet('100', '5', t).type).toBe(t);
   });
 
-  // DIFERENCIA CON EL CONTRATO (reportada, no ajustada). Contrato §4, tabla de tipos de set: "`back` /
-  // `backoff`". El parser solo reconoce `back` (VALID_SET_TYPES); `backoff` cae a "Tipo desconocido" → normal.
-  it.fails('DIFERENCIA-CONTRATO §4: `backoff` es un tipo válido, igual que `back`', () => {
-    expect(oneSet('100', '5', 'backoff').type).toBe('backoff');
+  it('Contrato §4: `backoff` es sinónimo de `back` (tipo válido, sin aviso)', () => {
+    const md = (t) => withRows([[t, '100', '5', '8', '90s']]);
+    expect(firstEx(md('backoff')).sets[0].type).toBe('backoff');
+    expect(firstEx(md('back')).sets[0].type).toBe('back');
+    expect(warningsOf(md('backoff')).filter((w) => /Tipo desconocido/.test(w))).toEqual([]);
+    expect(oneSet('100', '5', 'BACKOFF').type).toBe('backoff');
   });
 
   it('el tipo se lee sin mayúsculas; uno desconocido avisa y queda normal', () => {
@@ -270,10 +272,14 @@ describe('descanso (Contrato §3)', () => {
     expect(parseRestSeconds(undefined)).toBeFalsy();
   });
 
-  // DIFERENCIA CON EL CONTRATO (reportada, no ajustada). Contrato §3 `descanso`: "Si falta, la app
-  // asume 90 s sin avisar." El parser avisa ("sin descanso — se asume 90s").
-  it.fails('DIFERENCIA-CONTRATO §3: un `descanso` ausente se asume en 90 s SIN avisar', () => {
+  it('Contrato v1.8.4 §3: un `descanso` ausente se asume en 90 s y SE AVISA en el wizard', () => {
     const md = withRows([['normal', '100', '5', '8', '-']], ['equipo: barbell']);
+    expect(firstEx(md).restSeconds).toBe(90);
+    expect(warningsOf(md).filter((w) => /sin descanso — se asume 90s/.test(w))).toHaveLength(1);
+  });
+
+  it('con `descanso` no hay aviso', () => {
+    const md = withRows([['normal', '100', '5', '8', '-']], ['equipo: barbell', 'descanso: 120s']);
     expect(warningsOf(md).filter((w) => /descanso/.test(w))).toEqual([]);
   });
 });

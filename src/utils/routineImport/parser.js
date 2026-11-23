@@ -44,7 +44,7 @@ import { normalizeExerciseName } from '../exerciseName';
 import { isMaxPlan, isMaxTimePlan } from '../timedPlan';
 
 const VALID_EQUIPMENT = ['barbell', 'smith', 'dumbbell', 'cable', 'machine', 'kettlebell', 'bodyweight', 'landmine', 'band', 'other'];
-const VALID_SET_TYPES = ['warmup', 'top', 'back', 'normal', 'drop', 'amrap', 'myo'];
+const VALID_SET_TYPES = ['warmup', 'top', 'back', 'backoff', 'normal', 'drop', 'amrap', 'myo'];
 
 // Session name convention: only the rotation day (PIERNA A, TORSO B, ...) — block,
 // phase, tramo and numbering already travel in bloque.id/bloque.fase/sesion_num.
