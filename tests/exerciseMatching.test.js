@@ -119,6 +119,26 @@ describe('nombre de familia: ofrece SOLO las variantes de esa familia (Contrato 
     expect(m.alternatives.sort()).toEqual(['Front Lever Full', 'Front Lever One Leg', 'Front Lever Tuck', 'Front Lever con Ayuda']);
   });
 
+  // DIFERENCIA CON EL CATÁLOGO (reportada, no ajustada). Catálogo v2.0.2, 8.4: "Front Lever → Front Lever
+  // Advanced Tuck · bodyweight". La regla de taxonomyMapping.js:63 no trae implemento, así que sin historial
+  // el wizard no sugiere `bodyweight`.
+  it.fails('DIFERENCIA-CATÁLOGO 8.4: "Front Lever" sin historial sugiere el equipo bodyweight (regla)', () => {
+    const m = score('Front Lever');
+    expect(m.suggestedEquipment).toBe('bodyweight');
+    expect(m.suggestedFrom).toBe('regla');
+  });
+
+  it('con historial: "Front Lever" preselecciona la variante usada más recientemente, con su implemento (8.4)', () => {
+    const history = [
+      session('2026-01-05T12:00:00Z', [ex('Front Lever Advanced Tuck', 'bodyweight')]),
+      session('2026-01-12T12:00:00Z', [ex('Front Lever Tuck', 'bodyweight')]),
+    ];
+    const m = score('Front Lever', { history });
+    expect(m).toMatchObject({ type: 'probable', exerciseName: 'Front Lever Tuck', viaHistory: true, family: 'Front Lever' });
+    expect(m.suggestedEquipment).toBe('bodyweight');
+    expect(m.suggestedFrom).toBe('historial');
+  });
+
   it('sin historial: si la regla apunta a una variante solo-historial ("Cardio" → Cardio (sin especificar)), no se preselecciona ninguna', () => {
     const m = score('Cardio');
     expect(m.type).toBe('fuzzy');
