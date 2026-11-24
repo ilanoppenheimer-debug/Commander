@@ -14,7 +14,6 @@ import { getExerciseDetails } from "./features/exerciseMeta.jsx";
 import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { DEFAULT_INCREMENTS_BY_EQUIPMENT } from "./components/keypad/keypadConfig";
 import { playTacticalAlarm } from "./services/audioService";
-import { callGeminiAPI } from "./services/aiService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import InputGroup from "./components/ui/InputGroup";
@@ -64,7 +63,7 @@ import { isSignedIn, performDriveBackup } from "./services/googleDriveService";
 import { logger } from "./services/logger";
 import {
   Dumbbell, Trash2, Plus, Download, Settings, Activity, TrendingUp, Shield, Zap, FileText,
-  X, ChevronLeft, ChevronRight, Info, BrainCircuit, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
+  X, ChevronLeft, ChevronRight, Info, Play, Copy, Edit3, AlertTriangle, Loader2, Link as LinkIcon,
   Timer, Pause, RotateCcw, ChevronUp, ChevronDown, RefreshCw, ClipboardList,
   Flame, Utensils, Calculator, Minus, BarChart2, Sparkles, Search, LayoutGrid, Layers, Clock, Check, MoreVertical,
   Archive
@@ -451,12 +450,7 @@ function AppMain() {
   const [editingTemplateId,  setEditingTemplateId]  = useState(null);
   const [editingTemplateName,setEditingTemplateName]= useState("");
   const [showImportModal,    setShowImportModal]    = useState(false);
-  const [showAIModal,        setShowAIModal]        = useState(false);
   const [routineToDelete,    setRoutineToDelete]    = useState(null);
-  const [importText,         setImportText]         = useState('');
-  const [aiPrompt,           setAiPrompt]           = useState('');
-  const [isGenerating,       setIsGenerating]       = useState(false);
-  const [isImporting,        setIsImporting]        = useState(false);
   const [notification,       setNotification]       = useState(null);
   const [trendExercise,      setTrendExercise]      = useState(null);
   const [trendEquipment,     setTrendEquipment]     = useState(null); // variant when opened from a session's exercise
@@ -815,69 +809,6 @@ function AppMain() {
     await saveRoutine({ ...routine, name: editingTemplateName || 'Sin Nombre' });
     setEditingTemplateId(null);
     showNotify("Nombre actualizado.");
-  };
-
-  // DORMANT (P6): no UI path reaches this anymore — the trigger was removed.
-  // Generating a routine is prescribing training; the app describes, the Coach
-  // prescribes. Kept, not deleted, in case AI comes back with a different role
-  // (pattern detection, not proposing workouts).
-  const generateAIRoutine = async () => {
-    if (!aiPrompt.trim()) return;
-    setIsGenerating(true);
-    const prompt = `Genera plantilla de gimnasio: "${aiPrompt}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "<una de las opciones>", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Máximo 6 ejercicios. Opciones de equipo: barbell, dumbbell, bodyweight, machine, cable.`;
-    try {
-      const textResponse = await callGeminiAPI(prompt);
-      const cleanJson = textResponse.replace(/```json|```/g, '').trim();
-      const parsedData = JSON.parse(cleanJson);
-      const safeExercises = Array.isArray(parsedData.exercises) ? parsedData.exercises : [];
-      const newRoutine = {
-        id: `ai-${Date.now()}`,
-        name: `${parsedData.name || 'Plantilla IA'} ✨`,
-        lastPerformed: null,
-        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment ?? null, id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({ ...s, type: 'normal' })) : [] }))
-      };
-      await saveRoutine(newRoutine);
-      setShowAIModal(false);
-      setAiPrompt('');
-      showNotify("Protocolo Generado", "success");
-    } catch (error) { console.error(error); showNotify("Error de conexión IA", "error"); }
-    finally { setIsGenerating(false); }
-  };
-
-  // DORMANT (P6): already had no UI trigger before this sprint (legacy "paste raw
-  // text, let AI structure it" importer, superseded by RoutineImportWizard). Same
-  // reasoning as generateAIRoutine above — parsing free text into a routine via AI
-  // is still prescribing training. Kept, not deleted.
-  const handleSmartImport = async () => {
-    if (!importText.trim()) return;
-    setIsImporting(true);
-    const prompt = `Parser plantilla de gym. Texto crudo: "${importText}". Responde SOLO JSON con esta estructura exacta: { "name": "Nombre", "exercises": [{ "name": "Ej", "equipment": "<una de las opciones>", "sets": [{ "weight": 0, "reps": 10, "rpe": 8, "type": "normal" }] }] }. Opciones equipo: barbell, dumbbell, bodyweight, machine, cable.`;
-    try {
-      const textResponse = await callGeminiAPI(prompt);
-      let parsedData;
-      try {
-        const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-        parsedData = JSON.parse(jsonMatch[0]);
-      } catch(e) {
-        const lines = importText.split('\n').filter(l => l.trim().length > 3);
-        parsedData = {
-          name: "Plantilla Importada (Recuperada)",
-          exercises: lines.map(l => ({ name: l.split(/[,|-]/)[0].trim().substring(0, 30), equipment: null, sets: [{ weight: 0, reps: 10, rpe: 8, type: 'normal' }] }))
-        };
-      }
-      const safeExercises = Array.isArray(parsedData.exercises) ? parsedData.exercises : [];
-      const newRoutine = {
-        id: `import-${Date.now()}`,
-        name: parsedData.name || 'Plantilla Importada',
-        lastPerformed: null,
-        exercises: safeExercises.map((ex, idx) => ({ ...ex, equipment: ex.equipment ?? null, id: Date.now() + idx, sets: Array.isArray(ex.sets) ? ex.sets : [] }))
-      };
-      await saveRoutine(newRoutine);
-      setShowImportModal(false);
-      setImportText('');
-      showNotify("Plantilla Importada", "success");
-    } catch (error) { console.error("Import failed", error); showNotify("Error al procesar texto", "error"); }
-    finally { setIsImporting(false); }
   };
 
   const handleDownload = async () => {
@@ -1539,21 +1470,6 @@ function AppMain() {
                 <button onClick={() => setRoutineToDelete(null)} className="flex-1 py-2 rounded bg-slate-800 text-slate-300 font-bold text-sm">Cancelar</button>
                 <button onClick={confirmDeleteRoutine} className="flex-1 py-2 rounded bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-900/20">Confirmar</button>
               </div>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* DORMANT (P6): showAIModal can never become true — trigger removed, see
-          generateAIRoutine above. Kept, not deleted. */}
-      {showAIModal && (
-        <Modal isOpen onClose={() => !isGenerating && setShowAIModal(false)} closeOnEscape={!isGenerating} size="sm">
-          <div className="bg-slate-900 w-full rounded-2xl border border-purple-500/50 shadow-2xl overflow-hidden relative">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500"></div>
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-3"><h3 className="text-xl font-bold text-white flex items-center gap-2"><BrainCircuit className="text-purple-500" /> Iron AI</h3><button onClick={() => setShowAIModal(false)} className="p-1 text-slate-500 hover:text-white transition"><X size={20} /></button></div>
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 text-xs text-amber-200">⚠️ Esta función está en mejora. Los resultados pueden ser inconsistentes.</div>
-              {isGenerating ? (<div className="flex flex-col items-center justify-center py-8 space-y-4"><Loader2 className="w-12 h-12 text-purple-500 animate-spin" /><p className="text-sm text-purple-300 font-mono animate-pulse">ESTABLECIENDO ENLACE...</p></div>) : (<><p className="text-sm text-slate-400 mb-4">Objetivo táctico para nueva plantilla:</p><textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Ej: Rutina de fuerza para hombros..." className="w-full h-24 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 focus:outline-none mb-4 resize-none" /><button onClick={generateAIRoutine} disabled={!aiPrompt.trim()} className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition"><Zap size={18} fill="currentColor" /> Generar Protocolo</button></>)}
             </div>
           </div>
         </Modal>
