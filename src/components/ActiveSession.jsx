@@ -40,7 +40,7 @@ import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import PostSessionReport from "./PostSessionReport";
 import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
-import { buildSessionAnalysis } from "../ai/sessionAnalysis";
+import { buildSessionAnalysis } from "../utils/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
