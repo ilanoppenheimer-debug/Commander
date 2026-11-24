@@ -42,3 +42,8 @@ export const simpleEx = ({ name = 'Press Banca', bullets, rows } = {}) =>
     bullets: bullets ?? ['equipo: barbell', 'descanso: 90s'],
     rows: rows ?? [['normal', '100', '5', '8', '90s']],
   });
+
+// Un set de historial: st(100, 5, 8) = 100 kg × 5 @ RPE 8. `extra` pisa cualquier campo.
+export const st = (weight, reps, rpe, extra = {}) => ({
+  type: 'normal', weight: String(weight), reps: String(reps), rpe: rpe == null ? '' : String(rpe), completed: true, ...extra,
+});
