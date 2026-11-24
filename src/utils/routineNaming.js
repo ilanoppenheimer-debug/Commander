@@ -15,3 +15,17 @@ export const nextCopyName = (routineName, routines) => {
   }
   return maxNum === 0 ? `${baseName} (copia)` : `${baseName} (copia ${maxNum + 1})`;
 };
+
+// Fila nueva para "Clonar plantilla". Las filas de la lista traen _id (clave de Dexie): si viajara en la copia,
+// el guardado sobrescribiría la original en vez de crear otra. Tampoco se heredan routineId / updatedAt.
+export const buildRoutineClone = (routine, routines, { id, now }) => {
+  // eslint-disable-next-line no-unused-vars
+  const { _id, routineId, updatedAt, ...rest } = routine;
+  return {
+    ...rest,
+    id,
+    name: nextCopyName(routine.name, routines),
+    lastPerformed: null,
+    createdAt: now,
+  };
+};

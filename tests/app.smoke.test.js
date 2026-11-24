@@ -122,4 +122,20 @@ describe('App monta y navega', () => {
     await waitFor(() => expect(screen.getByText('Ciclo con el Coach')).toBeTruthy());
     await waitFor(async () => expect(await getSetting('activeSession')).toBeUndefined(), { timeout: 5000 });
   });
+  it('Clonar plantilla crea una fila nueva (no sobrescribe la original)', async () => {
+    const { db } = await import('../src/db/database.js');
+    const { saveRoutine } = await import('../src/db/repository.js');
+    await saveRoutine({ id: 'r-dl', name: 'DL (Plantilla)', exercises: [{ id: 'e1', name: 'Peso Muerto', sets: [] }], lastPerformed: null });
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    await waitFor(() => expect(screen.getByText('DL (Plantilla)')).toBeTruthy());
+    const kebab = () => document.querySelector('main .relative.shrink-0 > button');
+    for (const n of [1, 2]) {
+      fireEvent.click(kebab());
+      fireEvent.click(await screen.findByText('Clonar'));
+      await waitFor(async () => expect(await db.routines.count()).toBe(1 + n));
+    }
+    const names = (await db.routines.orderBy('_id').toArray()).map((r) => r.name);
+    expect(names).toEqual(['DL (Plantilla)', 'DL (Plantilla) (copia)', 'DL (Plantilla) (copia 2)']);
+  });
 });
