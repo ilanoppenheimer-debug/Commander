@@ -4,6 +4,7 @@ import {
   isPredictiveSet, computeExercise1RM, getLastLoggedSet, getTopHistoricalSet, computeAll1RMs,
 } from '../src/utils/strengthMath.js';
 import { confianza1RM } from '../src/utils/sessionExport.js';
+import { COMPARABLE_1RM_EQUIPMENT, isComparable1RMEquipment } from '../src/constants/gymConstants.js';
 import { ex, session, st, setMeta } from './fixtures/builders.js';
 
 // Contrato v1.8.4 §5 (1RM estimado): ventana móvil de 12 semanas, por nombre + implemento, N = sets
@@ -270,6 +271,16 @@ describe('getTopHistoricalSet / getLastLoggedSet', () => {
   });
 });
 
+describe('isComparable1RMEquipment — carga externa y constante', () => {
+  it('barra, mancuerna, multipower y landmine (barra con discos)', () => {
+    expect(COMPARABLE_1RM_EQUIPMENT).toEqual(['barbell', 'dumbbell', 'smith', 'landmine']);
+    for (const eq of ['barbell', 'dumbbell', 'smith', 'landmine']) expect(isComparable1RMEquipment(eq), eq).toBe(true);
+  });
+  it('máquina, polea, peso corporal, kettlebell, banda, otro y sin implemento, no', () => {
+    for (const eq of ['machine', 'cable', 'bodyweight', 'kettlebell', 'band', 'other', null, undefined]) expect(isComparable1RMEquipment(eq), String(eq)).toBe(false);
+  });
+});
+
 describe('computeAll1RMs — una entrada por variante comparable (§5)', () => {
   const sess = (when, name, equipment, sets) => session(when, [ex(name, equipment, { sets })]);
 
@@ -296,6 +307,32 @@ describe('computeAll1RMs — una entrada por variante comparable (§5)', () => {
     expect(r).toHaveLength(1);
     expect(r[0].equipment).toBe('dumbbell');
     expect(r[0].sampleSize).toBe(1);
+  });
+
+  it('Mis 1RM con landmine: una variante propia, con su implemento y su 1RM', () => {
+    const h = [sess(daysAgo(5), 'Remo Landmine', 'landmine', [st(40, 10, 8)])];
+    const r = computeAll1RMs(h);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ name: 'Remo Landmine', equipment: 'landmine', label: 'Remo Landmine', sampleSize: 1 });
+    expect(r[0].current1RM).toBeCloseTo(40 / RPE_CHART[10][8], 6);
+  });
+
+  it('un nombre con barra y landmine sale por implemento: "· barra" / "· landmine"', () => {
+    const h = [
+      sess(daysAgo(5), 'Remo con Barra', 'barbell', [st(60, 8, 8)]),
+      sess(daysAgo(4), 'Remo con Barra', 'landmine', [st(40, 10, 8)]),
+    ];
+    expect(computeAll1RMs(h).map((e) => e.label).sort()).toEqual(['Remo con Barra · barra', 'Remo con Barra · landmine']);
+  });
+
+  it('la polea no infla a la landmine (un solo implemento comparable)', () => {
+    const h = [
+      sess(daysAgo(5), 'Remo en T con apoyo', 'landmine', [st(40, 10, 8)]),
+      sess(daysAgo(4), 'Remo en T con apoyo', 'machine', [st(100, 10, 8)]),
+    ];
+    const r = computeAll1RMs(h);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ equipment: 'landmine', sampleSize: 1 });
   });
 
   it('máquina, polea y peso corporal no son comparables: por nombre, sin implemento', () => {

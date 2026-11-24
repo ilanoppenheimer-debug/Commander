@@ -50,7 +50,7 @@ describe('trendEntries — qué ejercicios se listan en Tendencias', () => {
     expect(trendEntries(h)).toEqual([]);
   });
 
-  it('landmine es comparable; kettlebell, banda y otro no se listan', () => {
+  it('landmine es comparable (helper compartido); kettlebell, banda y otro no se listan', () => {
     const h = [sess('2026-06-01', [
       ex('Remo Landmine', 'landmine', { sets: [st(40, 10, 8)] }), ex('Sentadilla Goblet', 'kettlebell', { sets: [st(24, 10, 8)] }),
       ex('Rotación Externa', 'band', { sets: [st(5, 15, 8)] }), ex('Cosa', 'other', { sets: [st(5, 15, 8)] }),
@@ -75,6 +75,33 @@ describe('trendEntries — qué ejercicios se listan en Tendencias', () => {
   it('un implemento que no se grafica no cuenta para decidir si el nombre se separa', () => {
     const h = [sess('2026-06-01', [ex('Hip Thrust', 'barbell', { sets: [st(100, 8, 8)] })]), sess('2026-06-08', [ex('Hip Thrust', 'bodyweight', { sets: [st('', 15, 8)] })])];
     expect(trendEntries(h).map((e) => [e.label, e.count])).toEqual([['Hip Thrust', 1]]);
+  });
+
+  it('nombre canónico del Catálogo, como el CONTEXTO: aunque el historial tenga otra grafía', () => {
+    const h = [
+      sess('2026-06-01', [ex('Prensa de piernas unilateral', 'machine', { sets: [st(100, 10, 8)] }), ex('Reverse front fly', 'cable', { sets: [st(15, 12, 8)] })]),
+      sess('2026-06-08', [ex('Prensa de piernas unilateral', 'machine', { sets: [st(110, 10, 8)] }), ex('Pajaros', 'cable', { sets: [st(10, 12, 8)] })]),
+    ];
+    const e = trendEntries(h);
+    expect(e.map((x) => x.label).sort((a, b) => a.localeCompare(b, 'es'))).toEqual(['Pájaros', 'Prensa de Piernas Unilateral', 'Reverse Front Fly']);
+    expect(e.find((x) => x.label === 'Prensa de Piernas Unilateral')).toMatchObject({ name: 'Prensa de Piernas Unilateral', count: 2 });
+  });
+
+  it('el nombre canónico también va en la etiqueta por implemento y se puede graficar con él', () => {
+    const h = [
+      sess('2026-06-01', [ex('elevaciones laterales', 'cable', { sets: [st(10, 12, 8)] })]),
+      sess('2026-06-08', [ex('Elevaciones laterales', 'dumbbell', { sets: [st(8, 12, 8)] })]),
+      sess('2026-06-15', [ex('elevaciones laterales', 'dumbbell', { sets: [st(9, 12, 8)] })]),
+    ];
+    const e = trendEntries(h);
+    expect(e.map((x) => x.label).sort()).toEqual(['Elevaciones Laterales · mancuerna', 'Elevaciones Laterales · polea']);
+    const mancuerna = e.find((x) => x.equipment === 'dumbbell');
+    expect(buildTrendPoints(mancuerna.name, mancuerna.equipment, h)).toHaveLength(2);
+  });
+
+  it('un ejercicio propio que no está en el Catálogo conserva la grafía de la sesión más reciente', () => {
+    const h = [sess('2026-06-01', [ex('mi ejercicio raro', 'barbell', { sets: [st(50, 8, 8)] })]), sess('2026-06-08', [ex('Mi Ejercicio Raro', 'barbell', { sets: [st(55, 8, 8)] })])];
+    expect(trendEntries(h).map((x) => x.label)).toEqual(['Mi Ejercicio Raro']);
   });
 
   it('ordena de más a menos frecuente', () => {

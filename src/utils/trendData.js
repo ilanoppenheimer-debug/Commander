@@ -1,4 +1,5 @@
 import { buildDisplayNameIndex, displayNameFor, normalizeExerciseName } from './exerciseName';
+import { canonicalExerciseName } from '../constants/exerciseFamilies';
 import { makeVariantMatcher, resolveHistoryEquipment, variantLabel, isTimeMeasured } from './exerciseVariant';
 import { estimate1RM, isPredictiveSet } from './strengthMath';
 import { isComparable1RMEquipment } from '../constants/gymConstants';
@@ -7,9 +8,8 @@ import { formatNum } from './weightUtils';
 // Data behind Tendencias → Progreso 1RM (TrendModal). Pure and read-only.
 //
 // What is charted, by implement:
-//  - 'comparable': barbell, dumbbell, smith (isComparable1RMEquipment, the criterion of "Enviar al Coach" and the
-//    session report) and LANDMINE here (a barbell with plates: constant load). Landmine is added only to this
-//    screen; the shared helper is untouched.
+//  - 'comparable': isComparable1RMEquipment (barbell, dumbbell, smith, landmine): the criterion of "Enviar al
+//    Coach", the session report and Mis 1RM.
 //  - 'reference': machine and cable. The load is not comparable between gyms, so the number is a reference for
 //    THIS machine only (Catálogo 8.2 "Máquinas"): charted, and labelled so.
 //  - everything else is not charted here (bodyweight, time-measured, kettlebell, band, other, no implement known).
@@ -17,12 +17,11 @@ import { formatNum } from './weightUtils';
 // estimate1RM of strengthMath.js.
 export const REFERENCE_LABEL = 'Referencia de esta máquina';
 
-const isTrendComparable = (eq) => isComparable1RMEquipment(eq) || eq === 'landmine';
 const REFERENCE_EQUIPMENT = ['machine', 'cable'];
 
 // 'comparable' | 'reference' | null (not charted).
 export const trendKind = (equipment) => {
-  if (isTrendComparable(equipment)) return 'comparable';
+  if (isComparable1RMEquipment(equipment)) return 'comparable';
   if (REFERENCE_EQUIPMENT.includes(equipment)) return 'reference';
   return null;
 };
@@ -35,8 +34,9 @@ const appearanceKind = (ex) => (isTimeMeasured(ex?.name) ? null : trendKind(reso
  * Entries listed in Tendencias, most frequent first: [{ key, name, equipment, label, kind, count }].
  * One entry per exercise name; a name done with more than one chartable implement gets one entry per implement
  * ("Curl de Bíceps · barra" / "· polea"), because the implement separates the numbers. `equipment` is null
- * (by name) for a name with a single chartable implement. The printed name is the spelling of the most recent
- * session. Appearances that are not chartable do not count.
+ * (by name) for a name with a single chartable implement. The printed name is the Catálogo's spelling when the
+ * history's is the same exercise (canonicalExerciseName, as in the Coach context), else the spelling of the most
+ * recent session. Appearances that are not chartable do not count.
  */
 export const trendEntries = (history) => {
   const displayNames = buildDisplayNameIndex(history);
@@ -52,7 +52,7 @@ export const trendEntries = (history) => {
   }
   const entries = [];
   for (const [n, eqs] of byName) {
-    const name = displayNameFor(displayNames, n);
+    const name = canonicalExerciseName(displayNameFor(displayNames, n));
     if (eqs.size === 1) {
       const [[eq, count]] = [...eqs];
       entries.push({ key: `${n}|`, name, equipment: null, label: name, kind: trendKind(eq), count });

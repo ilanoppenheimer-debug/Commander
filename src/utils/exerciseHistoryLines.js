@@ -151,7 +151,7 @@ export const formatLatestEntry = (apps, companion) => {
  *  - `equipment` given: only that implement; the header reads "Historial de Curl · barra".
  *  - `equipment` null ("sin definir"): by name, as before; each line carries its implement
  *    when the sent appearances disagree.
- *  - The 1RM line only for barbell/dumbbell/smith (isComparable1RMEquipment, same criterion as the session report) and
+ *  - The 1RM line only for barbell/dumbbell/smith/landmine (isComparable1RMEquipment, same criterion as the session report) and
  *    only when computeExercise1RM has a value (of that variant when one is given).
  */
 export const buildExerciseShareText = (exName, history, { count = 6, equipment: wantedArg = null } = {}) => {

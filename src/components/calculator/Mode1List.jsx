@@ -22,7 +22,7 @@ const SORT_CRITERIA = [
   { id: 'recent', label: 'Recientes' },
 ];
 
-// Same criterion as the export (isComparable1RMEquipment): only barbell/dumbbell/smith load is comparable session to
+// Same criterion as the export (isComparable1RMEquipment): only barbell/dumbbell/smith/landmine load is comparable session to
 // session. Used ONLY as a display-time default before the user has picked anything —
 // never written to metadata, so it costs nothing to change later.
 const isComparableEquipment = isComparable1RMEquipment;

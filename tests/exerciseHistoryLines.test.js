@@ -101,15 +101,15 @@ describe('"Enviar al Coach" — buildExerciseShareText (§5)', () => {
     expect(buildExerciseShareText('Press Banca', h)).toContain('Últimas 6 apariciones:');
   });
 
-  it('1RM si es barra o mancuerna (últimas 12 semanas)', () => {
-    for (const eq of ['barbell', 'dumbbell']) {
+  it('1RM si es barra, mancuerna, multipower o landmine (últimas 12 semanas)', () => {
+    for (const eq of ['barbell', 'dumbbell', 'smith', 'landmine']) {
       const t = buildExerciseShareText('Press Banca', [press('2026-06-10T15:00:00Z', eq, [st(100, 5, 8)])]);
       expect(t, eq).toContain('1RM estimado: 119 kg (N=1, últimas 12 semanas) — referencia, no máximo del día');
     }
   });
 
-  it('sin 1RM en máquina, polea o peso corporal', () => {
-    for (const eq of ['machine', 'cable', 'bodyweight']) {
+  it('sin 1RM en máquina, polea, peso corporal, kettlebell o banda', () => {
+    for (const eq of ['machine', 'cable', 'bodyweight', 'kettlebell', 'band']) {
       expect(buildExerciseShareText('Press Banca', [press('2026-06-10T15:00:00Z', eq, [st(100, 5, 8)])]), eq).not.toContain('1RM estimado');
     }
   });
