@@ -228,10 +228,21 @@ describe('1RM estimado en el reporte (§5)', () => {
       expect(report(sesion([ex('Prensa de Piernas', eq, { sets: [st(200, 10, 8)] })]), { allSessions }), String(eq)).not.toContain('1RM est.');
     }
   });
-  it('barra y mancuerna sí', () => {
-    for (const eq of ['barbell', 'dumbbell']) {
+  it('barra, mancuerna, multipower y landmine sí', () => {
+    for (const eq of ['barbell', 'dumbbell', 'smith', 'landmine']) {
       const allSessions = [session(daysAgo(3), [ex('Press Banca', eq, { sets: [st(100, 5, 8)] })])];
       expect(report(sesion([ex('Press Banca', eq, { sets: [st(100, 5, 8)] })]), { allSessions }), eq).toContain('1RM est.');
+    }
+  });
+  it('un ejercicio con landmine lleva la línea de 1RM con su confianza y N', () => {
+    const allSessions = [session(daysAgo(3), [ex('Remo Landmine', 'landmine', { sets: [st(40, 10, 8)] })])];
+    expect(report(sesion([ex('Remo Landmine', 'landmine', { sets: [st(40, 10, 8)] })]), { allSessions }))
+      .toContain('  1RM est.: 53 kg (confianza baja, N=1) — referencia, no máximo del día');
+  });
+  it('kettlebell y banda no llevan 1RM', () => {
+    for (const eq of ['kettlebell', 'band']) {
+      const allSessions = [session(daysAgo(3), [ex('Sentadilla Goblet', eq, { sets: [st(24, 10, 8)] })])];
+      expect(report(sesion([ex('Sentadilla Goblet', eq, { sets: [st(24, 10, 8)] })]), { allSessions }), eq).not.toContain('1RM est.');
     }
   });
   it('es del implemento de ese ejercicio: el de otro implemento no suma', () => {

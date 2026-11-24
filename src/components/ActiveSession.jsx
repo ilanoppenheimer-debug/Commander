@@ -24,7 +24,6 @@ import { SetRow } from "./session/SetRow";
 import { TimedSetRow } from "./session/TimedSetRow";
 import { NoteModal } from "./session/NoteModal";
 import { SessionTimer } from "./session/SessionTimer";
-import { BlockBanner } from "./blocks/BlockBanner";
 import { BlockCreateModal } from "./blocks/BlockCreateModal";
 import { TagPicker } from "./blocks/TagPicker";
 import { BlockColorDot } from "./blocks/BlockColorDot";

@@ -198,7 +198,7 @@ export const generateSessionReport = (session, { blocks = [], allSessions = [], 
     totalVolume += exVolume;
     if (exVolume > 0) lines.push(`  Volumen: ${formatVolume(exVolume)}`);
 
-    // 1RM only where load is external and comparable across sessions (isComparable1RMEquipment). barbell/dumbbell/smith:
+    // 1RM only where load is external and comparable across sessions (isComparable1RMEquipment). barbell/dumbbell/smith/landmine:
     // real external load. machine/cable: not transferable between machines (pulleys,
     // angles, base weight differ). bodyweight: isPredictiveSet excludes weight <= 0, so
     // the estimate would be computed off the added load alone, ignoring bodyweight —

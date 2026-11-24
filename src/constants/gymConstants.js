@@ -122,9 +122,10 @@ export const EQUIPMENT_TYPES = [
 ];
 
 // Implements whose load is external and comparable from one session to the next, so a 1RM
-// estimate means something. Everything else (bodyweight, bands, landmine, machines,
-// cables, "other") and an exercise with no implement defined (null) gets no 1RM.
-export const COMPARABLE_1RM_EQUIPMENT = ['barbell', 'dumbbell', 'smith'];
+// estimate means something: barbell, dumbbell, multipower and landmine (a barbell with plates: constant load).
+// Everything else (bodyweight, bands, kettlebell, machines, cables, "other") and an exercise with no implement
+// defined (null) gets no 1RM. Machines and cables are charted in Tendencias as a reference for that machine only.
+export const COMPARABLE_1RM_EQUIPMENT = ['barbell', 'dumbbell', 'smith', 'landmine'];
 export const isComparable1RMEquipment = (eq) => COMPARABLE_1RM_EQUIPMENT.includes(eq);
 
 export const DEFAULT_MODES = [

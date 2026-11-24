@@ -3,7 +3,7 @@ import { CheckCircle2, Circle, X as XIcon, StickyNote, Play, Square, XCircle, Pe
 import { formatSeconds } from '../../utils/formatters';
 import { NoteModal } from './NoteModal';
 import { SecondsNumPad } from '../keypad/SecondsNumPad';
-import { timerKey } from '../../utils/timedSetTimerStorage';
+import { timerKey, markHoldMinimized, unmarkHoldMinimized, isHoldMinimized } from '../../utils/timedSetTimerStorage';
 import { isMaxPlan, plannedRangeLabel } from '../../utils/timedPlan';
 import { acquireWakeLock, releaseWakeLock } from '../../utils/wakeLock';
 import { playHoldTargetBeep } from '../../services/audioService';
@@ -163,7 +163,9 @@ export const TimedSetRow = ({
         setPhase(elapsed < COUNTDOWN_SECONDS ? 'countdown' : 'running');
         setTick(t => t + 1);
         acquireWakeLock(lockOwner);
-        setOverlayOpen(true); // a reload mid-hold reopens the full-screen view with the real time
+        // A reload mid-hold reopens the full-screen view with the real time. A remount while the page lives (a set
+        // added or deleted: the rows are re-keyed) must NOT reopen a hold the athlete minimized.
+        setOverlayOpen(!isHoldMinimized(exerciseId, stored.startedAt));
       }
     } catch {
       clearPersisted();
@@ -254,11 +256,12 @@ export const TimedSetRow = ({
       startTimer();
       return;
     }
-    if (phase === 'countdown') { startedAtRef.current = null; setPhase('idle'); clearPersisted(); releaseWakeLock(lockOwner); setOverlayOpen(false); return; } // cancel
+    if (phase === 'countdown') { unmarkHoldMinimized(exerciseId, startedAtRef.current); startedAtRef.current = null; setPhase('idle'); clearPersisted(); releaseWakeLock(lockOwner); setOverlayOpen(false); return; } // cancel
     if (phase === 'running') {
       const secs = getRunningSeconds(); // reads startedAtRef.current — must run before it's nulled below
       persistTimer(startedAtRef.current, Date.now()); // keeps pending alive across a remount, see restore effect
       setPendingSeconds(secs);
+      unmarkHoldMinimized(exerciseId, startedAtRef.current);
       startedAtRef.current = null;
       setPhase('pending');
       releaseWakeLock(lockOwner);
@@ -274,7 +277,7 @@ export const TimedSetRow = ({
   };
 
   const handleDisplayTap = () => {
-    if (phase === 'countdown' || phase === 'running') { setOverlayOpen(true); return; } // reopen the full-screen view
+    if (phase === 'countdown' || phase === 'running') { unmarkHoldMinimized(exerciseId, startedAtRef.current); setOverlayOpen(true); return; } // reopen the full-screen view
     if (phase === 'pending') {
       // Confirma — la celda grande es el target obvio para "aceptar lo que veo".
       onUpdateField('seconds', String(pendingSeconds));
@@ -319,6 +322,7 @@ export const TimedSetRow = ({
       clearPersisted();
     } else if (!isDone && phase === 'running') {
       onUpdateField('seconds', String(getRunningSeconds()));
+      unmarkHoldMinimized(exerciseId, startedAtRef.current);
       startedAtRef.current = null;
       setPhase('idle');
       clearPersisted();
@@ -514,7 +518,7 @@ export const TimedSetRow = ({
           showToggle={!isMax}
           onModeChange={(m) => onTimedModeChange?.(m)}
           onStop={handleControlTap}
-          onMinimize={() => setOverlayOpen(false)}
+          onMinimize={() => { markHoldMinimized(exerciseId, startedAtRef.current); setOverlayOpen(false); }}
         />
       )}
 

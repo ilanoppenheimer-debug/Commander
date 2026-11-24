@@ -1,9 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { X, TrendingUp, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
-import { calculate1RM } from "../../utils/strengthMath";
-import { makeVariantMatcher } from "../../utils/exerciseVariant";
-import { formatNum } from "../../utils/weightUtils";
+import { buildTrendPoints, hasTrendableEquipment, pickTrendLabels, trendKindFor, REFERENCE_LABEL } from "../../utils/trendData";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 // equipment (optional): variant to chart; null/absent = by name only (all implements).
@@ -18,56 +16,26 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
     setFeedback(msg);
     setTimeout(() => setFeedback(null), 3000);
   };
-  const chartData = useMemo(() => {
-    if (!exName || !Array.isArray(history)) return [];
-    const isVariant = makeVariantMatcher(exName, equipment);
-
-    const dataPoints = [];
-    const sortedHistory = [...history].sort(
-      (a, b) => new Date(a.completedAt) - new Date(b.completedAt)
-    );
-
-    sortedHistory.forEach((session) => {
-      if (!session || !Array.isArray(session.exercises)) return;
-
-      const exData = session.exercises.find(
-        (e) => e && isVariant(e)
-      );
-
-      if (exData && Array.isArray(exData.sets) && exData.sets.length > 0) {
-        let max1RM = 0;
-        let topWeight = 0;
-
-        exData.sets.forEach((s) => {
-          const weight = parseFloat(s.weight) || 0;
-          const reps = parseFloat(s.reps) || 0;
-          const rpe = parseFloat(s.rpe) || 10;
-
-          if (weight > 0 && reps > 0) {
-            const est1RM = calculate1RM(weight, reps, rpe, "epley");
-            if (est1RM > max1RM) max1RM = est1RM;
-            if (weight > topWeight) topWeight = weight;
-          }
-        });
-
-        if (max1RM > 0) {
-          dataPoints.push({
-            date: new Date(session.completedAt),
-            shortDate: new Date(session.completedAt).toLocaleDateString(
-              undefined,
-              { month: "short", day: "numeric" }
-            ),
-            est1RM: formatNum(max1RM),
-            topWeight: formatNum(topWeight),
-          });
-        }
-      }
-    });
-
-    return dataPoints;
-  }, [history, exName, equipment]);
+  // Barbell / dumbbell / smith / landmine are comparable; machine and cable are a reference for that machine only
+  // (labelled); bodyweight and timed exercises are not charted here.
+  const trendable = hasTrendableEquipment(equipment);
+  const chartData = useMemo(
+    () => (trendable ? buildTrendPoints(exName, equipment, history) : []),
+    [history, exName, equipment, trendable]
+  );
+  const isReference = useMemo(
+    () => trendable && trendKindFor(exName, equipment, history) === 'reference',
+    [history, exName, equipment, trendable]
+  );
 
   const renderChart = () => {
+    if (!trendable) {
+      return (
+        <div className="h-48 flex items-center justify-center text-center text-slate-500 text-sm italic px-4">
+          Peso corporal y ejercicios por tiempo: por ahora sin Progreso 1RM.
+        </div>
+      );
+    }
     if (chartData.length < 2) {
       return (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm italic">
@@ -94,6 +62,8 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
     });
 
     const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+    // A long history has ~30 points over ~260 units: print only the labels that fit.
+    const labels = pickTrendLabels(points.map((p) => p.x), points.map((p) => parseFloat(p.est1RM)));
 
     return (
       <div className="w-full mt-4 overflow-x-auto pb-4">
@@ -143,25 +113,29 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
                   stroke="#a855f7"
                   strokeWidth="2"
                 />
-                <text
-                  x={p.x}
-                  y={p.y - 10}
-                  fill="#94a3b8"
-                  fontSize="8"
-                  textAnchor="middle"
-                  fontWeight="bold"
-                >
-                  {p.est1RM}
-                </text>
-                <text
-                  x={p.x}
-                  y={height}
-                  fill="#64748b"
-                  fontSize="7"
-                  textAnchor="middle"
-                >
-                  {p.shortDate}
-                </text>
+                {labels.value.has(i) && (
+                  <text
+                    x={p.x}
+                    y={p.y - 10}
+                    fill="#94a3b8"
+                    fontSize="9"
+                    textAnchor="middle"
+                    fontWeight="bold"
+                  >
+                    {p.est1RM}
+                  </text>
+                )}
+                {labels.date.has(i) && (
+                  <text
+                    x={p.x}
+                    y={height}
+                    fill="#64748b"
+                    fontSize="8"
+                    textAnchor="middle"
+                  >
+                    {p.shortDate}
+                  </text>
+                )}
               </g>
             ))}
           </svg>
@@ -179,6 +153,7 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
               <TrendingUp size={20} /> Progreso 1RM
             </h2>
             <p className="text-white text-sm font-bold mt-1">{label || exName}</p>
+            {isReference && <p className="text-[11px] text-slate-400 mt-0.5">{REFERENCE_LABEL}</p>}
           </div>
 
           <div className="flex items-center gap-2">
