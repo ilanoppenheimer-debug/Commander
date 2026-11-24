@@ -1,18 +1,14 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   Target,
-  Loader2,
   Info,
-  Flame,
   Link as LinkIcon,
   ChevronDown,
   ChevronUp,
   BarChart2,
   Trash2,
   X,
-  Shield,
   AlertTriangle,
-  Sparkles,
   Check,
   Timer,
   Plus,
@@ -38,14 +34,12 @@ import { TAG_LABELS } from "../constants/blockTemplates";
 
 import InputGroup from "./ui/InputGroup";
 import ToggleSwitch from "./ui/ToggleSwitch";
-import InfoModal from "./ui/InfoModal";
 import Modal from "./ui/Modal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import PostSessionReport from "./PostSessionReport";
 import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
-import { callGeminiAPI } from "../services/aiService";
 import { buildSessionAnalysis } from "../ai/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds } from "../utils/formatters";
@@ -55,7 +49,6 @@ import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
 import { currentEquipment, makeVariantMatcher, variantLabel, offeredImplements } from "../utils/exerciseVariant";
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
-import { requestSessionBriefing } from "../ai/sessionBriefing";
 import { useSessionStore } from "../stores/sessionStore";
 import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
 import { db } from "../db/database";
@@ -354,20 +347,10 @@ export default function ActiveSession({
   const storeFinishEx          = useSessionStore(s => s.finishExercise);
   const storeFinishGroup       = useSessionStore(s => s.finishSupersetGroup);
   const storeToggleSS    = useSessionStore(s => s.toggleSuperset);
-  const storeSetWarmup   = useSessionStore(s => s.setWarmupPlan);
-  const storeSetBriefing = useSessionStore(s => s.setBriefing);
-  const storeSetSubjState= useSessionStore(s => s.setSubjectiveState);
 
   const exercises        = session?.exercises ?? [];
-  const warmupPlan       = session?.warmupPlan ?? null;
-  const briefing         = session?.briefing ?? null;
-  const subjectiveState  = session?.subjectiveState ?? '';
 
   // ── Local UI state (ephemeral, not persisted) ─────────────────────────────
-  const [isAnalyzing,       setIsAnalyzing]       = useState(false);
-  const [isLoadingBriefing, setIsLoadingBriefing] = useState(false);
-  const [briefingError,     setBriefingError]     = useState(null);
-  const [showBriefingInput, setShowBriefingInput] = useState(false);
   const [showExSelector,    setShowExSelector]    = useState(false);
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
@@ -574,61 +557,8 @@ export default function ActiveSession({
     return null;
   };
 
-  const fetchBriefing = async () => {
-    if (exercises.length === 0) { setBriefingError("Agrega ejercicios primero"); return; }
-    setIsLoadingBriefing(true);
-    setBriefingError(null);
-    try {
-      const result = await requestSessionBriefing({
-        sessionName: session?.name,
-        exercises,
-        history,
-        athleteProfile,
-        subjectiveState: subjectiveState.trim() || null,
-      });
-      if (!result) {
-        setBriefingError("Respuesta de IA inválida. Intenta de nuevo.");
-      } else {
-        storeSetBriefing(result);
-        setShowBriefingInput(false);
-      }
-    } catch (err) {
-      setBriefingError(err?.message || "Error al generar briefing");
-    } finally {
-      setIsLoadingBriefing(false);
-    }
-  };
 
-  const applyBriefingSuggestions = () => {
-    if (!briefing?.perExercise || briefing.perExercise.length === 0) return;
-    exercises.forEach((ex) => {
-      const sug = briefing.perExercise.find(
-        (p) => sameExercise(p?.name, ex.name)
-      );
-      if (!sug) return;
-      const w = parseFloat(sug.suggestedWeight) || 0;
-      const r = parseFloat(sug.reps) || 0;
-      if (w <= 0 && r <= 0) return;
-      const sets = Array.isArray(ex.sets) && ex.sets.length > 0 ? [...ex.sets] : [{ weight: 0, reps: 0, rpe: 0, type: "normal" }];
-      sets[0] = { ...sets[0], weight: w || sets[0].weight, reps: r || sets[0].reps };
-      storeUpdateEx(ex.id, { sets });
-    });
-    showNotify?.("Sugerencias aplicadas al primer set", "success");
-  };
 
-  const generateWarmup = async () => {
-    if (exercises.length === 0) { showNotify?.("Agrega ejercicios para generar el calentamiento", "info"); return; }
-    setIsAnalyzing(true);
-    const exerciseList = exercises.map((e) => e?.name || "").join(", ");
-    try {
-      const plan = await callGeminiAPI(`Genera un protocolo de calentamiento (máx 4 puntos) para: ${exerciseList}. Tono militar.`);
-      storeSetWarmup({ title: "Protocolo de Activación", content: plan });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
 
   // `equipment` = the implement the variant should start with (last used -> first offered -> none),
   // chosen by the selector (defaultImplement).
@@ -728,15 +658,6 @@ export default function ActiveSession({
 
   return (
     <div className="animate-fade-in pb-24 pt-4">
-      {warmupPlan && (
-        <InfoModal data={warmupPlan} onClose={() => storeSetWarmup(null)} />
-      )}
-      {isAnalyzing && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Loader2 size={48} className="text-accent-500 animate-spin mb-4" />
-          <p className="text-accent-500 font-mono font-bold animate-pulse">PROCESANDO INTELIGENCIA...</p>
-        </div>
-      )}
 
       {showExSelector && (
         <ExerciseSelectorModal
@@ -789,93 +710,6 @@ export default function ActiveSession({
             </div>
           </div>
         </div>
-        {/* DORMANT (P6): BRIEFING IA and CALENTAMIENTO buttons. Both suggest what to
-        do next (weights/reps/RPE, a warmup plan) — prescribing training, which is the
-        Coach's role, not the app's. Kept, not deleted, in case AI returns with a
-        different role (pattern detection, not proposing workouts).
-        <div className="flex gap-2 border-t border-slate-800 pt-3 flex-wrap">
-          <button
-            onClick={() => setShowBriefingInput((v) => !v)}
-            className="flex items-center gap-2 text-xs font-bold text-accent-400 bg-slate-800 border border-accent-500/40 px-3 py-2 rounded-lg hover:bg-slate-700 hover:border-accent-500 transition"
-          >
-            {isLoadingBriefing ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} BRIEFING IA
-          </button>
-          <button
-            onClick={generateWarmup}
-            className="flex items-center gap-2 text-xs font-bold text-orange-400 bg-slate-800 border border-orange-500/40 px-3 py-2 rounded-lg hover:bg-slate-700 hover:border-orange-500 transition"
-          >
-            <Flame size={14} /> CALENTAMIENTO
-          </button>
-        </div>
-        */}
-
-        {showBriefingInput && !briefing && (
-          <div className="bg-slate-950 border border-accent-500/30 rounded-lg p-3 space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-accent-400">
-              ¿Cómo te sentís hoy? (opcional)
-            </label>
-            <input
-              type="text"
-              value={subjectiveState}
-              onChange={(e) => storeSetSubjState(e.target.value)}
-              placeholder="ej: dormí poco, lumbar cargada…"
-              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
-            />
-            <button
-              onClick={fetchBriefing}
-              disabled={isLoadingBriefing}
-              className="w-full py-2 bg-accent-600 text-black rounded font-bold text-xs uppercase hover:bg-accent-500 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isLoadingBriefing ? <><Loader2 size={14} className="animate-spin" /> Analizando historial…</> : <><Sparkles size={14} /> Generar briefing</>}
-            </button>
-            {briefingError && (
-              <div className="text-[10px] text-red-400 flex items-center gap-1">
-                <AlertTriangle size={10} /> {briefingError}
-              </div>
-            )}
-          </div>
-        )}
-
-        {briefing && (
-          <div className="bg-slate-950 border border-accent-500/40 rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-accent-400 flex items-center gap-1">
-                <Shield size={10} /> Briefing de Misión
-              </span>
-              <button onClick={() => storeSetBriefing(null)} className="text-slate-500 hover:text-white">
-                <X size={12} />
-              </button>
-            </div>
-            {briefing.fatigueWarning && (
-              <div className="bg-orange-900/30 border border-orange-500/40 rounded p-2 text-[11px] text-orange-200 flex items-start gap-2">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                <span>{briefing.fatigueWarning}</span>
-              </div>
-            )}
-            {briefing.generalAdvice && <p className="text-xs text-slate-300 italic">{briefing.generalAdvice}</p>}
-            {Array.isArray(briefing.perExercise) && briefing.perExercise.length > 0 && (
-              <div className="space-y-1">
-                {briefing.perExercise.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between text-[11px] border-b border-slate-800 pb-1 last:border-0">
-                    <div className="flex-1 min-w-0 pr-2">
-                      <div className="text-slate-200 font-medium truncate">{p.name}</div>
-                      {p.note && <div className="text-[9px] text-slate-500 italic truncate">{p.note}</div>}
-                    </div>
-                    <div className="text-accent-400 font-mono shrink-0">
-                      {p.suggestedWeight || 0}{barUnit} × {p.reps || 0} @RPE{p.rpe || "-"}
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={applyBriefingSuggestions}
-                  className="w-full mt-2 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-accent-600 text-black rounded hover:bg-accent-500 transition"
-                >
-                  Aplicar al primer set
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {activeBlocks.length === 0 && (

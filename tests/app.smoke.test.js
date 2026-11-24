@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { oldActiveSession } from './fixtures/oldActiveSession.js';
 
 // Red de seguridad del refactor de App.jsx: monta <App/> entero (Dexie en memoria con fake-indexeddb, jsdom),
 // recorre las 4 pestañas y abre Ajustes. No prueba lógica fina: prueba que cada pantalla monta y responde.
@@ -94,5 +95,31 @@ describe('App monta y navega', () => {
     fireEvent.click(screen.getByText('Entrenamiento Libre'));
     await waitFor(() => expect(screen.getByText('Sesión activa')).toBeTruthy());
     expect(screen.queryByText('Ciclo con el Coach')).toBeNull();
+  });
+
+  it('una activeSession vieja (con warmupPlan / briefing / subjectiveState) se retoma y se puede terminar', async () => {
+    const { setSetting, getSetting } = await import('../src/db/repository.js');
+    const { db } = await import('../src/db/database.js');
+    await setSetting('activeSession', oldActiveSession());
+
+    await mount();
+    await waitFor(() => expect(screen.getByText('Sesión activa')).toBeTruthy());
+    // El flujo de IA ya no existe: ni la tarjeta del briefing, ni el modal de calentamiento, ni el overlay.
+    expect(screen.queryByText(/Briefing de Misión/)).toBeNull();
+    expect(screen.queryByText(/Protocolo de Activación/)).toBeNull();
+    expect(screen.queryByText(/PROCESANDO INTELIGENCIA/)).toBeNull();
+    expect(screen.getAllByText('Sentadilla').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByText('Finalizar Misión'));
+    fireEvent.click(await screen.findByText('Guardar en Historial'));
+
+    await waitFor(async () => expect(await db.history.count()).toBe(1), { timeout: 8000 });
+    const saved = (await db.history.toArray())[0];
+    expect(saved.name).toBe('LEGS');
+    expect(saved.exercises[0].name).toBe('Sentadilla');
+    for (const k of ['warmupPlan', 'briefing', 'subjectiveState']) expect(k in saved, k).toBe(false);
+
+    await waitFor(() => expect(screen.getByText('Ciclo con el Coach')).toBeTruthy());
+    await waitFor(async () => expect(await getSetting('activeSession')).toBeUndefined(), { timeout: 5000 });
   });
 });
