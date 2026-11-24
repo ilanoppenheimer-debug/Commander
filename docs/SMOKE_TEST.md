@@ -38,7 +38,7 @@ Verificación manual post-implementación de la fundación de datos.
 - [ ] **13.** Bug 2: PlateVisualizer no rompe con plates null
 - [ ] **13.** Bug 3: AdvancedTimer cambia entre stopwatch/timer sin estado inconsistente
 - [ ] **13.** Bug 4: ExerciseSelectorModal no muestra duplicados case-sensitive
-- [ ] **13.** Bug 5: sessionBriefing.js parsea JSON con fallback regex
+- [x] **13.** ~~Bug 5: sessionBriefing.js parsea JSON con fallback regex.~~ **Retirado:** el briefing y el calentamiento de IA se eliminaron de la app.
 - [ ] **13.** Bug 6: CSV import valida números con Number.isFinite
 - [ ] **13.** Bug 7: active session persiste correctamente con Zustand+Dexie
 

@@ -69,9 +69,6 @@ export const useSessionStore = create((set, get) => ({
         : [],
       startTime: new Date().toISOString(),
       phaseEnabledExIds: routine?.exercises?.map(e => e.id) ?? [],
-      warmupPlan: null,
-      briefing: null,
-      subjectiveState: '',
     };
     set({ session, volumeHintNonce: get().volumeHintNonce + 1, lastDeleted: null });
     persistToDb(session);
@@ -79,30 +76,6 @@ export const useSessionStore = create((set, get) => ({
 
   updateSession: (updater) => {
     const next = typeof updater === 'function' ? updater(get().session) : updater;
-    set({ session: next });
-    persistToDb(next);
-  },
-
-  setWarmupPlan: (plan) => {
-    const s = get().session;
-    if (!s) return;
-    const next = { ...s, warmupPlan: plan };
-    set({ session: next });
-    persistToDb(next);
-  },
-
-  setBriefing: (briefing) => {
-    const s = get().session;
-    if (!s) return;
-    const next = { ...s, briefing };
-    set({ session: next });
-    persistToDb(next);
-  },
-
-  setSubjectiveState: (text) => {
-    const s = get().session;
-    if (!s) return;
-    const next = { ...s, subjectiveState: text };
     set({ session: next });
     persistToDb(next);
   },

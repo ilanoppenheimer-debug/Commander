@@ -11,14 +11,12 @@ import {
 import { calculatePlates } from "./utils/plateMath";
 import { roundToIncrement, toKg, toLb, formatNum } from "./utils/weightUtils";
 import { getExerciseDetails } from "./features/exerciseMeta.jsx";
-import { buildAthleteProfile } from "./features/athleteProfile/buildAthleteProfile";
 import { DEFAULT_INCREMENTS_BY_EQUIPMENT } from "./components/keypad/keypadConfig";
 import { playTacticalAlarm } from "./services/audioService";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import InputGroup from "./components/ui/InputGroup";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
-import InfoModal from "./components/ui/InfoModal";
 import TrendModal from "./components/modals/TrendModal";
 import { REST_BG_MODES, setBackgroundMode, normalizeBackgroundMode } from "./features/restBackground";
 import { variantLabel } from "./utils/exerciseVariant";
@@ -602,7 +600,6 @@ function AppMain() {
     const block = blocksById.get(s.blockIds[0]);
     return block?.fase ? block.fase.replace(/_/g, ' ') : undefined;
   };
-  const athleteProfile = useMemo(() => buildAthleteProfile(safeHistory), [safeHistory]);
   const isTraining      = session !== null;
 
   const tabs = [
@@ -897,7 +894,6 @@ function AppMain() {
               onFinishMission={handleFinishMission}
               onDiscardSession={() => { storeDiscard(); showNotify("Sesión descartada.", "info"); }}
               history={safeHistory}
-              athleteProfile={athleteProfile}
               customExercises={safeCustomExs}
               addCustomExercise={addCustomExercise}
               removeCustomExercise={removeCustomExercise}
