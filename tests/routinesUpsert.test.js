@@ -55,14 +55,26 @@ describe('saveRoutine: upsert por routineId', () => {
     expect(r[0]).toMatchObject({ _id: row._id, name: 'A renombrada' });
   });
 
-  it('conserva lastPerformed y archived si la entrante no los define; si los define, mandan los nuevos', async () => {
+  it('replace conserva lastPerformed y deja archived = false (reimportar es para usarla)', async () => {
     await saveRoutine({ id: 'a', name: 'A', exercises: [], lastPerformed: '2026-10-01T10:00:00Z', archived: true });
     await saveRoutine({ id: 'a', name: 'A', exercises: ex(2) });
     let [r] = await rows();
-    expect(r).toMatchObject({ lastPerformed: '2026-10-01T10:00:00Z', archived: true });
-    await saveRoutine({ id: 'a', name: 'A', exercises: ex(2), lastPerformed: null, archived: false });
+    expect(r).toMatchObject({ lastPerformed: '2026-10-01T10:00:00Z', archived: false });
+    expect(await rows()).toHaveLength(1);
+    // si la entrante define los campos, mandan los suyos
+    await saveRoutine({ id: 'a', name: 'A', exercises: ex(2), lastPerformed: null, archived: true });
     [r] = await rows();
-    expect(r).toMatchObject({ lastPerformed: null, archived: false });
+    expect(r).toMatchObject({ lastPerformed: null, archived: true });
+  });
+
+  it('archivar / desarchivar desde la lista (con _id) sigue respetando el valor que se manda', async () => {
+    await saveRoutine({ id: 'a', name: 'A', exercises: [] });
+    let [row] = await rows();
+    await saveRoutine({ ...row, archived: true });
+    [row] = await rows();
+    expect(row.archived).toBe(true);
+    await saveRoutine({ ...row, archived: false });
+    expect((await rows())[0].archived).toBe(false);
   });
 
   it('con duplicados ya existentes, actualiza UNA sola fila (la de mayor _id) y no toca las demás', async () => {
