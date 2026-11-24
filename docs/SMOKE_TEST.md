@@ -133,24 +133,34 @@ Verificación manual post-implementación de la fundación de datos.
 
 - [ ] **70.** Tab bar ahora dice "Bloques" en lugar de "Placas". Placas movida a Fuerza → sub-tab.
 - [ ] **71.** Crear bloque Peaking: Bloques → Nuevo bloque → tipo Peaking → tags [main_lift] → Crear y activar. Aparece en activos con barra de progreso.
-- [ ] **72.** BlockBanner en sesión: al tener un bloque activo, iniciar sesión muestra banner con nombre y contador "0/10".
-- [ ] **73.** Banner colapsable: tap expande mostrando todos los bloques activos. Tap de nuevo colapsa.
+- [x] **72.** ~~BlockBanner en sesión.~~ **Retirado:** el banner nunca se mostraba en la sesión y el componente se eliminó. El bloque activo se verifica en Bloques → «Bloques activos» (ítem 71) y en el reporte de sesión: un ejercicio con tag de `aplica_a` lleva «Plan: …» y «Bloque: … (N sesiones)».
+- [x] **73.** ~~Banner colapsable.~~ **Retirado** junto con el ítem 72.
 - [ ] **74.** Tag inline por ejercicio: cada card de ejercicio en sesión muestra su tag (ej: "accessory?") en gris cursiva si no tiene tag asignado.
 - [ ] **75.** Tag picker funciona: tap en tag de ejercicio abre picker, cambiar a "Main Lift" actualiza el label y el dot de color cambia al del bloque Peaking.
 - [ ] **76.** Sin tag = accessory implícito: el label muestra "accessory?" en gris cursiva, con dot gris.
 - [ ] **77.** Placeholder con bloque: ejercicio marcado como Main Lift + bloque Peaking activo + historial → set vacío muestra peso/reps/RPE calculados en gris cursiva.
-- [ ] **78.** Crear segundo bloque paralelo: crear "Hipertrofia" para [accessory, isolation]. Banner muestra "Peaking +1" colapsado.
+- [ ] **78.** Crear segundo bloque paralelo: crear "Hipertrofia" para [accessory, isolation]. Bloques → «Bloques activos» lista los dos bloques.
 - [ ] **79.** Cada ejercicio respeta su bloque: main_lift → placeholder de Peaking, accessory → placeholder de Hipertrofia.
 - [ ] **80.** Finalizar sesión incrementa sessionsLogged: en Bloques tab, el bloque que aplicó muestra +1 en contador.
-- [ ] **81.** Pausar bloque: desde edit, pausar. En sesión siguiente el bloque NO aparece en banner.
-- [ ] **82.** Reanudar bloque: reanudar → vuelve a aparecer en banner.
-- [ ] **83.** Completar bloque: completar → pasa a sección "Completados". El banner no lo muestra más.
+- [ ] **81.** Pausar bloque: desde edit, pausar. El bloque pasa a la sección «Pausados» de Bloques.
+- [ ] **82.** Reanudar bloque: reanudar → vuelve a «Bloques activos».
+- [ ] **83.** Completar bloque: completar → pasa a sección "Completados". Ya no está en «Bloques activos».
 - [ ] **84.** Borrar bloque sin sesiones → eliminado duro. Borrar bloque con sesiones → archivado.
 - [ ] **85.** Migración legacy: si había "fases" en el sistema anterior, aparecen como bloques en "Archivados" (status archived).
-- [ ] **86.** Sin bloques activos: banner muestra "Modo libre · sin bloques activos" con CTA "Crear bloque".
+- [ ] **86.** Sin bloques activos: Bloques muestra «No tenés bloques activos» y el botón «Nuevo bloque».
 - [ ] **87.** Placas en sub-tab Fuerza: ir a Fuerza → sub-tab Placas → ambas calculadoras (Cargar/Sumar) funcionan igual.
 - [ ] **88.** Bloques no rompen sesión: logguear series normales con/sin bloques activos, finalizar. Todo persiste correctamente.
 - [ ] **89.** Performance: lista de Bloques con 5+ bloques carga sin lag visible.
+
+---
+
+## Bloque 13 — Progreso 1RM y holds (nov 2026)
+
+- [ ] **90.** Historial → Tendencias lista solo ejercicios con barra, mancuerna, multipower, landmine, máquina o polea. Peso corporal y ejercicios por tiempo (Plancha, Handstand, Dominadas, Bicicleta…) no aparecen.
+- [ ] **91.** Un ejercicio hecho con más de un implemento aparece una vez por implemento («Curl de Bíceps · barra», «Curl de Bíceps · polea»). Máquina y polea muestran debajo «Referencia de esta máquina».
+- [ ] **92.** Progreso 1RM de un ejercicio con ~30 sesiones: las etiquetas de valor y de fecha no se superponen en un teléfono (~390 px de ancho). Se ven el mejor valor, el último, el primero y el mínimo.
+- [ ] **93.** Una sesión de descarga (RPE < 6) o con sets de más de 12 reps no genera un punto del gráfico. El «Mejor 1RM proyectado» coincide con el «1RM est.» del CONTEXTO PARA COACH.
+- [ ] **94.** Hold por tiempo en curso: minimizar el overlay, borrar (o agregar) una serie anterior del mismo ejercicio. El hold sigue corriendo y el overlay NO se reabre. Recargar la app con el hold en curso sí reabre el overlay.
 
 ---
 

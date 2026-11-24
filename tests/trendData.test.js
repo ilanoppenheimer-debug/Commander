@@ -1,49 +1,91 @@
 import { describe, it, expect } from 'vitest';
-import { trendExerciseCounts, buildTrendPoints, hasTrendableEquipment, pickTrendLabels } from '../src/utils/trendData.js';
+import { trendEntries, trendKind, trendKindFor, buildTrendPoints, hasTrendableEquipment, pickTrendLabels, REFERENCE_LABEL } from '../src/utils/trendData.js';
+import { estimate1RM } from '../src/utils/strengthMath.js';
 import { ex, session, st, setMeta } from './fixtures/builders.js';
 
-// Tendencias → Progreso 1RM. Contrato v1.8.4 §5 y Catálogo 8.2: el 1RM es referencia solo con carga externa
-// comparable (barra, mancuerna, multipower), el mismo criterio que "Enviar al Coach" y el reporte de sesión.
+// Tendencias → Progreso 1RM. Contrato v1.8.4 §5 (reglas del 1RM) y Catálogo 8.2 (máquinas: referencia débil).
+// Comparables: barra, mancuerna, multipower y landmine; máquina y polea como referencia; peso corporal y tiempo, fuera.
 const sess = (date, exercises) => session(`${date}T15:00:00.000Z`, exercises);
 
-describe('trendExerciseCounts — qué ejercicios se listan en Tendencias', () => {
+describe('trendKind — qué se grafica y cómo', () => {
+  it('comparable: barra, mancuerna, multipower y landmine', () => {
+    for (const eq of ['barbell', 'dumbbell', 'smith', 'landmine']) expect(trendKind(eq), eq).toBe('comparable');
+  });
+  it('referencia: máquina y polea', () => {
+    for (const eq of ['machine', 'cable']) expect(trendKind(eq), eq).toBe('reference');
+  });
+  it('fuera: peso corporal, kettlebell, banda, otro y sin implemento', () => {
+    for (const eq of ['bodyweight', 'kettlebell', 'band', 'other', null, undefined]) expect(trendKind(eq), String(eq)).toBeNull();
+  });
+  it('hasTrendableEquipment: por nombre (null) o un implemento que se grafica', () => {
+    for (const eq of [null, undefined, 'barbell', 'dumbbell', 'smith', 'landmine', 'machine', 'cable']) expect(hasTrendableEquipment(eq), String(eq)).toBe(true);
+    for (const eq of ['bodyweight', 'kettlebell', 'band', 'other']) expect(hasTrendableEquipment(eq), eq).toBe(false);
+  });
+  it('la etiqueta visible es corta y fija', () => {
+    expect(REFERENCE_LABEL).toBe('Referencia de esta máquina');
+  });
+});
+
+describe('trendEntries — qué ejercicios se listan en Tendencias', () => {
   const history = [
     sess('2026-06-01', [ex('Press Banca', 'barbell', { sets: [st(100, 5, 8)] }), ex('Elevación de Gemelos', 'machine', { sets: [st(200, 12, 8)] })]),
     sess('2026-06-08', [ex('Press Banca', 'dumbbell', { sets: [st(40, 8, 8)] }), ex('Curl de Bíceps', 'cable', { sets: [st(20, 12, 8)] })]),
     sess('2026-06-15', [ex('Press Banca', 'barbell', { sets: [st(105, 5, 8)] }), ex('Curl de Bíceps', 'barbell', { sets: [st(30, 10, 8)] }),
       ex('Dominadas', 'bodyweight', { sets: [st('', 8, 8)] }), ex('Plancha', 'bodyweight', { sets: [{ type: 'normal', seconds: 40, completed: true }] })]),
   ];
+  const byLabel = (h) => Object.fromEntries(trendEntries(h).map((e) => [e.label, e]));
 
-  it('solo barra, mancuerna y multipower; máquina, polea, peso corporal y tiempo quedan afuera', () => {
-    const names = [...trendExerciseCounts(history).keys()];
-    expect(names).toEqual(['Press Banca', 'Curl de Bíceps']);
-    for (const out of ['Elevación de Gemelos', 'Dominadas', 'Plancha']) expect(names).not.toContain(out);
+  it('máquina y polea vuelven a la lista, marcadas como referencia', () => {
+    const e = byLabel(history);
+    expect(e['Elevación de Gemelos']).toMatchObject({ kind: 'reference', equipment: null, count: 1 });
   });
 
-  it('multipower cuenta', () => {
-    const h = [sess('2026-06-01', [ex('Sentadilla', 'smith', { sets: [st(100, 5, 8)] })])];
-    expect([...trendExerciseCounts(h).keys()]).toEqual(['Sentadilla']);
+  it('peso corporal y ejercicios por tiempo quedan fuera', () => {
+    const labels = Object.keys(byLabel(history));
+    for (const out of ['Dominadas', 'Plancha']) expect(labels).not.toContain(out);
   });
 
-  it('cuenta solo las apariciones comparables (un nombre con polea y barra cuenta la barra)', () => {
-    const counts = trendExerciseCounts(history);
-    expect(counts.get('Press Banca')).toBe(3);
-    expect(counts.get('Curl de Bíceps')).toBe(1);
+  it('un ejercicio de tiempo en máquina (Bicicleta) también queda fuera', () => {
+    const h = [sess('2026-06-01', [ex('Bicicleta', 'machine', { sets: [{ type: 'normal', seconds: 900, completed: true }] })])];
+    expect(trendEntries(h)).toEqual([]);
+  });
+
+  it('landmine es comparable; kettlebell, banda y otro no se listan', () => {
+    const h = [sess('2026-06-01', [
+      ex('Remo Landmine', 'landmine', { sets: [st(40, 10, 8)] }), ex('Sentadilla Goblet', 'kettlebell', { sets: [st(24, 10, 8)] }),
+      ex('Rotación Externa', 'band', { sets: [st(5, 15, 8)] }), ex('Cosa', 'other', { sets: [st(5, 15, 8)] }),
+    ])];
+    expect(trendEntries(h).map((e) => [e.label, e.kind])).toEqual([['Remo Landmine', 'comparable']]);
+  });
+
+  it('un nombre con más de un implemento se separa por implemento: el implemento separa los números', () => {
+    const e = byLabel(history);
+    expect(e['Press Banca · barra']).toMatchObject({ equipment: 'barbell', kind: 'comparable', count: 2 });
+    expect(e['Press Banca · mancuerna']).toMatchObject({ equipment: 'dumbbell', kind: 'comparable', count: 1 });
+    expect(e['Curl de Bíceps · polea']).toMatchObject({ equipment: 'cable', kind: 'reference', count: 1 });
+    expect(e['Curl de Bíceps · barra']).toMatchObject({ equipment: 'barbell', kind: 'comparable', count: 1 });
+    expect(e['Press Banca']).toBeUndefined();
+  });
+
+  it('un nombre con un solo implemento sale a secas y "por nombre" (equipment null)', () => {
+    const h = [sess('2026-06-01', [ex('Sentadilla', 'barbell', { sets: [st(100, 5, 8)] })])];
+    expect(trendEntries(h)).toEqual([{ key: 'sentadilla|', name: 'Sentadilla', equipment: null, label: 'Sentadilla', kind: 'comparable', count: 1 }]);
+  });
+
+  it('un implemento que no se grafica no cuenta para decidir si el nombre se separa', () => {
+    const h = [sess('2026-06-01', [ex('Hip Thrust', 'barbell', { sets: [st(100, 8, 8)] })]), sess('2026-06-08', [ex('Hip Thrust', 'bodyweight', { sets: [st('', 15, 8)] })])];
+    expect(trendEntries(h).map((e) => [e.label, e.count])).toEqual([['Hip Thrust', 1]]);
   });
 
   it('ordena de más a menos frecuente', () => {
-    expect([...trendExerciseCounts(history).values()]).toEqual([3, 1]);
-  });
-
-  it('un ejercicio solo de máquina no se lista aunque tenga muchas sesiones', () => {
-    const h = Array.from({ length: 5 }, (_, i) => sess(`2026-06-0${i + 1}`, [ex('Prensa de Piernas', 'machine', { sets: [st(200, 10, 8)] })]));
-    expect(trendExerciseCounts(h).size).toBe(0);
+    const counts = trendEntries(history).map((e) => e.count);
+    expect(counts).toEqual([...counts].sort((a, b) => b - a));
   });
 
   it('un registro sin implemento resuelve por la metadata del ejercicio; sin nada, no se adivina', () => {
     setMeta('Remo con Barra', { equipment: 'barbell' });
     const h = [sess('2026-06-01', [ex('Remo con Barra', null, { sets: [st(80, 8, 8)] }), ex('Ejercicio Raro', null, { sets: [st(50, 8, 8)] })])];
-    expect([...trendExerciseCounts(h).keys()]).toEqual(['Remo con Barra']);
+    expect(trendEntries(h).map((e) => e.label)).toEqual(['Remo con Barra']);
   });
 
   it('las grafías del mismo ejercicio se suman y se imprime la de la sesión más reciente', () => {
@@ -51,74 +93,96 @@ describe('trendExerciseCounts — qué ejercicios se listan en Tendencias', () =
       sess('2026-06-01', [ex('press banca', 'barbell', { sets: [st(100, 5, 8)] })]),
       sess('2026-06-08', [ex('Press Banca', 'barbell', { sets: [st(100, 5, 8)] })]),
     ];
-    expect([...trendExerciseCounts(h)]).toEqual([['Press Banca', 2]]);
+    expect(trendEntries(h).map((e) => [e.label, e.count])).toEqual([['Press Banca', 2]]);
   });
 
   it('historial vacío o inválido', () => {
-    expect(trendExerciseCounts([]).size).toBe(0);
-    expect(trendExerciseCounts(undefined).size).toBe(0);
-    expect(trendExerciseCounts([{ exercises: [null, {}] }]).size).toBe(0);
+    expect(trendEntries([])).toEqual([]);
+    expect(trendEntries(undefined)).toEqual([]);
+    expect(trendEntries([{ exercises: [null, {}] }])).toEqual([]);
   });
 });
 
-describe('buildTrendPoints — los puntos del gráfico', () => {
-  it('un punto por sesión, el mejor 1RM estimado (Epley con reserva de RPE) y el peso máximo, de la más vieja a la más nueva', () => {
-    const h = [
-      sess('2026-06-15', [ex('Press Banca', 'barbell', { sets: [st(105, 5, 8)] })]),
-      sess('2026-06-01', [ex('Press Banca', 'barbell', { sets: [st(100, 5, 8), st(90, 8, 7)] })]),
-    ];
+describe('buildTrendPoints — los puntos del gráfico siguen las reglas de §5', () => {
+  const press = (date, sets, eq = 'barbell') => sess(date, [ex('Press Banca', eq, { sets })]);
+
+  it('un punto por sesión: el mejor 1RM estimado con la tabla RPE (el mismo cálculo que el CONTEXTO), de la más vieja a la más nueva', () => {
+    const h = [press('2026-06-15', [st(105, 5, 8)]), press('2026-06-01', [st(100, 5, 8), st(90, 8, 7)])];
     const p = buildTrendPoints('Press Banca', 'barbell', h);
     expect(p).toHaveLength(2);
     expect(p[0].date < p[1].date).toBe(true);
-    expect(p[0].est1RM).toBeCloseTo(100 * (1 + 7 / 30), 2); // 100 × 5 @ 8 → 5 + 2 reps
+    expect(p[0].est1RM).toBeCloseTo(100 / 0.84, 2); // tabla RTS: 5 reps @ RPE 8 = 84 %
     expect(p[0].topWeight).toBe(100);
-    expect(p[1].est1RM).toBeCloseTo(105 * (1 + 7 / 30), 2);
+    expect(p[1].est1RM).toBeCloseTo(105 / 0.84, 2);
   });
 
-  it('sin implemento pedido, grafica solo las apariciones comparables: la polea no se mezcla con la barra', () => {
+  it('coincide con estimate1RM: el valor del gráfico es el del CONTEXTO', () => {
+    const p = buildTrendPoints('Press Banca', 'barbell', [press('2026-06-01', [st(143, 3, 7.5)])]);
+    expect(p[0].est1RM).toBeCloseTo(estimate1RM(143, 3, 7.5), 2);
+  });
+
+  it('un set de descarga a RPE 5 no entra: la sesión de descarga no da punto (el valle falso)', () => {
+    const h = [press('2026-05-14', [st(245, 1, 9)]), press('2026-05-20', [st(130, 5, 5), st(130, 3, 5)]), press('2026-05-27', [st(240, 2, 9)])];
+    expect(buildTrendPoints('Press Banca', 'barbell', h)).toHaveLength(2);
+  });
+
+  it('warmup, drop, incompletos, más de 12 reps y peso 0 no entran', () => {
+    const h = [press('2026-06-01', [
+      st(100, 5, 8),
+      st(100, 5, 8, { type: 'warmup' }), st(100, 5, 8, { type: 'drop' }), st(100, 5, 8, { completed: false }),
+      st(100, 15, 8), st(0, 5, 8),
+    ])];
+    const p = buildTrendPoints('Press Banca', 'barbell', h);
+    expect(p).toHaveLength(1);
+    expect(p[0].est1RM).toBeCloseTo(100 / 0.84, 2);
+    expect(p[0].topWeight).toBe(100);
+  });
+
+  it('un set liviano (< 50 % del máximo del ejercicio en la ventana) no entra', () => {
+    const h = [press('2026-06-01', [st(100, 5, 8), st(40, 10, 8)])];
+    expect(buildTrendPoints('Press Banca', 'barbell', h)[0].topWeight).toBe(100);
+  });
+
+  it('el 50 % se mide contra la ventana de 12 semanas que termina en esa sesión', () => {
+    const h = [press('2026-01-05', [st(200, 3, 8)]), press('2026-06-01', [st(90, 5, 8)])]; // el 200 queda 21 semanas atrás
+    expect(buildTrendPoints('Press Banca', 'barbell', h)).toHaveLength(2);
+  });
+
+  it('con implemento pedido, solo ese; sin implemento y un nombre con barra y polea, grafica la barra (otra escala)', () => {
     const h = [
       sess('2026-06-01', [ex('Curl de Bíceps', 'barbell', { sets: [st(30, 10, 8)] })]),
       sess('2026-06-08', [ex('Curl de Bíceps', 'cable', { sets: [st(60, 10, 8)] })]),
     ];
-    const p = buildTrendPoints('Curl de Bíceps', null, h);
-    expect(p).toHaveLength(1);
-    expect(p[0].topWeight).toBe(30);
+    expect(buildTrendPoints('Curl de Bíceps', null, h).map((p) => p.topWeight)).toEqual([30]);
+    expect(buildTrendPoints('Curl de Bíceps', 'cable', h).map((p) => p.topWeight)).toEqual([60]);
   });
 
-  it('con implemento pedido, solo ese', () => {
-    const h = [
-      sess('2026-06-01', [ex('Press Banca', 'barbell', { sets: [st(100, 5, 8)] })]),
-      sess('2026-06-08', [ex('Press Banca', 'dumbbell', { sets: [st(40, 8, 8)] })]),
-    ];
-    expect(buildTrendPoints('Press Banca', 'dumbbell', h)).toHaveLength(1);
-    expect(buildTrendPoints('Press Banca', 'dumbbell', h)[0].topWeight).toBe(40);
+  it('máquina y polea se grafican (referencia de esa máquina)', () => {
+    const h = [press('2026-06-01', [st(200, 12, 8)], 'machine'), press('2026-06-08', [st(210, 12, 8)], 'machine')];
+    const p = buildTrendPoints('Press Banca', null, h);
+    expect(p).toHaveLength(2);
+    expect(trendKindFor('Press Banca', null, h)).toBe('reference');
   });
 
-  it('un ejercicio de máquina no tiene puntos (el caso del outlier de Elevación de Gemelos)', () => {
-    const h = [
-      sess('2026-06-01', [ex('Elevación de Gemelos', 'machine', { sets: [st(200, 12, 8)] })]),
-      sess('2026-06-08', [ex('Elevación de Gemelos', 'machine', { sets: [st(210, 12, 8)] })]),
-    ];
-    expect(buildTrendPoints('Elevación de Gemelos', null, h)).toEqual([]);
-    expect(buildTrendPoints('Elevación de Gemelos', 'machine', h)).toEqual([]);
+  it('peso corporal y tiempo no tienen puntos', () => {
+    const bw = [sess('2026-06-01', [ex('Dominadas', 'bodyweight', { sets: [st(10, 6, 8)] })])];
+    expect(buildTrendPoints('Dominadas', null, bw)).toEqual([]);
+    const timed = [sess('2026-06-01', [ex('Bicicleta', 'machine', { sets: [st(10, 6, 8)] })])];
+    expect(buildTrendPoints('Bicicleta', null, timed)).toEqual([]);
   });
 
-  it('sets sin peso o sin repeticiones no cuentan; una sesión sin datos no da punto', () => {
-    const h = [sess('2026-06-01', [ex('Press Banca', 'barbell', { sets: [st('', 5, 8), st(100, '', 8)] })])];
-    expect(buildTrendPoints('Press Banca', 'barbell', h)).toEqual([]);
+  it('trendKindFor: comparable si hay alguna aparición comparable; null sin datos', () => {
+    const h = [press('2026-06-01', [st(100, 5, 8)], 'barbell'), press('2026-06-08', [st(60, 10, 8)], 'cable')];
+    expect(trendKindFor('Press Banca', null, h)).toBe('comparable');
+    expect(trendKindFor('Press Banca', 'cable', h)).toBe('reference');
+    expect(trendKindFor('Sentadilla', null, h)).toBeNull();
+    expect(trendKindFor('', null, undefined)).toBeNull();
   });
 
   it('entradas inválidas no rompen', () => {
     expect(buildTrendPoints('', null, [])).toEqual([]);
     expect(buildTrendPoints('Press Banca', null, undefined)).toEqual([]);
     expect(buildTrendPoints('Press Banca', null, [null, {}, { exercises: [null] }])).toEqual([]);
-  });
-});
-
-describe('hasTrendableEquipment', () => {
-  it('barra, mancuerna, multipower y "por nombre" sí; máquina, polea, peso corporal, kettlebell, landmine y banda no', () => {
-    for (const eq of [null, undefined, 'barbell', 'dumbbell', 'smith']) expect(hasTrendableEquipment(eq), String(eq)).toBe(true);
-    for (const eq of ['machine', 'cable', 'bodyweight', 'kettlebell', 'landmine', 'band', 'other']) expect(hasTrendableEquipment(eq), eq).toBe(false);
   });
 });
 

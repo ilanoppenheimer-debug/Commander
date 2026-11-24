@@ -32,7 +32,7 @@ import { BlocksTab } from "./components/blocks/BlocksTab";
 import { getActiveBlocks } from "./db/blocks";
 import { resolveExerciseTag } from "./utils/blockReport";
 import { sameExercise, buildDisplayNameIndex } from "./utils/exerciseName";
-import { trendExerciseCounts } from "./utils/trendData";
+import { trendEntries, REFERENCE_LABEL } from "./utils/trendData";
 import { BlockReportModal } from "./components/blocks/BlockReportModal";
 import ActiveSession from "./components/ActiveSession";
 import ErrorFallback from "./components/ErrorFallback";
@@ -1383,15 +1383,19 @@ function AppMain() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {(() => {
-                      const counts = trendExerciseCounts(safeHistory);
-                      if (counts.size === 0) return <div className="col-span-full text-center py-10 text-slate-500 text-sm">Todavía no hay ejercicios con barra, mancuerna o multipower: el 1RM solo se estima con carga comparable.</div>;
-                      return [...counts.entries()].map(([name, count]) => {
+                      const entries = trendEntries(safeHistory);
+                      if (entries.length === 0) return <div className="col-span-full text-center py-10 text-slate-500 text-sm">Todavía no hay ejercicios con barra, mancuerna, multipower, landmine, máquina o polea. El peso corporal y los ejercicios por tiempo no tienen Progreso 1RM por ahora.</div>;
+                      return entries.map((entry) => {
+                        const { name, label, kind, count } = entry;
                         const details = getExerciseDetails(name);
                         return (
-                          <div key={name} onClick={() => { setTrendEquipment(null); setTrendExercise(name); }} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
+                          <div key={entry.key} onClick={() => { setTrendEquipment(entry.equipment); setTrendExercise(name); }} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 cursor-pointer hover:border-purple-500 hover:bg-slate-750 transition group">
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-lg border ${details.bg} ${details.border} ${details.color}`}>{details.icon}</div>
-                              <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{name}</span>
+                              <div>
+                                <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{label}</span>
+                                {kind === 'reference' && <span className="block text-[10px] text-slate-500">{REFERENCE_LABEL}</span>}
+                              </div>
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] text-purple-400 font-bold bg-purple-900/20 border border-purple-500/20 px-2 py-1 rounded-lg">{count} sesiones</span>

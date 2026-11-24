@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { X, TrendingUp, Share2 } from "lucide-react";
 import Modal from "../ui/Modal";
-import { buildTrendPoints, hasTrendableEquipment, pickTrendLabels } from "../../utils/trendData";
+import { buildTrendPoints, hasTrendableEquipment, pickTrendLabels, trendKindFor, REFERENCE_LABEL } from "../../utils/trendData";
 import { sendExerciseToCoach, SEND_TO_COACH_MESSAGES } from "../../utils/exerciseHistoryLines";
 
 // equipment (optional): variant to chart; null/absent = by name only (all implements).
@@ -16,10 +16,15 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
     setFeedback(msg);
     setTimeout(() => setFeedback(null), 3000);
   };
-  // 1RM only where the load is external and comparable (barbell / dumbbell / smith), as in "Enviar al Coach".
+  // Barbell / dumbbell / smith / landmine are comparable; machine and cable are a reference for that machine only
+  // (labelled); bodyweight and timed exercises are not charted here.
   const trendable = hasTrendableEquipment(equipment);
   const chartData = useMemo(
     () => (trendable ? buildTrendPoints(exName, equipment, history) : []),
+    [history, exName, equipment, trendable]
+  );
+  const isReference = useMemo(
+    () => trendable && trendKindFor(exName, equipment, history) === 'reference',
     [history, exName, equipment, trendable]
   );
 
@@ -27,7 +32,7 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
     if (!trendable) {
       return (
         <div className="h-48 flex items-center justify-center text-center text-slate-500 text-sm italic px-4">
-          El 1RM solo se estima con barra, mancuerna o multipower: con máquina o polea el peso no es comparable.
+          Peso corporal y ejercicios por tiempo: por ahora sin Progreso 1RM.
         </div>
       );
     }
@@ -148,6 +153,7 @@ const TrendModal = ({ exName, equipment = null, label, history, barUnit, onClose
               <TrendingUp size={20} /> Progreso 1RM
             </h2>
             <p className="text-white text-sm font-bold mt-1">{label || exName}</p>
+            {isReference && <p className="text-[11px] text-slate-400 mt-0.5">{REFERENCE_LABEL}</p>}
           </div>
 
           <div className="flex items-center gap-2">
