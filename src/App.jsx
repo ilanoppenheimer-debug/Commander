@@ -27,8 +27,7 @@ import ReverseCalculator from "./components/ReverseCalculator";
 import StrengthCalculator from "./components/StrengthCalculator";
 import { BlocksTab } from "./components/blocks/BlocksTab";
 import { getActiveBlocks } from "./db/blocks";
-import { resolveExerciseTag } from "./utils/blockReport";
-import { sameExercise, buildDisplayNameIndex } from "./utils/exerciseName";
+import { buildDisplayNameIndex } from "./utils/exerciseName";
 import { trendEntries, REFERENCE_LABEL } from "./utils/trendData";
 import { BlockReportModal } from "./components/blocks/BlockReportModal";
 import ActiveSession from "./components/ActiveSession";
@@ -52,7 +51,12 @@ import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
 import CoachContextModal from "./components/import/CoachContextModal";
 import { getSessionTypeBreakdown } from "./utils/routineImport/contextGenerator";
-import { closeLastExercise } from "./utils/closeLastExercise";
+import { countSessionSets } from "./utils/sessionStats";
+import { getSessionFase } from "./utils/sessionFase";
+import { filterAndSortHistory } from "./utils/historyFilter";
+import { nextCopyName } from "./utils/routineNaming";
+import { attributeBlocks, buildCompletedSession } from "./utils/sessionCompletion";
+import { DURATION_ALARM_THRESHOLD_SEC } from "./constants/sessionConstants";
 import { BlockColorDot } from "./components/blocks/BlockColorDot";
 import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
@@ -345,8 +349,6 @@ const FullSettingsModal = ({
   );
 };
 
-const DURATION_ALARM_THRESHOLD_SEC = 14400; // 4h — well above the longest real session (~90min)
-
 const DurationAlarmModal = ({ durationSec, onKeepAsIs, onDiscardDuration, onCorrect, onCancel }) => {
   const [correcting, setCorrecting] = useState(false);
   const [minutes, setMinutes] = useState('');
@@ -405,18 +407,6 @@ const DurationAlarmModal = ({ durationSec, onKeepAsIs, onDiscardDuration, onCorr
       </div>
     </Modal>
   );
-};
-
-// Counts sets that actually happened (completed, or has real reps/weight typed) —
-// same criterion the session export already uses. Pure, no side effects.
-const countSessionSets = (session) => {
-  let n = 0;
-  for (const ex of (session?.exercises || [])) {
-    for (const s of (ex?.sets || [])) {
-      if (s?.completed || parseFloat(s?.reps) > 0 || parseFloat(s?.weight) > 0) n++;
-    }
-  }
-  return n;
 };
 
 function AppMain() {
@@ -591,15 +581,6 @@ function AppMain() {
     (Array.isArray(dbAllBlocks) ? dbAllBlocks : []).filter(Boolean).forEach(b => map.set(b.id, b));
     return map;
   }, [dbAllBlocks]);
-  // Same transform App.jsx already uses to display a block's fase (the active-blocks
-  // summary card, "Sesiones por tipo" section) — snake_case field, spaced for display.
-  // Only resolved when a session's blockIds names exactly one block: 0 means nothing to
-  // show, 2+ means picking one would be an arbitrary guess, neither is "the" fase.
-  const getSessionFase = (s) => {
-    if (!Array.isArray(s?.blockIds) || s.blockIds.length !== 1) return undefined;
-    const block = blocksById.get(s.blockIds[0]);
-    return block?.fase ? block.fase.replace(/_/g, ' ') : undefined;
-  };
   const isTraining      = session !== null;
 
   const tabs = [
@@ -684,39 +665,10 @@ function AppMain() {
     let matchedBlocks = [];
     let untaggedCount = 0;
     try {
-      const activeBlocks = await getActiveBlocks();
-      if (activeBlocks.length > 0) {
-        // No tag → no vote (an untagged exercise shouldn't orphan from its real block or
-        // cross-contaminate an unrelated parallel one). Resolution order is ex.tag (the
-        // import-time snapshot) first, live metadata as fallback — same precedence
-        // blockReport.js's resolveExerciseTag uses for display, so what gets attributed
-        // here agrees with what the report later shows. Previously this read metadata
-        // only, so an exercise whose name changed after import (global metadata lost,
-        // snapshot intact) silently stopped counting and stopped voting.
-        const exerciseTags = safeFinalExercises.map(ex => resolveExerciseTag(ex));
-        untaggedCount = exerciseTags.filter(t => !t).length;
-        const sessionTags = new Set(exerciseTags.filter(Boolean));
-        matchedBlocks = activeBlocks.filter(b =>
-          (b.appliesTo || []).some(t => sessionTags.has(t))
-        );
-        blockIds = matchedBlocks.map(b => b.id);
-      }
+      ({ blockIds, matchedBlocks, untaggedCount } = attributeBlocks(await getActiveBlocks(), safeFinalExercises));
     } catch { /* non-blocking — blockIds stays [] */ }
 
-    const completedAt = new Date().toISOString();
-    const completedSession = {
-      historyId: `hist-${Date.now()}`,
-      name: sessionName || 'Entrenamiento Libre',
-      completedAt,
-      ...(session?.startTime ? {
-        startTime: session.startTime,
-        durationSec: Math.round((Date.now() - new Date(session.startTime).getTime()) / 1000),
-      } : {}),
-      exercises: closeLastExercise(safeFinalExercises, completedAt), // the last exercise/group closes with the session
-      routineId: session?.routineId ?? null,
-      blockIds,
-      sessionNum: session?.sessionNum ?? null,
-    };
+    const completedSession = buildCompletedSession({ sessionName, exercises: safeFinalExercises, session, blockIds });
 
     const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount };
 
@@ -771,19 +723,7 @@ function AppMain() {
 
   const duplicateRoutine = async (e, routine) => {
     e.stopPropagation();
-    const baseName = (routine.name || 'Rutina').replace(/\s*\(copia(\s*\d+)?\)\s*$/i, '');
-    const esc = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^${esc}\\s*\\(copia(\\s*\\d+)?\\)\\s*$`, 'i');
-    let maxNum = 0;
-    for (const r of safeRoutines) {
-      if (r.name === `${baseName} (copia)`) maxNum = Math.max(maxNum, 1);
-      const m = (r.name || '').match(regex);
-      if (m && m[1]) {
-        const n = parseInt(m[1].trim(), 10);
-        if (!isNaN(n)) maxNum = Math.max(maxNum, n);
-      }
-    }
-    const newName = maxNum === 0 ? `${baseName} (copia)` : `${baseName} (copia ${maxNum + 1})`;
+    const newName = nextCopyName(routine.name, safeRoutines);
     const newRoutine = {
       ...routine,
       id: `routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1175,23 +1115,8 @@ function AppMain() {
 
         {activeTab === 'history' && (() => {
           // ── Filter + sort pipeline (memoized via IIFE — fine for ~300 items) ──
-          const periodMs = { week: 7, month: 30, '3m': 90, '6m': 180, year: 365 };
-          const now = Date.now();
-          const filtered = safeHistory.filter(h => {
-            if (historySearch && !((h.name || '').toLowerCase().includes(historySearch.toLowerCase()))) return false;
-            if (historyExFilter && !((h.exercises || []).some(ex => sameExercise(ex?.name, historyExFilter)))) return false;
-            if (historyPeriod !== 'all') {
-              const days = periodMs[historyPeriod];
-              if (days && h.completedAt && (now - new Date(h.completedAt).getTime()) > days * 86400000) return false;
-            }
-            return true;
-          }).slice().sort((a, b) => {
-            if (historySort === 'oldest') return new Date(a.completedAt) - new Date(b.completedAt);
-            if (historySort === 'volume') {
-              const vol = h => (h.exercises || []).reduce((s, ex) => s + (ex?.sets || []).reduce((s2, set) => s2 + (set.weight || 0) * (set.reps || 0), 0), 0);
-              return vol(b) - vol(a);
-            }
-            return new Date(b.completedAt) - new Date(a.completedAt);
+          const filtered = filterAndSortHistory(safeHistory, {
+            search: historySearch, exFilter: historyExFilter, period: historyPeriod, sort: historySort,
           });
 
           const allExNames = [...buildDisplayNameIndex(safeHistory).values()].sort();
@@ -1292,7 +1217,7 @@ function AppMain() {
                         <SessionCard
                           key={h.historyId || h._id}
                           session={h}
-                          fase={getSessionFase(h)}
+                          fase={getSessionFase(h, blocksById)}
                           barUnit={barUnit}
                           onClick={setDetailSession}
                           onEdit={setEditingSession}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findPRs } from '../src/ai/sessionAnalysis.js';
+import { findPRs } from '../src/utils/sessionAnalysis.js';
 import { ex, session, st } from './fixtures/builders.js';
 
 // Análisis post-sesión: el récord de 1RM solo con carga comparable (isComparable1RMEquipment: barra, mancuerna,
