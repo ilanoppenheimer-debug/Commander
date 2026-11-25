@@ -138,4 +138,47 @@ describe('App monta y navega', () => {
     const names = (await db.routines.orderBy('_id').toArray()).map((r) => r.name);
     expect(names).toEqual(['DL (Plantilla)', 'DL (Plantilla) (copia)', 'DL (Plantilla) (copia 2)']);
   });
+  it('iniciar desde una plantilla con finishedAt viejo: el ejercicio arranca abierto (sin minutos negativos) y "Finalizar ejercicio" cierra al primer toque', async () => {
+    const { saveRoutine } = await import('../src/db/repository.js');
+    await saveRoutine({
+      id: 'r-acc', name: 'ACCESORIOS', lastPerformed: null,
+      exercises: [{ id: 'e1', name: 'Curl Martillo', equipment: 'dumbbell', finishedAt: '2026-10-12T17:10:14.452Z',
+        sets: [{ id: 's1', type: 'normal', weight: 0, reps: 0, rpe: '8', completed: true, seconds: '30' }] }],
+    });
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    await waitFor(() => expect(screen.getByText('ACCESORIOS')).toBeTruthy());
+    fireEvent.click(screen.getByTitle('Iniciar rutina'));
+    await waitFor(() => expect(screen.getByText('Sesión activa')).toBeTruthy());
+    expect(screen.queryByText(/-\d+\s*min/i)).toBeNull();
+    const btn = await screen.findByRole('button', { name: /Finalizar ejercicio/i });
+    fireEvent.click(btn);
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Finalizar ejercicio/i })).toBeNull());
+    expect(screen.getByText(/^\d+ min$/)).toBeTruthy();
+  });
+
+  it('"Guardar como plantilla" no guarda campos de runtime (finishedAt, rpe registrado, seconds, exerciseNotes)', async () => {
+    const { db } = await import('../src/db/database.js');
+    const { setSetting } = await import('../src/db/repository.js');
+    const sesion = oldActiveSession();
+    sesion.exercises[0].finishedAt = '2026-11-25T15:10:00.000Z';
+    sesion.exercises[0].exerciseNotes = 'nota del atleta';
+    sesion.exercises[0].sets[0] = { ...sesion.exercises[0].sets[0], rpe: '9', seconds: '30', companionValue: '2' };
+    await setSetting('activeSession', sesion);
+    await mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Finalizar Misión/i }));
+    fireEvent.click(await screen.findByRole('switch').catch(() => screen.getByText(/Guardar como Plantilla/)));
+    fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.routines.count()).toBe(1));
+    const tpl = (await db.routines.toArray())[0];
+    const e = tpl.exercises[0];
+    expect('finishedAt' in e).toBe(false);
+    expect('exerciseNotes' in e).toBe(false);
+    for (const x of e.sets) {
+      expect(x.completed).toBe(false);
+      expect(x.rpe).toBe('');
+      expect('seconds' in x).toBe(false);
+      expect('companionValue' in x).toBe(false);
+    }
+  });
 });

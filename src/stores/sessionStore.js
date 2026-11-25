@@ -1,3 +1,4 @@
+import { stripRuntimeFields } from '../utils/runtimeFields';
 import { create } from 'zustand';
 import { setSetting, deleteSetting } from '../db/repository';
 import { SET_TYPES } from '../constants/gymConstants';
@@ -61,11 +62,11 @@ export const useSessionStore = create((set, get) => ({
       // routines imported before this existed need no re-import. Warm-up text stays out.
       contextNotes: routine?.contextNotes || '',
       closingNotes: routine?.closingNotes || '',
+      // Sin campos de runtime (finishedAt, rpe registrado, seconds…): una plantilla guardada desde una sesión
+      // anterior los trae, y sin limpiarlos el ejercicio arranca "cerrado" con minutos negativos.
+      // En una rutina importada el rpe es el del Coach y se conserva.
       exercises: routine?.exercises
-        ? JSON.parse(JSON.stringify(routine.exercises)).map(ex => ({
-            ...ex,
-            sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({ ...s, completed: false })) : ex.sets,
-          }))
+        ? stripRuntimeFields(JSON.parse(JSON.stringify(routine.exercises)), { keepRpe: !!routine.isImported })
         : [],
       startTime: new Date().toISOString(),
       phaseEnabledExIds: routine?.exercises?.map(e => e.id) ?? [],

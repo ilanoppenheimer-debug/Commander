@@ -55,6 +55,7 @@ import { countSessionSets } from "./utils/sessionStats";
 import { getSessionFase } from "./utils/sessionFase";
 import { filterAndSortHistory } from "./utils/historyFilter";
 import { buildRoutineClone } from "./utils/routineNaming";
+import { stripRuntimeFields } from "./utils/runtimeFields";
 import { attributeBlocks, buildCompletedSession } from "./utils/sessionCompletion";
 import { DURATION_ALARM_THRESHOLD_SEC } from "./constants/sessionConstants";
 import { BlockColorDot } from "./components/blocks/BlockColorDot";
@@ -620,7 +621,7 @@ function AppMain() {
         id: `routine-${Date.now()}`,
         name: sessionName || 'Nueva Plantilla',
         lastPerformed: new Date().toISOString(),
-        exercises: safeFinalExercises.map(ex => ({
+        exercises: stripRuntimeFields(safeFinalExercises).map(ex => ({
           ...ex,
           sets: Array.isArray(ex?.sets) ? ex.sets.map(s => ({ ...s, weight: 0, reps: 0 })) : [],
         })),
