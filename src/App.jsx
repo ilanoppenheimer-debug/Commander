@@ -54,7 +54,7 @@ import { getSessionTypeBreakdown } from "./utils/routineImport/contextGenerator"
 import { countSessionSets } from "./utils/sessionStats";
 import { getSessionFase } from "./utils/sessionFase";
 import { filterAndSortHistory } from "./utils/historyFilter";
-import { nextCopyName } from "./utils/routineNaming";
+import { buildRoutineClone } from "./utils/routineNaming";
 import { attributeBlocks, buildCompletedSession } from "./utils/sessionCompletion";
 import { DURATION_ALARM_THRESHOLD_SEC } from "./constants/sessionConstants";
 import { BlockColorDot } from "./components/blocks/BlockColorDot";
@@ -723,14 +723,10 @@ function AppMain() {
 
   const duplicateRoutine = async (e, routine) => {
     e.stopPropagation();
-    const newName = nextCopyName(routine.name, safeRoutines);
-    const newRoutine = {
-      ...routine,
+    const newRoutine = buildRoutineClone(routine, safeRoutines, {
       id: `routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: newName,
-      lastPerformed: null,
-      createdAt: new Date().toISOString(),
-    };
+      now: new Date().toISOString(),
+    });
     await saveRoutine(newRoutine);
     showNotify("Plantilla Clonada", "success");
   };

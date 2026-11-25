@@ -14,15 +14,37 @@ export const getAllHistory = () =>
   db.history.orderBy('completedAt').reverse().toArray();
 
 // ── Routines ───────────────────────────────────────────────────────────────
-export const saveRoutine = (routine) => {
-  const now = new Date().toISOString();
-  return db.routines.put({
-    ...routine,
-    routineId: routine.id,
-    updatedAt: now,
-    createdAt: routine.createdAt || now,
+// `routines` tiene clave autoincremental (_id) e índice NO único en routineId, así que un `put` sin _id
+// siempre INSERTA. Para que guardar una rutina con un id que ya existe (import en modo "replace") la
+// ACTUALICE en vez de agregar otra fila, se busca por routineId y se reutiliza su _id.
+//  - Si la rutina trae _id (viene de la lista y se edita), manda ese: se actualiza esa fila.
+//  - Si no trae _id y ya hay fila(s) con ese routineId, se actualiza una sola (la de mayor _id): no se tocan
+//    las demás. Los duplicados que ya existan en la base se resuelven aparte, no acá.
+//  - lastPerformed se conserva de la fila existente cuando la rutina entrante no lo define (un replace no debe
+//    borrar cuándo la hiciste). archived queda en false salvo que la entrante diga otra cosa: reimportar una
+//    rutina es para usarla, así que una archivada vuelve a la lista activa.
+export const saveRoutine = (routine) =>
+  db.transaction('rw', db.routines, async () => {
+    const now = new Date().toISOString();
+    let existing = null;
+    if (routine._id == null && routine.id != null) {
+      const rows = await db.routines.where('routineId').equals(routine.id).toArray();
+      existing = rows.reduce((best, r) => (!best || r._id > best._id ? r : best), null);
+    }
+    const row = { ...routine };
+    if (existing) {
+      row._id = existing._id;
+      if (row.lastPerformed === undefined && existing.lastPerformed !== undefined) row.lastPerformed = existing.lastPerformed;
+      // Reimportar es para usarla: la fila vuelve a quedar activa aunque estuviera archivada.
+      if (row.archived === undefined) row.archived = false;
+    }
+    return db.routines.put({
+      ...row,
+      routineId: routine.id,
+      updatedAt: now,
+      createdAt: routine.createdAt || now,
+    });
   });
-};
 
 export const deleteRoutine = (routineId) =>
   db.routines.where('routineId').equals(routineId).delete();
