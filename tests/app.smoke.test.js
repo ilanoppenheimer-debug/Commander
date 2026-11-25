@@ -181,4 +181,38 @@ describe('App monta y navega', () => {
       expect('companionValue' in x).toBe(false);
     }
   });
+  it('Datos: el panel de plantillas duplicadas muestra el dry-run, exige backup, ordena y se oculta', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd([
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-10-09T00:00:00Z', createdAt: '2026-10-09T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] },
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-11-11T00:00:00Z', createdAt: '2026-11-11T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] },
+    ]);
+    URL.createObjectURL = () => 'blob:test'; URL.revokeObjectURL = () => {};
+    const confirm = window.confirm; window.confirm = () => true;
+    try {
+      await mount();
+      fireEvent.click(screen.getByTitle(/Configuraci/i));
+      fireEvent.click(await screen.findByRole('button', { name: 'Datos' }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-panel')).toBeTruthy());
+      expect(screen.getByText(/Filas repetidas a eliminar/)).toBeTruthy();
+      const aplicar = screen.getByRole('button', { name: /Ordenar plantillas/ });
+      expect(aplicar.disabled).toBe(true); // sin backup descargado no se puede aplicar
+      fireEvent.click(screen.getByRole('button', { name: /1 · Descargar backup/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /Ordenar plantillas/ }).disabled).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: /Ordenar plantillas/ }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-done')).toBeTruthy());
+      expect(await db.routines.count()).toBe(1);
+      expect(screen.queryByTestId('dedupe-panel')).toBeNull();
+    } finally { window.confirm = confirm; }
+  });
+
+  it('Datos: sin duplicados el panel de plantillas no aparece', async () => {
+    const { saveRoutine } = await import('../src/db/repository.js');
+    await saveRoutine({ id: 'r1', name: 'LEGS', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] });
+    await mount();
+    fireEvent.click(screen.getByTitle(/Configuraci/i));
+    fireEvent.click(await screen.findByRole('button', { name: 'Datos' }));
+    await waitFor(() => expect(screen.getByText(/Limpieza de taxonom/)).toBeTruthy());
+    expect(screen.queryByTestId('dedupe-panel')).toBeNull();
+  });
 });
