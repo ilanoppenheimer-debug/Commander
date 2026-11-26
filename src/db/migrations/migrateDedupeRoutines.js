@@ -18,11 +18,21 @@ const loadState = async () => {
   return { rows, blockStart: activeBlockStart(blocks) };
 };
 
-/** Solo lectura: qué haría ahora sobre los datos actuales. No escribe. */
+/**
+ * Solo lectura: qué haría ahora sobre los datos actuales, y si ya se aplicó (con un resumen del registro, para que
+ * Datos pueda ofrecer "Deshacer" mientras el registro exista, también después de recargar). No escribe.
+ */
 export const previewRoutineDedupe = async () => {
   const { rows, blockStart } = await loadState();
   const flag = await db.settings.get(DEDUPE_ROUTINES_FLAG);
-  return { plan: planRoutineDedupe(rows, { blockStart }), appliedAt: flag?.value?.appliedAt || null };
+  const rec = flag?.value;
+  return {
+    plan: planRoutineDedupe(rows, { blockStart }),
+    appliedAt: rec?.appliedAt || null,
+    applied: rec?.appliedAt
+      ? { appliedAt: rec.appliedAt, removed: rec.removed?.length || 0, archived: rec.archived?.length || 0, inherited: rec.inherited?.length || 0 }
+      : null,
+  };
 };
 
 export const summarizeRoutineDedupe = (plan) => ({ ...plan.summary });
@@ -89,26 +99,35 @@ export const applyRoutineDedupe = async () => {
 };
 
 /**
- * Deshace lo aplicado, usando el registro guardado: reinserta las filas eliminadas con su _id original y revierte
- * SOLO los campos que se tocaron (archived, lastPerformed) en las demás, sin pisar ediciones posteriores.
+ * Deshace lo aplicado, usando el registro guardado. Nunca pisa lo que pasó DESPUÉS del orden:
+ *  - las filas eliminadas se reinsertan con su _id original (si ese _id ya existe, no se toca);
+ *  - en las archivadas se revierte SOLO `archived`, y solo si sigue archivada (si la desarchivaste a mano, queda);
+ *  - en las que heredaron lastPerformed se revierte SOLO ese campo, y solo si sigue siendo el valor heredado (si
+ *    se usó la plantilla desde entonces, queda el valor nuevo);
+ *  - las plantillas creadas o editadas después no se tocan.
  */
 export const rollbackRoutineDedupe = async () => {
   const flag = await db.settings.get(DEDUPE_ROUTINES_FLAG);
   const rec = flag?.value;
   if (!rec?.appliedAt) return { ok: false, reason: 'not-applied' };
+  let restored = 0;
   try {
     await db.transaction('rw', db.routines, db.settings, async () => {
-      if (rec.removed?.length) await db.routines.bulkPut(rec.removed);
+      for (const r of rec.removed || []) {
+        if (await db.routines.get(r._id)) continue;
+        await db.routines.add(r);
+        restored++;
+      }
       for (const a of rec.archived || []) {
         const row = await db.routines.get(a._id);
-        if (!row) continue;
+        if (!row || row.archived !== true) continue;
         const next = { ...row };
         if (a.hadArchived) next.archived = a.archivedBefore; else delete next.archived;
         await db.routines.put(next);
       }
       for (const i of rec.inherited || []) {
         const row = await db.routines.get(i._id);
-        if (!row) continue;
+        if (!row || row.lastPerformed !== i.after) continue;
         const next = { ...row };
         if (i.hadLastPerformed) next.lastPerformed = i.before; else delete next.lastPerformed;
         await db.routines.put(next);
@@ -119,5 +138,5 @@ export const rollbackRoutineDedupe = async () => {
     logger.error('rollbackRoutineDedupe failed', { error: String(e) });
     return { ok: false, reason: 'rollback-failed', error: String(e) };
   }
-  return { ok: true, restored: rec.removed?.length || 0 };
+  return { ok: true, restored };
 };

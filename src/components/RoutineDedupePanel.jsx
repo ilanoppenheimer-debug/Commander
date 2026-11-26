@@ -24,17 +24,17 @@ const Row = ({ r, note }) => (
  * backup y confirmar, y se oculta cuando ya se aplicó o no hay nada para hacer. Nunca corre sola.
  */
 export default function RoutineDedupePanel({ showNotify, onChanged }) {
-  const [state, setState] = useState({ loading: true, plan: null, appliedAt: null });
+  const [state, setState] = useState({ loading: true, plan: null, applied: null });
   const [downloaded, setDownloaded] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null); // resultado de ESTA vista (con "Deshacer")
+  const [result, setResult] = useState(null); // error de la última aplicación, si lo hubo
 
   const review = async () => {
     try {
-      const { plan, appliedAt } = await previewRoutineDedupe();
-      setState({ loading: false, plan, appliedAt });
+      const { plan, applied } = await previewRoutineDedupe();
+      setState({ loading: false, plan, applied });
     } catch (e) {
-      setState({ loading: false, plan: null, appliedAt: null });
+      setState({ loading: false, plan: null, applied: null });
     }
   };
   useEffect(() => { review(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,27 +61,38 @@ export default function RoutineDedupePanel({ showNotify, onChanged }) {
   };
 
   const undo = async () => {
-    if (!window.confirm('¿Deshacer la deduplicación? Se reinsertan las filas eliminadas y se desarchivan las plantillas.')) return;
+    if (!window.confirm('¿Deshacer el orden de plantillas? Se reinsertan las filas eliminadas y se desarchivan las plantillas archivadas. Lo que creaste o editaste desde entonces no se toca.')) return;
     setBusy(true);
     const r = await rollbackRoutineDedupe();
     setBusy(false);
-    if (r.ok) { setResult(null); showNotify?.('Deduplicación deshecha', 'success'); onChanged?.(); await review(); }
+    if (r.ok) { setResult(null); showNotify?.('Orden de plantillas deshecho', 'success'); onChanged?.(); await review(); }
     else showNotify?.(FAIL_MESSAGES[r.reason] || 'No se pudo deshacer', 'error');
   };
 
-  const { plan, loading, appliedAt } = state;
-  // Resultado recién aplicado: se muestra (con Deshacer) hasta que se recargue la vista.
-  if (result?.ok && result.ran) {
+  const { plan, loading, applied } = state;
+  if (loading) return null;
+  // Mientras exista el registro routinesDedupeV1 (y no se haya deshecho) Datos ofrece "Deshacer orden de plantillas",
+  // también después de recargar. El dry-run solo vuelve a aparecer si se deshace.
+  if (applied) {
     return (
-      <section data-testid="dedupe-done">
+      <section data-testid="dedupe-undo">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Copy size={14} /> Plantillas ordenadas
+        </h3>
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-2">
-          <div className="text-xs text-emerald-300 flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 mt-0.5" /> Listo: {result.summary.removed} fila(s) repetida(s) eliminada(s), {result.summary.archivedByName + result.summary.archivedByBlock} archivada(s). Quedan {result.summary.after.active} plantillas activas.</div>
-          <button onClick={undo} disabled={busy} className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"><Undo2 size={12} /> Deshacer</button>
+          <div className="text-xs text-emerald-300 flex items-start gap-2">
+            <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+            <span>Se ordenaron el {day(applied.appliedAt)}: {applied.removed} fila(s) repetida(s) eliminada(s), {applied.archived} plantilla(s) archivada(s).</span>
+          </div>
+          <button onClick={undo} disabled={busy} className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 transition border border-slate-600">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />} Deshacer orden de plantillas
+          </button>
+          <p className="text-[10px] text-slate-500">Lo que creaste o editaste después del orden no se toca.</p>
         </div>
       </section>
     );
   }
-  if (loading || !plan || appliedAt || plan.noop) return null;
+  if (!plan || plan.noop) return null;
 
   const s = plan.summary;
   return (

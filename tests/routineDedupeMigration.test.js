@@ -40,8 +40,21 @@ describe('previewRoutineDedupe', () => {
     const { plan, appliedAt } = await previewRoutineDedupe();
     expect(await dump()).toEqual(antes);
     expect(appliedAt).toBeNull();
+    expect((await previewRoutineDedupe()).applied).toBeNull();
     expect(plan.summary).toMatchObject({ removed: 1, archivedByName: 1 });
     expect(plan.pass3.since).toBe('2026-10-05T00:00:00Z');
+  });
+});
+
+describe('el registro sobrevive a recargar', () => {
+  it('después de aplicar, preview informa lo aplicado (con el registro en la base) hasta que se deshace', async () => {
+    await applyRoutineDedupe();
+    // "recargar" = una lectura nueva: el registro vive en Dexie, no en memoria
+    const p = await previewRoutineDedupe();
+    expect(p.applied).toMatchObject({ removed: 1, archived: 2, inherited: 0 });
+    expect(p.appliedAt).toBeTruthy();
+    await rollbackRoutineDedupe();
+    expect((await previewRoutineDedupe()).applied).toBeNull();
   });
 });
 
@@ -147,6 +160,31 @@ describe('rollbackRoutineDedupe', () => {
     const despues = await db.routines.get(t._id);
     expect(despues.name).toBe('LEGS renombrada');
     expect('archived' in despues).toBe(false);
+  });
+
+  it('no toca lo creado o decidido después del orden: plantillas nuevas, desarchivadas a mano y lastPerformed nuevo', async () => {
+    await db.routines.where('routineId').equals('L').modify((x) => { if (x.exercises.length === 7) x.lastPerformed = '2026-10-12T00:00:00Z'; });
+    await applyRoutineDedupe();
+    const nueva = await db.routines.add({ routineId: 'nueva', id: 'nueva', name: 'NUEVA', exercises: ex(2), createdAt: '2026-11-26T00:00:00Z' });
+    const sob = await db.routines.where('routineId').equals('L').first();
+    await db.routines.update(sob._id, { lastPerformed: '2026-11-25T00:00:00Z' });          // se usó después del orden
+    const piernas = await db.routines.where('routineId').equals('routine-old').first();
+    await db.routines.update(piernas._id, { archived: false });                           // la desarchivé a mano
+    const r = await rollbackRoutineDedupe();
+    expect(r.ok).toBe(true);
+    expect((await db.routines.get(nueva)).name).toBe('NUEVA');                            // la creada después sigue
+    expect((await db.routines.get(sob._id)).lastPerformed).toBe('2026-11-25T00:00:00Z');  // no vuelve al valor anterior
+    expect((await db.routines.get(piernas._id)).archived).toBe(false);                    // su decisión se respeta
+    expect(r.restored).toBe(1);                                                           // y la fila eliminada volvió
+  });
+
+  it('si el _id de una fila eliminada ya existe (backup restaurado en el medio), no la pisa', async () => {
+    await applyRoutineDedupe();
+    const rec = (await db.settings.get(DEDUPE_ROUTINES_FLAG)).value;
+    await db.routines.put({ _id: rec.removed[0]._id, routineId: 'otra', id: 'otra', name: 'OTRA', exercises: [] });
+    const r = await rollbackRoutineDedupe();
+    expect(r).toMatchObject({ ok: true, restored: 0 });
+    expect((await db.routines.get(rec.removed[0]._id)).name).toBe('OTRA');
   });
 
   it('sin nada aplicado, no hace nada', async () => {
