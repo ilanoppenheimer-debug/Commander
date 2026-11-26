@@ -6,6 +6,7 @@ import {
 import { buildFilename } from '../utils/downloadNaming';
 import StrongImportWizard from './import/StrongImportWizard';
 import TaxonomyMigrationPanel from './TaxonomyMigrationPanel';
+import RoutineDedupePanel from './RoutineDedupePanel';
 import Modal from './ui/Modal';
 import {
   signInToGoogle, signOutFromGoogle, isSignedIn, getSignedInEmail,
@@ -309,6 +310,9 @@ export default function DataBackupTab({ showNotify, onGoToHistory }) {
 
       {/* One-off exercise taxonomy cleanup (phase 2) — never runs by itself */}
       <TaxonomyMigrationPanel showNotify={showNotify} />
+
+      {/* One-off routine dedupe — never runs by itself, hides once applied */}
+      <RoutineDedupePanel showNotify={showNotify} />
 
       {/* Counters */}
       {counts && (

@@ -181,4 +181,79 @@ describe('App monta y navega', () => {
       expect('companionValue' in x).toBe(false);
     }
   });
+  it('Datos: el panel de plantillas duplicadas muestra el dry-run, exige backup, ordena y se oculta', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd([
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-10-09T00:00:00Z', createdAt: '2026-10-09T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] },
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-11-11T00:00:00Z', createdAt: '2026-11-11T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] },
+    ]);
+    URL.createObjectURL = () => 'blob:test'; URL.revokeObjectURL = () => {};
+    const confirm = window.confirm; window.confirm = () => true;
+    try {
+      await mount();
+      fireEvent.click(screen.getByTitle(/Configuraci/i));
+      fireEvent.click(await screen.findByRole('button', { name: 'Datos' }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-panel')).toBeTruthy());
+      expect(screen.getByText(/Filas repetidas a eliminar/)).toBeTruthy();
+      const aplicar = screen.getByRole('button', { name: /Ordenar plantillas/ });
+      expect(aplicar.disabled).toBe(true); // sin backup descargado no se puede aplicar
+      fireEvent.click(screen.getByRole('button', { name: /1 · Descargar backup/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /Ordenar plantillas/ }).disabled).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: /Ordenar plantillas/ }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-undo')).toBeTruthy());
+      expect(await db.routines.count()).toBe(1);
+      expect(screen.queryByTestId('dedupe-panel')).toBeNull();
+    } finally { window.confirm = confirm; }
+  });
+
+  it('Datos: sin duplicados el panel de plantillas no aparece', async () => {
+    const { saveRoutine } = await import('../src/db/repository.js');
+    await saveRoutine({ id: 'r1', name: 'LEGS', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] });
+    await mount();
+    fireEvent.click(screen.getByTitle(/Configuraci/i));
+    fireEvent.click(await screen.findByRole('button', { name: 'Datos' }));
+    await waitFor(() => expect(screen.getByText(/Limpieza de taxonom/)).toBeTruthy());
+    expect(screen.queryByTestId('dedupe-panel')).toBeNull();
+  });
+  it('Datos: tras ordenar y RECARGAR, "Deshacer orden de plantillas" sigue disponible y deja el estado original (sin pisar lo creado después)', async () => {
+    const { db } = await import('../src/db/database.js');
+    const { saveRoutine } = await import('../src/db/repository.js');
+    await db.routines.bulkAdd([
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-10-09T00:00:00Z', createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }] },
+      { routineId: 'L', id: 'L', name: 'LEGS', isImported: true, importedAt: '2026-11-11T00:00:00Z', createdAt: '2026-11-11T00:00:00Z', updatedAt: '2026-11-11T00:00:00Z', exercises: [{ id: 'e1', name: 'Sentadilla', sets: [] }, { id: 'e2', name: 'Prensa', sets: [] }] },
+    ]);
+    const original = await db.routines.orderBy('_id').toArray();
+    URL.createObjectURL = () => 'blob:test'; URL.revokeObjectURL = () => {};
+    const confirm = window.confirm; window.confirm = () => true;
+    const openDatos = async () => {
+      await mount();
+      fireEvent.click(screen.getByTitle(/Configuraci/i));
+      fireEvent.click(await screen.findByRole('button', { name: 'Datos' }));
+    };
+    try {
+      await openDatos();
+      await waitFor(() => expect(screen.getByTestId('dedupe-panel')).toBeTruthy());
+      fireEvent.click(screen.getByRole('button', { name: /1 · Descargar backup/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /Ordenar plantillas/ }).disabled).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: /Ordenar plantillas/ }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-undo')).toBeTruthy());
+      expect(await db.routines.count()).toBe(1);
+
+      // "recargar": se desmonta todo y se vuelve a montar la app sobre la misma base
+      cleanup();
+      // lo que se crea DESPUÉS del orden no lo pisa el rollback
+      await saveRoutine({ id: 'r-nueva', name: 'PLANTILLA NUEVA', exercises: [{ id: 'e1', name: 'Curl', sets: [] }] });
+      await openDatos();
+      await waitFor(() => expect(screen.getByTestId('dedupe-undo')).toBeTruthy());
+      expect(screen.queryByTestId('dedupe-panel')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Deshacer orden de plantillas/ }));
+      await waitFor(() => expect(screen.getByTestId('dedupe-panel')).toBeTruthy()); // vuelve el dry-run: ya no hay registro
+      expect(screen.queryByTestId('dedupe-undo')).toBeNull();
+
+      const despues = await db.routines.orderBy('_id').toArray();
+      expect(despues.filter((r) => r.routineId !== 'r-nueva')).toEqual(original); // estado original, fila por fila
+      expect(despues.find((r) => r.routineId === 'r-nueva').name).toBe('PLANTILLA NUEVA');
+      expect(await db.settings.get('routinesDedupeV1')).toBeUndefined();
+    } finally { window.confirm = confirm; }
+  });
 });
