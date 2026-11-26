@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, AlertTriangle } from 'lucide-react';
 import { diffRoutineVsSession, updateRoutineFromSession } from '../../utils/routineUpdate';
-import { formatWeight, formatReps, formatRpe } from '../../utils/formatters';
+import { formatWeight, formatReps } from '../../utils/formatters';
 
 export const UpdateRoutineModal = ({ open, onClose, routine, session, onUpdated, barUnit = 'kg' }) => {
   const [changes, setChanges] = useState([]);
@@ -70,7 +70,7 @@ export const UpdateRoutineModal = ({ open, onClose, routine, session, onUpdated,
                       <span className="text-emerald-400 font-bold">+ Set:</span>{' '}
                       <span className="text-slate-200">{change.exerciseName}</span>
                       <div className="text-[10px] text-slate-400 mt-1">
-                        {formatWeight(change.set.weight, barUnit)} × {formatReps(change.set.reps)} @ RPE {formatRpe(change.set.rpe)}
+                        {formatWeight(change.set.weight, barUnit)} × {formatReps(change.set.reps)}
                       </div>
                     </div>
                   )}
@@ -81,10 +81,10 @@ export const UpdateRoutineModal = ({ open, onClose, routine, session, onUpdated,
                       </div>
                       <div className="flex flex-col gap-1 text-[11px]">
                         <span className="text-red-400 line-through">
-                          {formatWeight(change.before.weight, barUnit)} × {formatReps(change.before.reps)} @ RPE {formatRpe(change.before.rpe)}
+                          {formatWeight(change.before.weight, barUnit)} × {formatReps(change.before.reps)}
                         </span>
                         <span className="text-emerald-400">
-                          → {formatWeight(change.after.weight, barUnit)} × {formatReps(change.after.reps)} @ RPE {formatRpe(change.after.rpe)}
+                          → {formatWeight(change.after.weight, barUnit)} × {formatReps(change.after.reps)}
                         </span>
                       </div>
                     </div>
@@ -95,8 +95,8 @@ export const UpdateRoutineModal = ({ open, onClose, routine, session, onUpdated,
               <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-3 text-xs text-amber-300 flex gap-2">
                 <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
                 <div>
-                  Backup automático antes de aplicar. Esto sobrescribe los targets de la plantilla.
-                  Los ejercicios que no están en esta sesión se mantienen.
+                  Backup automático antes de aplicar. Solo cambian peso y reps; el RPE, los descansos y las notas del Coach no se tocan.
+                  Los ejercicios y sets que no están en esta sesión se mantienen.
                 </div>
               </div>
             </>

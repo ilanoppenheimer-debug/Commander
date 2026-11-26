@@ -15,8 +15,9 @@
 //     lastPerformed ni import desde ese inicio. Sin bloque activo, no hace nada.
 // Las ya archivadas no se tocan.
 
-export const normalizeRoutineName = (name) =>
-  (name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+import { normalizeRoutineName } from './routineNaming';
+
+export { normalizeRoutineName };
 
 const ms = (x) => { const t = x ? Date.parse(x) : NaN; return Number.isFinite(t) ? t : 0; };
 const importDate = (r) => ms(r.importedAt || r.createdAt);

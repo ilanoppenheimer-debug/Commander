@@ -54,7 +54,8 @@ import { getSessionTypeBreakdown } from "./utils/routineImport/contextGenerator"
 import { countSessionSets } from "./utils/sessionStats";
 import { getSessionFase } from "./utils/sessionFase";
 import { filterAndSortHistory } from "./utils/historyFilter";
-import { buildRoutineClone } from "./utils/routineNaming";
+import { buildRoutineClone, findActiveByName, uniqueRoutineName } from "./utils/routineNaming";
+import { updateRoutineFromSession } from "./utils/routineUpdate";
 import { stripRuntimeFields } from "./utils/runtimeFields";
 import { attributeBlocks, buildCompletedSession } from "./utils/sessionCompletion";
 import { DURATION_ALARM_THRESHOLD_SEC } from "./constants/sessionConstants";
@@ -593,7 +594,7 @@ function AppMain() {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const createRoutine = async () => {
-    const newRoutine = { id: `routine-${Date.now()}`, name: 'Nueva Plantilla', lastPerformed: null, exercises: [], archived: false };
+    const newRoutine = { id: `routine-${Date.now()}`, name: uniqueRoutineName('Nueva Plantilla', safeRoutines), lastPerformed: null, exercises: [], archived: false };
     await saveRoutine(newRoutine);
     setPreSessionRoutine(newRoutine);
   };
@@ -616,10 +617,14 @@ function AppMain() {
   const finalizeAndSave = async (completedSession, { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount = 0 }) => {
     await saveSession(completedSession);
 
-    if (saveAsTemplate) {
+    if (saveAsTemplate && saveAsTemplate.updateRoutineId) {
+      // Sesión de una plantilla (o conflicto de nombre resuelto con "Actualizar la existente"): solo peso y reps.
+      await updateRoutineFromSession(saveAsTemplate.updateRoutineId, { exercises: safeFinalExercises });
+    } else if (saveAsTemplate) {
       const newRoutine = {
         id: `routine-${Date.now()}`,
-        name: sessionName || 'Nueva Plantilla',
+        // El modal ya resuelve los conflictos; esto es solo la red de seguridad de la regla de nombres únicos.
+        name: uniqueRoutineName(sessionName || 'Nueva Plantilla', safeRoutines),
         lastPerformed: new Date().toISOString(),
         exercises: stripRuntimeFields(safeFinalExercises).map(ex => ({
           ...ex,
@@ -718,6 +723,11 @@ function AppMain() {
 
   const toggleArchiveRoutine = async (e, routine) => {
     e.stopPropagation();
+    // Desarchivar vuelve a la lista activa: no puede quedar repetida con otra activa.
+    if (routine.archived) {
+      const dup = findActiveByName(routine.name, safeRoutines, routine.id);
+      if (dup) { showNotify(`Ya hay una plantilla activa llamada "${dup.name}". Renombrá una antes de restaurarla.`, "error"); return; }
+    }
     await saveRoutine({ ...routine, archived: !routine.archived });
     showNotify(routine.archived ? "Plantilla restaurada." : "Plantilla archivada.");
   };
@@ -740,7 +750,13 @@ function AppMain() {
 
   const saveTemplateName = async (e, routine) => {
     e.stopPropagation();
-    await saveRoutine({ ...routine, name: editingTemplateName || 'Sin Nombre' });
+    const newName = editingTemplateName || 'Sin Nombre';
+    // Entre las ACTIVAS no puede haber dos con el mismo nombre (sin mayúsculas ni tildes). Las archivadas pueden repetir.
+    if (!routine.archived) {
+      const dup = findActiveByName(newName, safeRoutines, routine.id);
+      if (dup) { showNotify(`Ya hay una plantilla activa llamada "${dup.name}".`, "error"); return; }
+    }
+    await saveRoutine({ ...routine, name: newName });
     setEditingTemplateId(null);
     showNotify("Nombre actualizado.");
   };
