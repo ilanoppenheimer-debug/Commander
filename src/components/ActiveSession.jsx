@@ -36,10 +36,9 @@ import ToggleSwitch from "./ui/ToggleSwitch";
 import Modal from "./ui/Modal";
 import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
-import PostSessionReport from "./PostSessionReport";
 import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
-import { buildSessionAnalysis } from "../utils/sessionAnalysis";
+import { hasCompletedSets } from "../utils/sessionCompletion";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds, formatWeight, formatReps } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
@@ -238,7 +237,6 @@ export const FinishMissionModal = ({
   onConfirm,
   onDiscard,
   onCancel,
-  analysis,
   barUnit,
   origin = null,
   hadOrigin = false,
@@ -260,8 +258,8 @@ export const FinishMissionModal = ({
     ? (updateOrigin ? { updateRoutineId: origin.id ?? origin.routineId } : false)
     : mergeTarget ? { updateRoutineId: mergeTarget.id ?? mergeTarget.routineId } : saveTemplate;
 
-  const hasVolume = analysis?.totalVolume > 0;
-  const isEmpty = !analysis || (analysis.totalSets === 0 && !hasVolume);
+  // Sin ninguna serie completada no hay nada que guardar: solo se ofrece Descartar o Volver.
+  const isEmpty = !(Array.isArray(exercises) ? exercises : []).some(hasCompletedSets);
 
   return (
     <Modal isOpen onClose={onCancel} size="md" align="center">
@@ -283,15 +281,11 @@ export const FinishMissionModal = ({
           {isEmpty && (
             <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-700/40 rounded-xl p-3 text-amber-300 text-sm">
               <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-              <span>Esta sesión no tiene sets registrados. ¿Querés descartarla?</span>
+              <span>Esta sesión no tiene series registradas. No se guarda en el historial: podés descartarla o volver a entrenar.</span>
             </div>
           )}
 
-          {analysis && hasVolume && (
-            <PostSessionReport analysis={analysis} barUnit={barUnit} />
-          )}
-
-          {origin ? (
+          {isEmpty ? null : origin ? (
             <div className="bg-slate-950 p-3 rounded-lg border border-slate-800" data-testid="finish-origin">
               <p className="text-[11px] text-slate-400 mb-2">Sesión de la plantilla <b className="text-slate-200">{origin.name}</b></p>
               <ToggleSwitch
@@ -368,17 +362,15 @@ export const FinishMissionModal = ({
 
         {/* Sticky footer — always visible */}
         <div className="p-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
-          <button
-            onClick={() => onConfirm(origin ? sessionName : name, templateChoice)}
-            disabled={!!conflict}
-            className={`w-full py-3 font-bold uppercase rounded-xl transition active:scale-95 disabled:opacity-40 ${
-              isEmpty
-                ? 'bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600'
-                : 'bg-accent-600 hover:bg-accent-500 text-black shadow-lg shadow-accent-900/20'
-            }`}
-          >
-            Guardar en Historial
-          </button>
+          {!isEmpty && (
+            <button
+              onClick={() => onConfirm(origin ? sessionName : name, templateChoice)}
+              disabled={!!conflict}
+              className="w-full py-3 font-bold uppercase rounded-xl transition active:scale-95 disabled:opacity-40 bg-accent-600 hover:bg-accent-500 text-black shadow-lg shadow-accent-900/20"
+            >
+              Guardar en Historial
+            </button>
+          )}
           <button
             onClick={onDiscard}
             className="w-full py-3 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold uppercase rounded-xl border border-red-900/50 transition active:scale-95"
@@ -762,7 +754,6 @@ export default function ActiveSession({
           onConfirm={(name, saveAsTemplate) => onFinishMission(name, exercises, saveAsTemplate)}
           onDiscard={onDiscardSession}
           onCancel={() => setShowFinishModal(false)}
-          analysis={buildSessionAnalysis({ sessionName: session.name, currentExercises: exercises, history })}
           barUnit={barUnit}
           origin={originRoutine && !originRoutine.archived ? originRoutine : null}
           hadOrigin={!!session.routineId}

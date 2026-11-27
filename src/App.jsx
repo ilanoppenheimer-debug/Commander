@@ -56,10 +56,10 @@ import { filterAndSortHistory } from "./utils/historyFilter";
 import { buildRoutineClone, findActiveByName, uniqueRoutineName } from "./utils/routineNaming";
 import { updateRoutineFromSession } from "./utils/routineUpdate";
 import { stripRuntimeFields } from "./utils/runtimeFields";
-import { attributeBlocks, buildCompletedSession } from "./utils/sessionCompletion";
+import { attributeBlocks, buildCompletedSession, pruneUnperformedExercises } from "./utils/sessionCompletion";
 import { DURATION_ALARM_THRESHOLD_SEC } from "./constants/sessionConstants";
 import { BlockColorDot } from "./components/blocks/BlockColorDot";
-import { saveSession, deleteSession, saveRoutine, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
+import { saveSession, deleteSession, saveRoutine, markRoutinePerformed, deleteRoutine, addCustomExercise, removeCustomExercise, getSetting, setSetting } from "./db/repository";
 import { useSessionStore } from "./stores/sessionStore";
 import { createBackup, downloadBackupAsFile, createAutoBackup } from "./services/backupService";
 import { isSignedIn, performDriveBackup } from "./services/googleDriveService";
@@ -616,8 +616,12 @@ function AppMain() {
 
   // Everything that happens AFTER saveSession — unchanged order/logic from before
   // the duration-alarm sprint. Shared by the normal path and all 3 dialog branches.
-  const finalizeAndSave = async (completedSession, { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount = 0 }) => {
+  const finalizeAndSave = async (completedSession, { safeFinalExercises, templateExercises = safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount = 0 }) => {
     await saveSession(completedSession);
+
+    // "Última vez" de la plantilla de origen (y de la que se actualiza, si es otra).
+    const performedIds = new Set([completedSession.routineId, saveAsTemplate && saveAsTemplate.updateRoutineId].filter(Boolean));
+    for (const rid of performedIds) await markRoutinePerformed(rid, completedSession.completedAt);
 
     if (saveAsTemplate && saveAsTemplate.updateRoutineId) {
       // Sesión de una plantilla (o conflicto de nombre resuelto con "Actualizar la existente"): solo peso y reps.
@@ -628,7 +632,8 @@ function AppMain() {
         // El modal ya resuelve los conflictos; esto es solo la red de seguridad de la regla de nombres únicos.
         name: uniqueRoutineName(sessionName || 'Nueva Plantilla', safeRoutines),
         lastPerformed: new Date().toISOString(),
-        exercises: stripRuntimeFields(safeFinalExercises).map(ex => ({
+        // La plantilla nueva conserva todo lo planificado, también lo que no llegaste a hacer.
+        exercises: stripRuntimeFields(templateExercises).map(ex => ({
           ...ex,
           sets: Array.isArray(ex?.sets) ? ex.sets.map(s => ({ ...s, weight: 0, reps: 0 })) : [],
         })),
@@ -663,7 +668,14 @@ function AppMain() {
   };
 
   const handleFinishMission = async (sessionName, finalExercises, saveAsTemplate) => {
-    const safeFinalExercises = Array.isArray(finalExercises) ? finalExercises : [];
+    const allExercises = Array.isArray(finalExercises) ? finalExercises : [];
+    // Solo se guardan los ejercicios con al menos una serie completada; sin ninguno, no se guarda nada
+    // (el modal ya no ofrece guardar; esta es la red de seguridad).
+    const safeFinalExercises = pruneUnperformedExercises(allExercises);
+    if (safeFinalExercises.length === 0) {
+      showNotify("Esta sesión no tiene series registradas: no se guardó", "info");
+      return;
+    }
 
     // Backup before any writes
     await createAutoBackup('pre-data-sprint').catch(() => {});
@@ -678,7 +690,7 @@ function AppMain() {
 
     const completedSession = buildCompletedSession({ sessionName, exercises: safeFinalExercises, session, blockIds });
 
-    const extras = { safeFinalExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount };
+    const extras = { safeFinalExercises, templateExercises: allExercises, sessionName, saveAsTemplate, matchedBlocks, untaggedCount };
 
     // Edge case: session left open way too long — pause and ask before trusting
     // durationSec. The session itself is saved in full either way; only this one

@@ -37,3 +37,10 @@ export const buildCompletedSession = ({ sessionName, exercises, session, blockId
     sessionNum: session?.sessionNum ?? null,
   };
 };
+
+// Un ejercicio "se hizo" si tiene al menos una serie completada. Las series NO completadas dentro de un ejercicio
+// que sí tiene completadas se conservan tal cual (como siempre); los ejercicios sin ninguna completada no se guardan.
+export const hasCompletedSets = (ex) => (Array.isArray(ex?.sets) ? ex.sets : []).some((s) => s?.completed);
+
+export const pruneUnperformedExercises = (exercises) =>
+  (Array.isArray(exercises) ? exercises : []).filter(hasCompletedSets);

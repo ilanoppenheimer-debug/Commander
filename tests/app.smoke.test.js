@@ -304,7 +304,60 @@ describe('App monta y navega', () => {
     await openFinish({ ...oldActiveSession(), name: 'TORSO', routineId: 'r-torso' });
     fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
     await waitFor(async () => expect(await db.history.count()).toBe(1));
-    expect(await db.routines.toArray()).toEqual(antes);
+    // la plantilla queda igual salvo "última vez", que sí se actualiza al guardar la sesión
+    await waitFor(async () => expect((await db.routines.toArray())[0].lastPerformed).toBeTruthy());
+    const despues = await db.routines.toArray();
+    const { lastPerformed, ...resto } = despues[0];
+    const { lastPerformed: _antes, ...restoAntes } = antes[0];
+    expect(resto).toEqual(restoAntes);
+    expect(lastPerformed).toBe((await db.history.toArray())[0].completedAt);
+  });
+
+  // ── D: fin de sesión ─────────────────────────────────────────────────────────────────────────────────────────
+  const ex = (id, name, sets) => ({ id, name, equipment: 'barbell', tag: 'main_lift', restSeconds: 90,
+    sets: sets.map((c, i) => ({ id: `${id}-s${i}`, type: 'normal', weight: '50', reps: '5', rpe: '', completed: c })) });
+
+  it('D1: se guardan solo los ejercicios con series completadas; las no completadas DENTRO de un ejercicio hecho se conservan', async () => {
+    const { db } = await import('../src/db/database.js');
+    await openFinish({ ...oldActiveSession(), exercises: [ex('a', 'Sentadilla', [true, false]), ex('b', 'Peso muerto', [false, false]), ex('c', 'Press banca', [true])] });
+    fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.history.count()).toBe(1));
+    const saved = (await db.history.toArray())[0];
+    expect(saved.exercises.map((e) => e.name)).toEqual(['Sentadilla', 'Press banca']);
+    expect(saved.exercises[0].sets.map((s) => s.completed)).toEqual([true, false]);
+  });
+
+  it('D2: sin ninguna serie completada no se ofrece guardar: aviso con Descartar y Volver; nada se escribe', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-torso', 'TORSO'));
+    await openFinish({ ...oldActiveSession(), routineId: 'r-torso', name: 'TORSO', exercises: [ex('a', 'Sentadilla', [false, false]), ex('b', 'Peso muerto', [false])] });
+    await waitFor(() => expect(screen.getByText(/Esta sesión no tiene series registradas/)).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Guardar en Historial/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /Descartar Sesión/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Volver a entrenar/i }));
+    await waitFor(() => expect(screen.queryByText(/Esta sesión no tiene series registradas/)).toBeNull());
+    expect(screen.getByText('Sesión activa')).toBeTruthy(); // Volver: la sesión sigue abierta
+    expect(await db.history.count()).toBe(0);
+    expect((await db.routines.toArray())[0].lastPerformed ?? null).toBeNull();
+  });
+
+  it('D3: "Descartar Sesión" desde el aviso cierra la sesión sin guardar nada', async () => {
+    const { db } = await import('../src/db/database.js');
+    await openFinish({ ...oldActiveSession(), exercises: [ex('a', 'Sentadilla', [false])] });
+    fireEvent.click(await screen.findByRole('button', { name: /Descartar Sesión/i }));
+    await waitFor(() => expect(screen.getByText('Ciclo con el Coach')).toBeTruthy());
+    expect(await db.history.count()).toBe(0);
+  });
+
+  it('D4: guardar la sesión actualiza lastPerformed de la plantilla de origen (aunque no se toque "Actualizar plantilla"), sin des-archivar ni cambiar nada más', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-a', 'A', { lastPerformed: '2026-01-01T00:00:00.000Z' }));
+    await openFinish({ ...oldActiveSession(), routineId: 'r-a', name: 'A' });
+    fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.history.count()).toBe(1));
+    const hist = (await db.history.toArray())[0];
+    await waitFor(async () => expect((await db.routines.toArray())[0].lastPerformed).toBe(hist.completedAt));
+    expect((await db.routines.toArray())[0].archived ?? false).toBe(false);
   });
 
   it('Si la plantilla de origen está archivada o ya no existe: sesión libre, con aviso y campo de nombre', async () => {
