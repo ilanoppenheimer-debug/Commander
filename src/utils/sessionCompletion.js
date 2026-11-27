@@ -42,5 +42,12 @@ export const buildCompletedSession = ({ sessionName, exercises, session, blockId
 // que sí tiene completadas se conservan tal cual (como siempre); los ejercicios sin ninguna completada no se guardan.
 export const hasCompletedSets = (ex) => (Array.isArray(ex?.sets) ? ex.sets : []).some((s) => s?.completed);
 
-export const pruneUnperformedExercises = (exercises) =>
-  (Array.isArray(exercises) ? exercises : []).filter(hasCompletedSets);
+// Si la poda deja un grupo de superset con un solo ejercicio, ese ejercicio pasa a ser suelto (supersetId: null, igual
+// que hace sessionStore al deshacer un superset): el reporte lo trata como un ejercicio normal. Un grupo de 3 que
+// pierde uno sigue siendo un superset de 2.
+export const pruneUnperformedExercises = (exercises) => {
+  const kept = (Array.isArray(exercises) ? exercises : []).filter(hasCompletedSets);
+  const size = new Map();
+  for (const e of kept) if (e.supersetId != null) size.set(e.supersetId, (size.get(e.supersetId) || 0) + 1);
+  return kept.map((e) => (e.supersetId != null && size.get(e.supersetId) < 2 ? { ...e, supersetId: null } : e));
+};
