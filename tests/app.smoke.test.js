@@ -316,15 +316,35 @@ describe('App monta y navega', () => {
   // ── D: fin de sesión ─────────────────────────────────────────────────────────────────────────────────────────
   const ex = (id, name, sets) => ({ id, name, equipment: 'barbell', tag: 'main_lift', restSeconds: 90,
     sets: sets.map((c, i) => ({ id: `${id}-s${i}`, type: 'normal', weight: '50', reps: '5', rpe: '', completed: c })) });
+  // (esta ex es de D; la D1 usa su propio sx con datos por serie)
 
-  it('D1: se guardan solo los ejercicios con series completadas; las no completadas DENTRO de un ejercicio hecho se conservan', async () => {
+  it('D1: solo entran series marcadas Y con datos; el ejercicio sin ninguna no se guarda; AMRAP sin marcar y DROP vacío quedan fuera', async () => {
     const { db } = await import('../src/db/database.js');
-    await openFinish({ ...oldActiveSession(), exercises: [ex('a', 'Sentadilla', [true, false]), ex('b', 'Peso muerto', [false, false]), ex('c', 'Press banca', [true])] });
+    const sx = (id, name, sets) => ({ id, name, equipment: 'barbell', tag: 'main_lift', restSeconds: 90,
+      sets: sets.map(([completed, weight, reps, type = 'normal'], i) => ({ id: `${id}-s${i}`, type, weight, reps, rpe: '', completed })) });
+    await openFinish({ ...oldActiveSession(), exercises: [
+      sx('a', 'Sentadilla', [[true, '100', '5'], [false, '90', '5']]),       // la 2ª sin marcar: fuera
+      sx('b', 'Peso muerto', [[false, '180', '']]),                           // AMRAP que heredó 180 kg sin reps: fuera → ejercicio fuera
+      sx('c', 'Press banca', [[true, '60', '8'], [true, '', '', 'drop']]),    // DROP marcado vacío: fuera
+    ] });
+    await waitFor(() => expect(screen.getByTestId('unsaved-sets-warning').textContent).toMatch(/3 series sin marcar o vacías no se guardarán/));
     fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
     await waitFor(async () => expect(await db.history.count()).toBe(1));
     const saved = (await db.history.toArray())[0];
     expect(saved.exercises.map((e) => e.name)).toEqual(['Sentadilla', 'Press banca']);
-    expect(saved.exercises[0].sets.map((s) => s.completed)).toEqual([true, false]);
+    expect(saved.exercises.map((e) => e.sets.length)).toEqual([1, 1]);
+    expect(saved.exercises.flatMap((e) => e.sets).every((x) => x.completed === true)).toBe(true);
+  });
+
+  it('D1b: si todas las series se guardan, el modal NO muestra el aviso de series sin guardar', async () => {
+    await openFinish({ ...oldActiveSession(), exercises: [ex('a', 'Sentadilla', [true, true])] });
+    await screen.findByRole('button', { name: /Guardar en Historial/i });
+    expect(screen.queryByTestId('unsaved-sets-warning')).toBeNull();
+  });
+
+  it('D1c: una serie sin guardar → aviso en singular', async () => {
+    await openFinish({ ...oldActiveSession(), exercises: [ex('a', 'Sentadilla', [true, false])] });
+    await waitFor(() => expect(screen.getByTestId('unsaved-sets-warning').textContent).toMatch(/1 serie sin marcar o vacía no se guardará/));
   });
 
   it('D2: sin ninguna serie completada no se ofrece guardar: aviso con Descartar y Volver; nada se escribe', async () => {

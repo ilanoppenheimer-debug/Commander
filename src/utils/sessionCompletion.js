@@ -38,15 +38,28 @@ export const buildCompletedSession = ({ sessionName, exercises, session, blockId
   };
 };
 
-// Un ejercicio "se hizo" si tiene al menos una serie completada. Las series NO completadas dentro de un ejercicio
-// que sí tiene completadas se conservan tal cual (como siempre); los ejercicios sin ninguna completada no se guardan.
-export const hasCompletedSets = (ex) => (Array.isArray(ex?.sets) ? ex.sets : []).some((s) => s?.completed);
+// Qué series entran al historial: completed === true (marcada) Y con datos (reps > 0, peso > 0 o segundos > 0).
+// Una serie sin marcar NO se guarda aunque traiga valores (p. ej. un AMRAP que hereda peso sin reps, que quedaba como
+// "180×0" y parecía hecha), y una marcada sin datos tampoco (p. ej. un DROP marcado en blanco, "PC×0").
+const pos = (v) => parseFloat(v) > 0;
+export const isSavableSet = (s) => !!s && s.completed === true && (pos(s.reps) || pos(s.weight) || pos(s.seconds));
 
+export const hasSavableSets = (ex) => (Array.isArray(ex?.sets) ? ex.sets : []).some(isSavableSet);
+
+// Cuántas series de la sesión NO se van a guardar (sin marcar o vacías), contando también las de ejercicios que
+// quedan fuera. Es lo que muestra el aviso del modal de cierre.
+export const countUnsavedSets = (exercises) =>
+  (Array.isArray(exercises) ? exercises : []).reduce(
+    (n, ex) => n + (Array.isArray(ex?.sets) ? ex.sets : []).filter((s) => !isSavableSet(s)).length, 0);
+
+// Lo que se guarda de la sesión: solo las series guardables; un ejercicio sin ninguna no se guarda.
 // Si la poda deja un grupo de superset con un solo ejercicio, ese ejercicio pasa a ser suelto (supersetId: null, igual
 // que hace sessionStore al deshacer un superset): el reporte lo trata como un ejercicio normal. Un grupo de 3 que
 // pierde uno sigue siendo un superset de 2.
 export const pruneUnperformedExercises = (exercises) => {
-  const kept = (Array.isArray(exercises) ? exercises : []).filter(hasCompletedSets);
+  const kept = (Array.isArray(exercises) ? exercises : [])
+    .filter(hasSavableSets)
+    .map((e) => ({ ...e, sets: e.sets.filter(isSavableSet) }));
   const size = new Map();
   for (const e of kept) if (e.supersetId != null) size.set(e.supersetId, (size.get(e.supersetId) || 0) + 1);
   return kept.map((e) => (e.supersetId != null && size.get(e.supersetId) < 2 ? { ...e, supersetId: null } : e));

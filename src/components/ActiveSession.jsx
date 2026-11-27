@@ -38,7 +38,7 @@ import ExerciseHistoryModal from "./modals/ExerciseHistoryModal";
 import ExerciseSelectorModal from "./modals/ExerciseSelectorModal";
 import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
-import { hasCompletedSets } from "../utils/sessionCompletion";
+import { pruneUnperformedExercises, countUnsavedSets } from "../utils/sessionCompletion";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
 import { formatSeconds, formatWeight, formatReps } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
@@ -259,7 +259,8 @@ export const FinishMissionModal = ({
     : mergeTarget ? { updateRoutineId: mergeTarget.id ?? mergeTarget.routineId } : saveTemplate;
 
   // Sin ninguna serie completada no hay nada que guardar: solo se ofrece Descartar o Volver.
-  const isEmpty = !(Array.isArray(exercises) ? exercises : []).some(hasCompletedSets);
+  const isEmpty = pruneUnperformedExercises(exercises).length === 0;
+  const unsaved = countUnsavedSets(exercises);
 
   return (
     <Modal isOpen onClose={onCancel} size="md" align="center">
@@ -282,6 +283,13 @@ export const FinishMissionModal = ({
             <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-700/40 rounded-xl p-3 text-amber-300 text-sm">
               <AlertTriangle size={16} className="shrink-0 mt-0.5" />
               <span>Esta sesión no tiene series registradas. No se guarda en el historial: podés descartarla o volver a entrenar.</span>
+            </div>
+          )}
+
+          {!isEmpty && unsaved > 0 && (
+            <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-700/40 rounded-xl p-3 text-amber-300 text-sm" data-testid="unsaved-sets-warning">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span>{unsaved} {unsaved === 1 ? 'serie sin marcar o vacía no se guardará' : 'series sin marcar o vacías no se guardarán'}. Podés volver a entrenar para completarlas.</span>
             </div>
           )}
 
