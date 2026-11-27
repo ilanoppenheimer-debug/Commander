@@ -34,6 +34,16 @@ describe('findActiveByName', () => {
   });
 });
 
+describe('findActiveByName: excluir por FILA (_id)', () => {
+  it('una fila gemela (mismo id, otro _id) cuenta como "otra"; la propia fila no choca consigo misma', () => {
+    const a = { _id: 1, id: 'r-dup', name: 'LEGS' };
+    const b = { _id: 2, id: 'r-dup', name: 'Legs' };
+    expect(findActiveByName('legs', [a, b], a)).toBe(b);
+    expect(findActiveByName('legs', [a], a)).toBeNull();
+    expect(findActiveByName('legs', [a, b], 'r-dup')).toBeNull(); // excluir por id (string) sigue funcionando
+  });
+});
+
 describe('uniqueRoutineName', () => {
   it('base libre → base; ocupada → "Base 2", "Base 3"…', () => {
     expect(uniqueRoutineName('Nueva Plantilla', [])).toBe('Nueva Plantilla');

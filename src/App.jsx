@@ -46,7 +46,6 @@ import { migrateAddNotesFields } from "./db/migrations/migrateAddNotesFields";
 import { migrateMuscleGroups } from "./db/migrations/migrateMuscleGroups";
 import { migrateBackfillBlock2A } from "./db/migrations/migrateBackfillBlock2A";
 import { migrateCleanupResidualBlocks } from "./db/migrations/migrateCleanupResidualBlocks";
-import { CleanupRoutinesModal } from "./components/cleanup/CleanupRoutinesModal";
 import { formatRelativeTime } from "./utils/dateFormat";
 import RoutineImportWizard from "./components/import/RoutineImportWizard";
 import CoachContextModal from "./components/import/CoachContextModal";
@@ -437,7 +436,11 @@ function AppMain() {
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [showSettings,       setShowSettings]       = useState(false);
+  // Menú ⋮ / edición de nombre: estado POR FILA (_id de Dexie). El routine.id puede repetirse entre filas (backups previos
+  // a la deduplicación), y con él se abrían todos los menús / ediciones del mismo id a la vez.
+  const rowKey = (r) => r._id ?? r.id;
   const [editingTemplateId,  setEditingTemplateId]  = useState(null);
+  const [templateMenuUp,     setTemplateMenuUp]     = useState(false); // el menú ⋮ se abre hacia arriba si abajo no entra
   const [editingTemplateName,setEditingTemplateName]= useState("");
   const [showImportModal,    setShowImportModal]    = useState(false);
   const [routineToDelete,    setRoutineToDelete]    = useState(null);
@@ -460,7 +463,6 @@ function AppMain() {
   const [showCoachContext,      setShowCoachContext]      = useState(false);
   const [reportBlock,           setReportBlock]           = useState(null);
   const [showPostSessionBanner, setShowPostSessionBanner] = useState(false);
-  const [showCleanup,           setShowCleanup]           = useState(false);
   const [pendingDurationSave,   setPendingDurationSave]   = useState(null);
   const [templatesExpanded,     setTemplatesExpanded]     = useState(false);
   const [showArchivedTemplates, setShowArchivedTemplates] = useState(false);
@@ -725,7 +727,7 @@ function AppMain() {
     e.stopPropagation();
     // Desarchivar vuelve a la lista activa: no puede quedar repetida con otra activa.
     if (routine.archived) {
-      const dup = findActiveByName(routine.name, safeRoutines, routine.id);
+      const dup = findActiveByName(routine.name, safeRoutines, routine);
       if (dup) { showNotify(`Ya hay una plantilla activa llamada "${dup.name}". Renombrá una antes de restaurarla.`, "error"); return; }
     }
     await saveRoutine({ ...routine, archived: !routine.archived });
@@ -744,7 +746,7 @@ function AppMain() {
 
   const startEditingTemplateName = (e, routine) => {
     e.stopPropagation();
-    setEditingTemplateId(routine.id);
+    setEditingTemplateId(rowKey(routine));
     setEditingTemplateName(routine.name);
   };
 
@@ -753,7 +755,7 @@ function AppMain() {
     const newName = editingTemplateName || 'Sin Nombre';
     // Entre las ACTIVAS no puede haber dos con el mismo nombre (sin mayúsculas ni tildes). Las archivadas pueden repetir.
     if (!routine.archived) {
-      const dup = findActiveByName(newName, safeRoutines, routine.id);
+      const dup = findActiveByName(newName, safeRoutines, routine);
       if (dup) { showNotify(`Ya hay una plantilla activa llamada "${dup.name}".`, "error"); return; }
     }
     await saveRoutine({ ...routine, name: newName });
@@ -838,7 +840,7 @@ function AppMain() {
 
       </header>
 
-      <main className="flex-1 overflow-y-auto max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto w-full p-4 md:px-6 lg:px-8 pb-24 relative">
+      <main className="flex-1 overflow-y-auto max-w-md md:max-w-5xl lg:max-w-6xl xl:max-w-[88rem] mx-auto w-full p-4 md:px-6 lg:px-8 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] relative">
 
         {isTraining && activeTab === 'routines' && session && (
           <ErrorBoundary FallbackComponent={ErrorFallback}>
@@ -976,10 +978,10 @@ function AppMain() {
             })}
 
             {/* Plantillas — acordeón cerrado por defecto */}
-            <div className="border border-slate-800 rounded-xl overflow-hidden">
+            <div className="border border-slate-800 rounded-xl">
               <button
                 onClick={() => setTemplatesExpanded(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-slate-900/40 hover:bg-slate-900/70 transition"
+                className={`w-full flex items-center justify-between px-4 py-3 bg-slate-900/40 hover:bg-slate-900/70 transition ${templatesExpanded ? 'rounded-t-xl' : 'rounded-xl'}`}
               >
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                   Mis plantillas ({activeRoutines.length})
@@ -1005,12 +1007,6 @@ function AppMain() {
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowCleanup(true)}
-                        className="text-[10px] text-slate-500 hover:text-accent-400 flex items-center gap-1 transition"
-                      >
-                        <Sparkles size={11} /> Limpiar
-                      </button>
                       <button onClick={createRoutine} className="text-[10px] font-bold uppercase bg-slate-800 text-accent-500 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-accent-500 transition flex items-center gap-1 shadow-md">
                         <Plus size={12} /> Nueva
                       </button>
@@ -1020,9 +1016,9 @@ function AppMain() {
                   <div className="space-y-2">
                     {(showArchivedTemplates ? archivedRoutines : activeRoutines).map(routine => {
                       const exCount = Array.isArray(routine.exercises) ? routine.exercises.length : 0;
-                      const isMenuOpen = editingTemplateId === `menu-${routine.id}`;
+                      const isMenuOpen = editingTemplateId === `menu-${rowKey(routine)}`;
                       return (
-                        <div key={routine.id} className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 relative">
+                        <div key={rowKey(routine)} className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 relative">
                           <div className="flex items-center gap-3">
                             {/* Play button */}
                             <button
@@ -1035,7 +1031,7 @@ function AppMain() {
 
                             {/* Name + meta */}
                             <div className="flex-1 min-w-0">
-                              {editingTemplateId === routine.id ? (
+                              {editingTemplateId === rowKey(routine) ? (
                                 <div className="flex items-center gap-2">
                                   <input
                                     autoFocus
@@ -1062,7 +1058,15 @@ function AppMain() {
                             {/* ⋮ menu */}
                             <div className="relative shrink-0">
                               <button
-                                onClick={(e) => { e.stopPropagation(); setEditingTemplateId(isMenuOpen ? null : `menu-${routine.id}`); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isMenuOpen) {
+                                    // Lugar libre bajo el botón = hasta la barra de navegación; el menú mide ~150 px.
+                                    const navH = document.querySelector('nav')?.offsetHeight || 80;
+                                    setTemplateMenuUp(window.innerHeight - navH - e.currentTarget.getBoundingClientRect().bottom < 170);
+                                  }
+                                  setEditingTemplateId(isMenuOpen ? null : `menu-${rowKey(routine)}`);
+                                }}
                                 className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-200 active:scale-90 transition rounded-lg"
                               >
                                 <MoreVertical size={16} />
@@ -1070,9 +1074,9 @@ function AppMain() {
                               {isMenuOpen && (
                                 <>
                                   <div className="fixed inset-0 z-40" onClick={() => setEditingTemplateId(null)} />
-                                  <div className="absolute right-0 top-10 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[140px]">
+                                  <div className={`absolute right-0 ${templateMenuUp ? 'bottom-10' : 'top-10'} z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[140px]`}>
                                     <button
-                                      onClick={(e) => { startEditingTemplateName(e, routine); setEditingTemplateId(null); }}
+                                      onClick={(e) => startEditingTemplateName(e, routine)} // pone editingTemplateId = rowKey(routine): entra en edición y cierra el menú
                                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
                                     >
                                       <Edit3 size={12} /> Editar nombre
@@ -1429,13 +1433,6 @@ function AppMain() {
         <BlockReportModal block={reportBlock} onClose={() => setReportBlock(null)} />
       )}
 
-      {showCleanup && (
-        <CleanupRoutinesModal
-          open={showCleanup}
-          onClose={() => setShowCleanup(false)}
-          onCleaned={(deleted) => showNotify(`${deleted} plantilla${deleted !== 1 ? 's' : ''} eliminada${deleted !== 1 ? 's' : ''}`, 'success')}
-        />
-      )}
 
       {pendingDurationSave && (
         <DurationAlarmModal
