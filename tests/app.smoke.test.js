@@ -272,8 +272,17 @@ describe('App monta y navega', () => {
   it('Cierre de una sesión de plantilla: sin campo de nombre y con "Actualizar plantilla <nombre>"; actualiza solo peso y reps', async () => {
     const { db } = await import('../src/db/database.js');
     await db.routines.add(tplRow('r-torso', 'TORSO'));
-    await openFinish({ ...oldActiveSession(), name: 'TORSO', routineId: 'r-torso' });
+    const { setSetting } = await import('../src/db/repository.js');
+    await setSetting('activeSession', { ...oldActiveSession(), name: 'TORSO', routineId: 'r-torso' });
+    await mount();
+    await screen.findByRole('button', { name: /Finalizar Misión/i });
+    expect(screen.queryByRole('button', { name: /^Actualizar plantilla$/ })).toBeNull(); // ya no hay botón suelto en la sesión
+    fireEvent.click(screen.getByRole('button', { name: /Finalizar Misión/i }));
     await waitFor(() => expect(screen.getByTestId('finish-origin')).toBeTruthy());
+    // un solo "Actualizar plantilla": el resumen del diff está en el modal
+    const diff = screen.getByTestId('update-diff');
+    expect(diff.textContent).toMatch(/Cambios en la plantilla \(1\)/);
+    expect(diff.textContent).toMatch(/Sentadilla · set 1/);
     expect(screen.queryByText('Nombre del Registro')).toBeNull();
     expect(screen.queryByText(/Guardar como plantilla nueva/)).toBeNull();
     fireEvent.click(screen.getByText('Actualizar plantilla TORSO'));

@@ -78,6 +78,26 @@ describe('planRoutineUpdate', () => {
     expect(exercises.filter((e) => e.name === 'Dominadas')).toHaveLength(2);
   });
 
+  it('peso corporal sin lastre: un set completado con peso 0 (o vacío) también actualiza las reps', () => {
+    const session = { exercises: [{ id: 'e2', name: 'Dominadas', sets: [done({ weight: 0, reps: 10 })] }] };
+    const { exercises, changes } = planRoutineUpdate(routine(), session);
+    expect(exercises.find((e) => e.id === 'e2').sets[0]).toMatchObject({ id: 's4', weight: 0, reps: 10, restSeconds: 150, targetSeconds: 30 });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ type: 'update_set', exerciseName: 'Dominadas', before: { reps: 8 }, after: { reps: 10 } });
+    const vacio = { exercises: [{ id: 'e2', name: 'Dominadas', sets: [done({ weight: '', reps: '12' })] }] };
+    expect(planRoutineUpdate(routine(), vacio).exercises.find((e) => e.id === 'e2').sets[0]).toMatchObject({ weight: 0, reps: 12 });
+  });
+
+  it('peso corporal: sets de más y ejercicios nuevos con peso 0 también entran; un set sin reps no cuenta', () => {
+    const sets = [done({ weight: 0, reps: 10 }), done({ weight: 0, reps: 9 }), done({ weight: 0, reps: 0 })];
+    const { exercises, changes } = planRoutineUpdate(routine(), { exercises: [{ id: 'e2', name: 'Dominadas', sets }] });
+    expect(exercises.find((e) => e.id === 'e2').sets).toHaveLength(2); // 10 actualiza el set 1, 9 se agrega; reps 0 no cuenta
+    expect(changes.map((c) => c.type)).toEqual(['update_set', 'add_set']);
+    const nuevo = planRoutineUpdate(routine(), { exercises: [{ id: 'n1', name: 'Fondos', sets: [done({ weight: 0, reps: 12 })] }] });
+    expect(nuevo.exercises.find((e) => e.name === 'Fondos').sets[0]).toMatchObject({ weight: 0, reps: 12 });
+    expect(nuevo.changes[0].type).toBe('add_exercise');
+  });
+
   it('sin sets completados no cambia nada; entradas inválidas no rompen', () => {
     const r = routine();
     const { exercises, changes } = planRoutineUpdate(r, { exercises: [{ id: 'e1', name: 'Press Banca', sets: [{ weight: 100, reps: 5, completed: false }] }] });
@@ -143,12 +163,12 @@ describe('findExistingTemplate (wizard de import)', () => {
   });
 });
 
-describe('keepRpe: isImported && !lastUpdatedAt', () => {
+describe('keepRpe: isImported', () => {
   const imp = (extra = {}) => ({ id: 'r', name: 'X', isImported: true, exercises: [{ id: 'e', name: 'A', sets: [{ id: 's', weight: 1, reps: 1, rpe: '8' }] }], ...extra });
   const rpeAlIniciar = (r) => { useSessionStore.getState().startSession(r); return useSessionStore.getState().session.exercises[0].sets[0].rpe; };
-  it('importada sin tocar: conserva el RPE del Coach', () => { expect(rpeAlIniciar(imp())).toBe('8'); });
-  it('importada que pasó por "Actualizar plantilla" (lastUpdatedAt): el RPE ya no es confiable y se vacía', () => {
-    expect(rpeAlIniciar(imp({ lastUpdatedAt: '2026-10-29T00:00:00Z' }))).toBe('');
+  it('importada: conserva el RPE del Coach', () => { expect(rpeAlIniciar(imp())).toBe('8'); });
+  it('importada que ya pasó por "Actualizar plantilla" (lastUpdatedAt): también lo conserva (el flujo nuevo no copia RPE)', () => {
+    expect(rpeAlIniciar(imp({ lastUpdatedAt: '2026-10-29T00:00:00Z' }))).toBe('8');
   });
   it('plantilla guardada de una sesión (no importada): se vacía', () => { expect(rpeAlIniciar(imp({ isImported: false }))).toBe(''); });
 });

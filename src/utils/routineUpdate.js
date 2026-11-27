@@ -5,7 +5,7 @@ import { stripRuntimeFields } from './runtimeFields';
 // "Actualizar plantilla" desde una sesión. Una sola fuente de verdad: planRoutineUpdate (pura) calcula tanto la
 // lista de cambios que muestra el modal como los ejercicios que se guardan.
 //
-// Qué se actualiza: SOLO peso y reps de los sets completados (y se agregan los sets / ejercicios nuevos con sets
+// Qué se actualiza: SOLO peso y reps de los sets completados (con reps; el peso puede ser 0) (y se agregan los sets / ejercicios nuevos con sets
 // completados). Todo lo demás de la plantilla queda como está: lo del Coach (notes, decisionAdaptativa, tag,
 // planned, plannedRpe, targetSeconds, restSeconds, type, rpe prescrito) y los sets / ejercicios que esta sesión no
 // tocó. El RPE que registraste en la sesión NO se copia a la plantilla.
@@ -14,8 +14,11 @@ import { stripRuntimeFields } from './runtimeFields';
 // copia los ids al iniciar) y después por nombre entre los que quedaron sin emparejar. Así un ejercicio repetido en
 // la sesión no duplica el de la plantilla (antes lo agregaba una vez por cada repetición).
 
+// Un set cuenta si está completado y tiene reps. El peso puede ser 0 o vacío (peso corporal sin lastre): también
+// actualiza las reps de la plantilla.
 const completedSetsOf = (ex) =>
-  (Array.isArray(ex?.sets) ? ex.sets : []).filter((s) => s?.completed && s.weight && s.reps);
+  (Array.isArray(ex?.sets) ? ex.sets : []).filter((s) => s?.completed && parseFloat(s.reps) > 0);
+const wOf = (s) => Number(s?.weight) || 0;
 
 const matchExercises = (routineExs, sessionExs) => {
   const matchOf = new Map(); // índice en sessionExs -> índice en routineExs
@@ -52,7 +55,7 @@ export const planRoutineUpdate = (routine, session) => {
       if (completed.length === 0) return;
       changes.push({ type: 'add_exercise', exercise: sessionEx, sets: completed });
       const [clean] = stripRuntimeFields([{ ...sessionEx, sets: completed }]);
-      added.push({ ...clean, sets: clean.sets.map((s) => ({ ...s, weight: Number(s.weight), reps: Number(s.reps) })) });
+      added.push({ ...clean, sets: clean.sets.map((s) => ({ ...s, weight: wOf(s), reps: Number(s.reps) })) });
       return;
     }
     if (completed.length === 0) return;
@@ -66,12 +69,12 @@ export const planRoutineUpdate = (routine, session) => {
         changes.push({ type: 'add_set', exerciseName: sessionEx.name, set: cs });
         const last = routineSets[routineSets.length - 1];
         newSets.push({
-          id: `set-upd-${stamp}-${si}-${i}`, type: cs.type || 'normal', weight: Number(cs.weight), reps: Number(cs.reps),
+          id: `set-upd-${stamp}-${si}-${i}`, type: cs.type || 'normal', weight: wOf(cs), reps: Number(cs.reps),
           rpe: '', notes: '', completed: false, ...(last?.restSeconds != null ? { restSeconds: last.restSeconds } : {}),
         });
         return;
       }
-      const wChanged = Number(rs.weight) !== Number(cs.weight);
+      const wChanged = wOf(rs) !== wOf(cs);
       const rChanged = Number(rs.reps) !== Number(cs.reps);
       if (wChanged || rChanged) {
         changes.push({
@@ -79,7 +82,7 @@ export const planRoutineUpdate = (routine, session) => {
           before: { weight: rs.weight, reps: rs.reps, rpe: rs.rpe },
           after: { weight: cs.weight, reps: cs.reps, rpe: rs.rpe }, // el RPE de la plantilla no cambia
         });
-        newSets[i] = { ...rs, weight: Number(cs.weight), reps: Number(cs.reps) };
+        newSets[i] = { ...rs, weight: wOf(cs), reps: Number(cs.reps) };
       }
     });
     next[ri] = { ...routineEx, sets: newSets };

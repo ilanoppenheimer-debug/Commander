@@ -13,7 +13,6 @@ import {
   Timer,
   Plus,
   StickyNote,
-  RefreshCw,
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
@@ -42,7 +41,7 @@ import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { buildSessionAnalysis } from "../utils/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
-import { formatSeconds } from "../utils/formatters";
+import { formatSeconds, formatWeight, formatReps } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
@@ -50,7 +49,7 @@ import { currentEquipment, makeVariantMatcher, variantLabel, offeredImplements }
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
 import { useSessionStore } from "../stores/sessionStore";
-import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
+import { planRoutineUpdate } from "../utils/routineUpdate";
 import { db } from "../db/database";
 import { useRoutines } from "../db/hooks";
 import { findActiveByName } from "../utils/routineNaming";
@@ -244,12 +243,15 @@ export const FinishMissionModal = ({
   origin = null,
   hadOrigin = false,
   routines = [],
+  exercises = [],
 }) => {
   const [name, setName] = useState(sessionName || "Entrenamiento Libre");
   const [saveTemplate, setSaveTemplate] = useState(false);   // sesión libre: guardar como plantilla NUEVA
   const [updateOrigin, setUpdateOrigin] = useState(false);   // sesión de plantilla: actualizarla
   const [mergeInto, setMergeInto] = useState(null);          // conflicto de nombre resuelto con "Actualizar la existente"
   const nameRef = useRef(null);
+  // Resumen de lo que haría "Actualizar plantilla" (la misma planRoutineUpdate que escribe los cambios).
+  const updateChanges = useMemo(() => (origin ? planRoutineUpdate(origin, { exercises }).changes : []), [origin, exercises]);
 
   // Regla: no hay dos plantillas ACTIVAS con el mismo nombre normalizado.
   const conflict = !origin && saveTemplate && !mergeInto ? findActiveByName(name, routines) : null;
@@ -300,6 +302,24 @@ export const FinishMissionModal = ({
               <p className="text-[9px] text-slate-500 mt-2 ml-1">
                 Solo cambian peso y reps de lo que completaste; el RPE, los descansos y las notas del Coach no se tocan.
               </p>
+              <div className="mt-2 space-y-1" data-testid="update-diff">
+                {updateChanges.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 ml-1">Sin cambios para aplicar a la plantilla.</p>
+                ) : (
+                  <>
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold ml-1">Cambios en la plantilla ({updateChanges.length})</div>
+                    <ul className="text-[11px] text-slate-300 space-y-0.5 max-h-40 overflow-y-auto">
+                      {updateChanges.map((c, i) => (
+                        <li key={i} className="bg-slate-900 border border-slate-800 rounded px-2 py-1">
+                          {c.type === 'add_exercise' && <><span className="text-emerald-400 font-bold">+ Ejercicio</span> {c.exercise.name} · {c.sets.length} set(s)</>}
+                          {c.type === 'add_set' && <><span className="text-emerald-400 font-bold">+ Set</span> {c.exerciseName} · {formatWeight(c.set.weight, barUnit)} × {formatReps(c.set.reps)}</>}
+                          {c.type === 'update_set' && <>{c.exerciseName} · set {c.setIndex + 1}: <span className="text-red-400 line-through">{formatWeight(c.before.weight, barUnit)} × {formatReps(c.before.reps)}</span> → <span className="text-emerald-400">{formatWeight(c.after.weight, barUnit)} × {formatReps(c.after.reps)}</span></>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
             </div>
           ) : (
             <>
@@ -412,7 +432,6 @@ export default function ActiveSession({
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
   const [showFinishModal,   setShowFinishModal]   = useState(false);
-  const [showUpdateRoutine, setShowUpdateRoutine] = useState(false);
   // Plantilla de origen de la sesión (la fila de mayor _id si hubiera repetidas): sale de la lista en vivo.
   const allRoutines = useRoutines();
   const originRoutine = useMemo(() => {
@@ -748,6 +767,7 @@ export default function ActiveSession({
           origin={originRoutine && !originRoutine.archived ? originRoutine : null}
           hadOrigin={!!session.routineId}
           routines={Array.isArray(allRoutines) ? allRoutines : []}
+          exercises={exercises}
         />
       )}
 
@@ -1247,26 +1267,7 @@ export default function ActiveSession({
         >
           Finalizar Misión
         </button>
-        {session.routineId && originRoutine && (
-          <button
-            onClick={() => setShowUpdateRoutine(true)}
-            className="md:col-span-2 w-full py-2.5 bg-slate-800 text-slate-400 rounded-lg font-bold text-xs border border-slate-700 hover:bg-slate-700 hover:text-slate-200 transition flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw size={13} /> Actualizar plantilla
-          </button>
-        )}
       </div>
-
-      {showUpdateRoutine && (
-        <UpdateRoutineModal
-          open={showUpdateRoutine}
-          onClose={() => setShowUpdateRoutine(false)}
-          routine={originRoutine}
-          session={session}
-          onUpdated={() => setShowUpdateRoutine(false)}
-          barUnit={barUnit}
-        />
-      )}
 
       <div className="h-16"></div>
 
