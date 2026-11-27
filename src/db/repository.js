@@ -46,6 +46,18 @@ export const saveRoutine = (routine) =>
     });
   });
 
+// Marca "última vez" de la plantilla que se acaba de entrenar. Toca la misma fila que saveRoutine (la de mayor _id) y
+// solo lastPerformed: no cambia nombre, ejercicios ni archived. Si la plantilla ya no existe, no hace nada.
+export const markRoutinePerformed = (routineId, whenISO = new Date().toISOString()) =>
+  db.transaction('rw', db.routines, async () => {
+    if (routineId == null) return false;
+    const rows = await db.routines.where('routineId').equals(routineId).toArray();
+    const row = rows.reduce((best, r) => (!best || r._id > best._id ? r : best), null);
+    if (!row) return false;
+    await db.routines.put({ ...row, lastPerformed: whenISO });
+    return true;
+  });
+
 export const deleteRoutine = (routineId) =>
   db.routines.where('routineId').equals(routineId).delete();
 
