@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { oldActiveSession } from './fixtures/oldActiveSession.js';
@@ -386,5 +386,77 @@ describe('App monta y navega', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Nueva$/ }));
     await waitFor(async () => expect(await db.routines.count()).toBe(2));
     expect((await db.routines.toArray()).map((r) => r.name).sort()).toEqual(['Nueva Plantilla', 'Nueva Plantilla 2']);
+  });
+  // ── C: menú ⋮ de Mis plantillas, "Editar nombre" y wizard "Limpiar" ───────────────────────────────────────────
+  const abrirPlantillas = async (rows) => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd(rows);
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    await waitFor(() => expect(screen.getByText(rows[0].name)).toBeTruthy());
+    return db;
+  };
+  const kebabs = () => [...document.querySelectorAll('main .relative.shrink-0 > button')];
+
+  it('Menú ⋮ → "Editar nombre" entra en modo edición (antes el handler lo cerraba en el mismo clic) y guarda', async () => {
+    const db = await abrirPlantillas([tplRow('r-a', 'LEGS'), tplRow('r-b', 'DL')]);
+    fireEvent.click(kebabs()[1]); // menú de DL
+    fireEvent.click(await screen.findByText('Editar nombre'));
+    const input = await waitFor(() => { const i = document.querySelector('main input.border-accent-500'); expect(i).toBeTruthy(); return i; });
+    expect(input.value).toBe('DL');
+    expect(screen.queryByText('Editar nombre')).toBeNull(); // el menú se cierra al entrar en edición
+    fireEvent.change(input, { target: { value: 'DL pesado' } });
+    fireEvent.click(input.parentElement.querySelector('button'));
+    await waitFor(async () => expect((await db.routines.toArray()).find((r) => r.routineId === 'r-b').name).toBe('DL pesado'));
+    expect((await db.routines.toArray()).find((r) => r.routineId === 'r-a').name).toBe('LEGS');
+  });
+
+  it('"Editar nombre" también funciona desde el menú de la ÚLTIMA fila', async () => {
+    await abrirPlantillas([tplRow('r-a', 'LEGS'), tplRow('r-b', 'DL'), tplRow('r-c', 'TORSO')]);
+    const ks = kebabs();
+    fireEvent.click(ks[ks.length - 1]);
+    fireEvent.click(await screen.findByText('Editar nombre'));
+    await waitFor(() => expect(document.querySelector('main input.border-accent-500')?.value).toBe('TORSO'));
+  });
+
+  it('Menú ⋮ de la última fila: ningún contenedor intermedio lo recorta (sin overflow-hidden entre el menú y <main>)', async () => {
+    await abrirPlantillas([tplRow('r-a', 'LEGS'), tplRow('r-b', 'DL'), tplRow('r-c', 'TORSO')]);
+    const ks = kebabs();
+    fireEvent.click(ks[ks.length - 1]);
+    const menu = (await screen.findByText('Editar nombre')).closest('.absolute');
+    expect(menu).toBeTruthy();
+    const recortan = [];
+    for (let el = menu.parentElement; el && el.tagName !== 'MAIN'; el = el.parentElement) {
+      if (/\boverflow-(hidden|auto|scroll|clip)\b/.test(el.className)) recortan.push(el.className.slice(0, 60));
+    }
+    expect(recortan).toEqual([]);
+    for (const l of ['Clonar', 'Archivar', 'Borrar']) expect(screen.getByText(l)).toBeTruthy();
+  });
+
+  it('Menú ⋮ con poco lugar abajo (última fila contra la barra): se abre hacia ARRIBA; con lugar, hacia abajo', async () => {
+    await abrirPlantillas([tplRow('r-a', 'LEGS'), tplRow('r-b', 'DL')]);
+    const ks = kebabs();
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    try {
+      rect.mockReturnValue({ top: 640, bottom: 676, left: 0, right: 0, width: 36, height: 36, x: 0, y: 640 });
+      fireEvent.click(ks[1]);
+      expect((await screen.findByText('Editar nombre')).closest('.absolute').className).toMatch(/\bbottom-10\b/);
+      fireEvent.click(ks[1]); // cierra
+      rect.mockReturnValue({ top: 100, bottom: 136, left: 0, right: 0, width: 36, height: 36, x: 0, y: 100 });
+      fireEvent.click(ks[0]);
+      expect((await screen.findByText('Editar nombre')).closest('.absolute').className).toMatch(/\btop-10\b/);
+    } finally { rect.mockRestore(); }
+  });
+
+  it('Padding inferior de la pantalla = barra + safe-area (no un valor fijo)', async () => {
+    await mount();
+    expect(document.querySelector('main').className).toContain('env(safe-area-inset-bottom');
+  });
+
+  it('Mis plantillas ya no tiene el wizard "Limpiar"', async () => {
+    await abrirPlantillas([tplRow('r-a', 'LEGS')]);
+    expect(screen.queryByRole('button', { name: /Limpiar/ })).toBeNull();
+    expect(screen.queryByText(/Limpiar rutinas/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Nueva$/ })).toBeTruthy(); // el resto de la barra sigue
   });
 });
