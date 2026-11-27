@@ -4,14 +4,18 @@
 export const normalizeRoutineName = (name) =>
   (name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 
-// La plantilla ACTIVA que ya usa ese nombre (normalizado), o null. `excludeId` es el `id` de la propia plantilla
-// (para que renombrarla a su mismo nombre, o con otras mayúsculas, no choque consigo misma).
-export const findActiveByName = (name, routines, excludeId = null) => {
+// La plantilla ACTIVA que ya usa ese nombre (normalizado), o null. `exclude` es la propia plantilla (para que renombrarla
+// a su mismo nombre, o con otras mayúsculas, no choque consigo misma): una FILA (se compara por _id, así una fila gemela
+// con el mismo routineId sigue contando como "otra") o un id (string).
+export const findActiveByName = (name, routines, exclude = null) => {
   const key = normalizeRoutineName(name);
   if (!key) return null;
-  return (Array.isArray(routines) ? routines : []).find((r) =>
-    r && !r.archived && (excludeId == null || (r.id ?? r.routineId) !== excludeId) && normalizeRoutineName(r.name) === key
-  ) || null;
+  const isSelf = (r) => {
+    if (exclude == null) return false;
+    if (typeof exclude === 'object') return exclude._id != null && r._id != null ? r._id === exclude._id : (r.id ?? r.routineId) === (exclude.id ?? exclude.routineId);
+    return (r.id ?? r.routineId) === exclude;
+  };
+  return (Array.isArray(routines) ? routines : []).find((r) => r && !r.archived && !isSelf(r) && normalizeRoutineName(r.name) === key) || null;
 };
 
 // "Base", y si ya existe: "Base 2", "Base 3"… (para plantillas creadas sin nombre elegido por el usuario).

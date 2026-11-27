@@ -393,7 +393,7 @@ describe('App monta y navega', () => {
     await db.routines.bulkAdd(rows);
     await mount();
     fireEvent.click(screen.getByText(/Mis plantillas/));
-    await waitFor(() => expect(screen.getByText(rows[0].name)).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText(rows[0].name).length).toBeGreaterThan(0));
     return db;
   };
   const kebabs = () => [...document.querySelectorAll('main .relative.shrink-0 > button')];
@@ -458,5 +458,31 @@ describe('App monta y navega', () => {
     expect(screen.queryByRole('button', { name: /Limpiar/ })).toBeNull();
     expect(screen.queryByText(/Limpiar rutinas/)).toBeNull();
     expect(screen.getByRole('button', { name: /Nueva$/ })).toBeTruthy(); // el resto de la barra sigue
+  });
+  it('Backup previo a la limpieza: dos filas con el MISMO routineId — el menú ⋮ y la edición de nombre son por fila (_id)', async () => {
+    const db = await abrirPlantillas([tplRow('r-dup', 'LEGS'), tplRow('r-dup', 'LEGS'), tplRow('r-otra', 'DL')]);
+    const filas = await db.routines.orderBy('_id').toArray();
+    expect(filas[0].routineId).toBe(filas[1].routineId); // mismas id, distinto _id
+    // menú: abrir el de la primera fila no abre el de su gemela
+    fireEvent.click(kebabs()[0]);
+    await screen.findByText('Editar nombre');
+    expect(screen.getAllByText('Editar nombre')).toHaveLength(1);
+    // editar nombre: solo la primera entra en edición
+    fireEvent.click(screen.getByText('Editar nombre'));
+    await waitFor(() => expect(document.querySelectorAll('main input.border-accent-500')).toHaveLength(1));
+    const input = document.querySelector('main input.border-accent-500');
+    expect(input.closest('.relative')).toBe(document.querySelectorAll('main .bg-slate-900\\/60.relative')[0]);
+    fireEvent.change(input, { target: { value: 'LEGS A' } });
+    fireEvent.click(input.parentElement.querySelector('button'));
+    await waitFor(async () => expect((await db.routines.get(filas[0]._id)).name).toBe('LEGS A'));
+    expect((await db.routines.get(filas[1]._id)).name).toBe('LEGS'); // la gemela no cambió
+    expect(document.querySelectorAll('main input.border-accent-500')).toHaveLength(0);
+    // y el menú de la segunda fila abre solo ese
+    fireEvent.click(kebabs()[1]);
+    await screen.findByText('Editar nombre');
+    expect(screen.getAllByText('Editar nombre')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Editar nombre'));
+    await waitFor(() => expect(document.querySelector('main input.border-accent-500')?.value).toBe('LEGS'));
+    expect(document.querySelectorAll('main input.border-accent-500')).toHaveLength(1);
   });
 });
