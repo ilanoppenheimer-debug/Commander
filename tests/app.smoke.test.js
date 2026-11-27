@@ -167,7 +167,7 @@ describe('App monta y navega', () => {
     await setSetting('activeSession', sesion);
     await mount();
     fireEvent.click(await screen.findByRole('button', { name: /Finalizar Misión/i }));
-    fireEvent.click(await screen.findByRole('switch').catch(() => screen.getByText(/Guardar como Plantilla/)));
+    fireEvent.click(await screen.findByRole('switch').catch(() => screen.getByText(/Guardar como plantilla nueva/)));
     fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
     await waitFor(async () => expect(await db.routines.count()).toBe(1));
     const tpl = (await db.routines.toArray())[0];
@@ -255,5 +255,136 @@ describe('App monta y navega', () => {
       expect(despues.find((r) => r.routineId === 'r-nueva').name).toBe('PLANTILLA NUEVA');
       expect(await db.settings.get('routinesDedupeV1')).toBeUndefined();
     } finally { window.confirm = confirm; }
+  });
+  // ── F2: modal de cierre según origen + nombres únicos ──────────────────────────────────────────────────────
+  const tplRow = (id, name, extra = {}) => ({
+    id, routineId: id, name, exercises: [{ id: 'ex-old-1', name: 'Sentadilla', equipment: 'barbell', tag: 'main_lift', notes: 'Nota del Coach',
+      sets: [{ id: 's1', type: 'top', weight: 80, reps: 5, rpe: '8', restSeconds: 150, targetSeconds: 30, completed: false },
+             { id: 's2', type: 'normal', weight: 70, reps: 5, rpe: '', restSeconds: 150, completed: false }] }], ...extra,
+  });
+  const openFinish = async (session) => {
+    const { setSetting } = await import('../src/db/repository.js');
+    await setSetting('activeSession', session);
+    await mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Finalizar Misión/i }));
+  };
+
+  it('Cierre de una sesión de plantilla: sin campo de nombre y con "Actualizar plantilla <nombre>"; actualiza solo peso y reps', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-torso', 'TORSO'));
+    const { setSetting } = await import('../src/db/repository.js');
+    await setSetting('activeSession', { ...oldActiveSession(), name: 'TORSO', routineId: 'r-torso' });
+    await mount();
+    await screen.findByRole('button', { name: /Finalizar Misión/i });
+    expect(screen.queryByRole('button', { name: /^Actualizar plantilla$/ })).toBeNull(); // ya no hay botón suelto en la sesión
+    fireEvent.click(screen.getByRole('button', { name: /Finalizar Misión/i }));
+    await waitFor(() => expect(screen.getByTestId('finish-origin')).toBeTruthy());
+    // un solo "Actualizar plantilla": el resumen del diff está en el modal
+    const diff = screen.getByTestId('update-diff');
+    expect(diff.textContent).toMatch(/Cambios en la plantilla \(1\)/);
+    expect(diff.textContent).toMatch(/Sentadilla · set 1/);
+    expect(screen.queryByText('Nombre del Registro')).toBeNull();
+    expect(screen.queryByText(/Guardar como plantilla nueva/)).toBeNull();
+    fireEvent.click(screen.getByText('Actualizar plantilla TORSO'));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.history.count()).toBe(1));
+    expect((await db.history.toArray())[0].name).toBe('TORSO');
+    await waitFor(async () => expect((await db.routines.toArray())[0].lastUpdatedAt).toBeTruthy());
+    const rows = await db.routines.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].exercises[0].sets[0]).toMatchObject({ weight: 100, reps: 5, rpe: '8', restSeconds: 150, targetSeconds: 30 });
+    expect(rows[0].exercises[0].notes).toBe('Nota del Coach');
+    expect(rows[0].exercises[0].sets[1]).toMatchObject({ weight: 70 }); // el set que la sesión no completó se mantiene
+  });
+
+  it('Cierre de una sesión de plantilla SIN tocar el botón: la plantilla queda igual', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-torso', 'TORSO'));
+    const antes = await db.routines.toArray();
+    await openFinish({ ...oldActiveSession(), name: 'TORSO', routineId: 'r-torso' });
+    fireEvent.click(await screen.findByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.history.count()).toBe(1));
+    expect(await db.routines.toArray()).toEqual(antes);
+  });
+
+  it('Si la plantilla de origen está archivada o ya no existe: sesión libre, con aviso y campo de nombre', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-arch', 'VIEJA', { archived: true }));
+    await openFinish({ ...oldActiveSession(), name: 'VIEJA', routineId: 'r-arch' });
+    await waitFor(() => expect(screen.getByTestId('finish-origin-gone')).toBeTruthy());
+    expect(screen.getByText('Nombre del Registro')).toBeTruthy();
+    expect(screen.getByText(/Guardar como plantilla nueva/)).toBeTruthy();
+    expect(screen.queryByTestId('finish-origin')).toBeNull();
+  });
+
+  it('Sesión libre + "Guardar como plantilla nueva" con un nombre ya usado por una ACTIVA: avisa, bloquea y ofrece actualizar la existente', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-legs', 'Legs'));
+    await openFinish({ ...oldActiveSession(), name: 'LEGS' });
+    fireEvent.click(await screen.findByText(/Guardar como plantilla nueva/));
+    await waitFor(() => expect(screen.getByTestId('name-conflict')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Guardar en Historial/i }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Actualizar la existente' }));
+    await waitFor(() => expect(screen.getByTestId('merge-note')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Guardar en Historial/i }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.history.count()).toBe(1));
+    await waitFor(async () => expect((await db.routines.toArray())[0].lastUpdatedAt).toBeTruthy());
+    expect(await db.routines.count()).toBe(1); // no se creó una segunda plantilla
+  });
+
+  it('Conflicto de nombre: "Cambiar nombre" deja el botón bloqueado hasta que el nombre es único; una ARCHIVADA no cuenta', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd([tplRow('r-legs', 'Legs'), tplRow('r-dl', 'DL', { archived: true })]);
+    await openFinish({ ...oldActiveSession(), name: 'LEGS' });
+    fireEvent.click(await screen.findByText(/Guardar como plantilla nueva/));
+    await waitFor(() => expect(screen.getByTestId('name-conflict')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar nombre' }));
+    expect(screen.getByRole('button', { name: /Guardar en Historial/i }).disabled).toBe(true);
+    const input = screen.getByPlaceholderText('Ej: Empuje Pesado');
+    fireEvent.change(input, { target: { value: 'DL' } }); // existe pero archivada: permitido
+    await waitFor(() => expect(screen.queryByTestId('name-conflict')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: /Guardar en Historial/i }));
+    await waitFor(async () => expect(await db.routines.count()).toBe(3));
+    expect((await db.routines.toArray()).filter((r) => r.name === 'DL')).toHaveLength(2);
+  });
+
+  it('Mis plantillas: renombrar a un nombre ya usado por otra ACTIVA se bloquea; el mismo nombre con otras mayúsculas no choca consigo misma', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd([tplRow('r-a', 'LEGS'), tplRow('r-b', 'DL')]);
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    await waitFor(() => expect(screen.getByText('DL')).toBeTruthy());
+    fireEvent.click(screen.getByText('DL')); // entra al modo edición de nombre
+    const input = await waitFor(() => { const i = document.querySelector('main input.border-accent-500'); expect(i).toBeTruthy(); return i; });
+    fireEvent.change(input, { target: { value: 'legs' } });
+    fireEvent.click(input.parentElement.querySelector('button'));
+    await waitFor(() => expect(screen.getByText(/Ya hay una plantilla activa llamada "LEGS"/)).toBeTruthy());
+    expect((await db.routines.toArray()).find((r) => r.routineId === 'r-b').name).toBe('DL');
+    fireEvent.change(input, { target: { value: 'dl' } }); // consigo misma: permitido
+    fireEvent.click(input.parentElement.querySelector('button'));
+    await waitFor(async () => expect((await db.routines.toArray()).find((r) => r.routineId === 'r-b').name).toBe('dl'));
+  });
+
+  it('Mis plantillas: restaurar una archivada que repetiría el nombre de una ACTIVA se bloquea', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.bulkAdd([tplRow('r-a', 'LEGS'), tplRow('r-old', 'legs', { archived: true })]);
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    fireEvent.click(await screen.findByText(/^Archivadas/));
+    await waitFor(() => expect(screen.getByText('legs')).toBeTruthy());
+    fireEvent.click(document.querySelector('main .relative.shrink-0 > button'));
+    fireEvent.click(await screen.findByText('Desarchivar'));
+    await waitFor(() => expect(screen.getByText(/Ya hay una plantilla activa llamada "LEGS"/)).toBeTruthy());
+    expect((await db.routines.toArray()).find((r) => r.routineId === 'r-old').archived).toBe(true);
+  });
+  it('Mis plantillas: "Nueva" no repite el nombre de una activa ("Nueva Plantilla", "Nueva Plantilla 2")', async () => {
+    const { db } = await import('../src/db/database.js');
+    await db.routines.add(tplRow('r-n', 'Nueva Plantilla'));
+    await mount();
+    fireEvent.click(screen.getByText(/Mis plantillas/));
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva$/ }));
+    await waitFor(async () => expect(await db.routines.count()).toBe(2));
+    expect((await db.routines.toArray()).map((r) => r.name).sort()).toEqual(['Nueva Plantilla', 'Nueva Plantilla 2']);
   });
 });

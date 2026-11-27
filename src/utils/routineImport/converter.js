@@ -1,4 +1,5 @@
 import { saveRoutine } from '../../db/repository';
+import { normalizeRoutineName } from '../routineNaming';
 import { db } from '../../db/database';
 import { saveExerciseMeta, getExerciseMeta, getMeasurement, matchFamily } from '../../constants/exerciseMetadata';
 import { getFamilyEntry } from '../../constants/exerciseFamilies';
@@ -221,14 +222,19 @@ export const detectMeasurementSignals = (parsedExercises) => {
 };
 
 /**
- * Finds an existing routine with the same name (normalized).
- * Returns the existing routine object or null.
+ * Finds the existing template an import would replace: same name by the shared normalizeRoutineName (case, accents
+ * and repeated spaces ignored). ACTIVE templates win over archived ones (archived names may repeat); among equals,
+ * the most recent (importedAt / createdAt, then the highest _id). Returns the row or null.
  */
 export const findExistingTemplate = async (importedRoutine) => {
   if (!importedRoutine?.name) return null;
-  const normalized = importedRoutine.name.toLowerCase().trim();
+  const key = normalizeRoutineName(importedRoutine.name);
+  if (!key) return null;
   try {
     const all = await db.routines.toArray();
-    return all.find(r => r.name && r.name.toLowerCase().trim() === normalized) || null;
+    const when = (r) => Date.parse(r.importedAt || r.createdAt || 0) || 0;
+    return all
+      .filter(r => r.name && normalizeRoutineName(r.name) === key)
+      .sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0) || when(b) - when(a) || (b._id ?? 0) - (a._id ?? 0))[0] || null;
   } catch { return null; }
 };

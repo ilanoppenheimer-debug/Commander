@@ -64,7 +64,8 @@ export const useSessionStore = create((set, get) => ({
       closingNotes: routine?.closingNotes || '',
       // Sin campos de runtime (finishedAt, rpe registrado, seconds…): una plantilla guardada desde una sesión
       // anterior los trae, y sin limpiarlos el ejercicio arranca "cerrado" con minutos negativos.
-      // En una rutina importada el rpe es el del Coach y se conserva.
+      // En una rutina importada el rpe es el del Coach y se conserva ("Actualizar plantilla" ya no copia el RPE
+      // registrado, así que una importada actualizada sigue teniendo el del Coach).
       exercises: routine?.exercises
         ? stripRuntimeFields(JSON.parse(JSON.stringify(routine.exercises)), { keepRpe: !!routine.isImported })
         : [],

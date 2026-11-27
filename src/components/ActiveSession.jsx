@@ -13,7 +13,6 @@ import {
   Timer,
   Plus,
   StickyNote,
-  RefreshCw,
 } from "lucide-react";
 import { CustomNumPad } from "./keypad/CustomNumPad";
 import { SetRow } from "./session/SetRow";
@@ -42,7 +41,7 @@ import { EQUIPMENT_TYPES } from "../constants/gymConstants";
 import { getExerciseDetails } from "../features/exerciseMeta.jsx";
 import { buildSessionAnalysis } from "../utils/sessionAnalysis";
 import { getTopHistoricalSet, getLastLoggedSet } from "../utils/strengthMath";
-import { formatSeconds } from "../utils/formatters";
+import { formatSeconds, formatWeight, formatReps } from "../utils/formatters";
 import { sameExercise, normalizeExerciseName } from "../utils/exerciseName";
 import { hasPlannedSets, summarizePlannedSets } from "../utils/plannedSets";
 import { lastLoggedSeconds } from "../utils/exerciseHistoryLines";
@@ -50,8 +49,10 @@ import { currentEquipment, makeVariantMatcher, variantLabel, offeredImplements }
 import { isTimedHoldRunning } from "../utils/timedSetTimerStorage";
 import { isMaxPlan } from "../utils/timedPlan";
 import { useSessionStore } from "../stores/sessionStore";
-import { UpdateRoutineModal } from "./routineUpdate/UpdateRoutineModal";
+import { planRoutineUpdate } from "../utils/routineUpdate";
 import { db } from "../db/database";
+import { useRoutines } from "../db/hooks";
+import { findActiveByName } from "../utils/routineNaming";
 
 // Same small local const pattern TimedSetRow.jsx already uses for its own TAG_*
 // duplication — kept local rather than a new shared module for two three-entry maps.
@@ -229,6 +230,9 @@ function getConsistentTargetSeconds(sets) {
   return values.every(v => v === values[0]) ? values[0] : null;
 }
 
+// `origin`: la plantilla ACTIVA de la que salió la sesión (o null). `hadOrigin`: la sesión traía un routineId (si
+// `origin` es null pero hadOrigin es true, la plantilla ya no existe o está archivada). `routines`: todas las filas,
+// para la regla de nombres únicos entre plantillas activas.
 export const FinishMissionModal = ({
   sessionName,
   onConfirm,
@@ -236,9 +240,25 @@ export const FinishMissionModal = ({
   onCancel,
   analysis,
   barUnit,
+  origin = null,
+  hadOrigin = false,
+  routines = [],
+  exercises = [],
 }) => {
   const [name, setName] = useState(sessionName || "Entrenamiento Libre");
-  const [saveTemplate, setSaveTemplate] = useState(false);
+  const [saveTemplate, setSaveTemplate] = useState(false);   // sesión libre: guardar como plantilla NUEVA
+  const [updateOrigin, setUpdateOrigin] = useState(false);   // sesión de plantilla: actualizarla
+  const [mergeInto, setMergeInto] = useState(null);          // conflicto de nombre resuelto con "Actualizar la existente"
+  const nameRef = useRef(null);
+  // Resumen de lo que haría "Actualizar plantilla" (la misma planRoutineUpdate que escribe los cambios).
+  const updateChanges = useMemo(() => (origin ? planRoutineUpdate(origin, { exercises }).changes : []), [origin, exercises]);
+
+  // Regla: no hay dos plantillas ACTIVAS con el mismo nombre normalizado.
+  const conflict = !origin && saveTemplate && !mergeInto ? findActiveByName(name, routines) : null;
+  const mergeTarget = mergeInto ? routines.find((r) => (r.id ?? r.routineId) === mergeInto) : null;
+  const templateChoice = origin
+    ? (updateOrigin ? { updateRoutineId: origin.id ?? origin.routineId } : false)
+    : mergeTarget ? { updateRoutineId: mergeTarget.id ?? mergeTarget.routineId } : saveTemplate;
 
   const hasVolume = analysis?.totalVolume > 0;
   const isEmpty = !analysis || (analysis.totalSets === 0 && !hasVolume);
@@ -271,30 +291,87 @@ export const FinishMissionModal = ({
             <PostSessionReport analysis={analysis} barUnit={barUnit} />
           )}
 
-          <InputGroup
-            label="Nombre del Registro"
-            value={name}
-            onChange={setName}
-            placeholder="Ej: Empuje Pesado"
-          />
+          {origin ? (
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800" data-testid="finish-origin">
+              <p className="text-[11px] text-slate-400 mb-2">Sesión de la plantilla <b className="text-slate-200">{origin.name}</b></p>
+              <ToggleSwitch
+                checked={updateOrigin}
+                onChange={setUpdateOrigin}
+                label={`Actualizar plantilla ${origin.name}`}
+              />
+              <p className="text-[9px] text-slate-500 mt-2 ml-1">
+                Solo cambian peso y reps de lo que completaste; el RPE, los descansos y las notas del Coach no se tocan.
+              </p>
+              <div className="mt-2 space-y-1" data-testid="update-diff">
+                {updateChanges.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 ml-1">Sin cambios para aplicar a la plantilla.</p>
+                ) : (
+                  <>
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold ml-1">Cambios en la plantilla ({updateChanges.length})</div>
+                    <ul className="text-[11px] text-slate-300 space-y-0.5 max-h-40 overflow-y-auto">
+                      {updateChanges.map((c, i) => (
+                        <li key={i} className="bg-slate-900 border border-slate-800 rounded px-2 py-1">
+                          {c.type === 'add_exercise' && <><span className="text-emerald-400 font-bold">+ Ejercicio</span> {c.exercise.name} · {c.sets.length} set(s)</>}
+                          {c.type === 'add_set' && <><span className="text-emerald-400 font-bold">+ Set</span> {c.exerciseName} · {formatWeight(c.set.weight, barUnit)} × {formatReps(c.set.reps)}</>}
+                          {c.type === 'update_set' && <>{c.exerciseName} · set {c.setIndex + 1}: <span className="text-red-400 line-through">{formatWeight(c.before.weight, barUnit)} × {formatReps(c.before.reps)}</span> → <span className="text-emerald-400">{formatWeight(c.after.weight, barUnit)} × {formatReps(c.after.reps)}</span></>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {hadOrigin && (
+                <div className="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2" data-testid="finish-origin-gone">
+                  La plantilla de origen ya no está activa (se borró o está archivada): esta sesión se guarda como sesión libre.
+                </div>
+              )}
+              <div ref={nameRef}>
+                <InputGroup
+                  label="Nombre del Registro"
+                  value={name}
+                  onChange={setName}
+                  placeholder="Ej: Empuje Pesado"
+                />
+              </div>
 
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <ToggleSwitch
-              checked={saveTemplate}
-              onChange={setSaveTemplate}
-              label="Guardar como Plantilla"
-            />
-            <p className="text-[9px] text-slate-500 mt-2 ml-1">
-              Aparecerá en "Mis Plantillas" para repetirla otro día.
-            </p>
-          </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <ToggleSwitch
+                  checked={saveTemplate}
+                  onChange={(v) => { setSaveTemplate(v); if (!v) setMergeInto(null); }}
+                  label="Guardar como plantilla nueva"
+                />
+                <p className="text-[9px] text-slate-500 mt-2 ml-1">
+                  Aparecerá en "Mis Plantillas" para repetirla otro día.
+                </p>
+                {conflict && (
+                  <div className="mt-3 text-[11px] text-amber-200 bg-amber-950/40 border border-amber-500/60 rounded-lg px-3 py-2 space-y-2" data-testid="name-conflict">
+                    <div>Ya existe una plantilla activa llamada <b>{conflict.name}</b>.</div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setMergeInto(conflict.id ?? conflict.routineId)} className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-500 text-black font-bold rounded-lg">Actualizar la existente</button>
+                      <button onClick={() => nameRef.current?.querySelector('input')?.focus()} className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg">Cambiar nombre</button>
+                    </div>
+                  </div>
+                )}
+                {mergeTarget && (
+                  <div className="mt-3 text-[11px] text-emerald-200 bg-emerald-950/30 border border-emerald-700/40 rounded-lg px-3 py-2 flex items-center justify-between gap-2" data-testid="merge-note">
+                    <span>Se actualizará la plantilla <b>{mergeTarget.name}</b> (solo peso y reps).</span>
+                    <button onClick={() => setMergeInto(null)} className="text-slate-300 underline">Cambiar</button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Sticky footer — always visible */}
         <div className="p-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
           <button
-            onClick={() => onConfirm(name, saveTemplate)}
-            className={`w-full py-3 font-bold uppercase rounded-xl transition active:scale-95 ${
+            onClick={() => onConfirm(origin ? sessionName : name, templateChoice)}
+            disabled={!!conflict}
+            className={`w-full py-3 font-bold uppercase rounded-xl transition active:scale-95 disabled:opacity-40 ${
               isEmpty
                 ? 'bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600'
                 : 'bg-accent-600 hover:bg-accent-500 text-black shadow-lg shadow-accent-900/20'
@@ -355,17 +432,14 @@ export default function ActiveSession({
   const [editingExId,       setEditingExId]       = useState(null);
   const [selectedExHistory, setSelectedExHistory] = useState(null);
   const [showFinishModal,   setShowFinishModal]   = useState(false);
-  const [showUpdateRoutine, setShowUpdateRoutine] = useState(false);
-  const [originRoutine,     setOriginRoutine]     = useState(null);
-
-  useEffect(() => {
-    if (session?.routineId) {
-      db.routines.where('routineId').equals(session.routineId).first()
-        .then(r => setOriginRoutine(r ?? null)).catch(() => {});
-    } else {
-      setOriginRoutine(null);
-    }
-  }, [session?.routineId]);
+  // Plantilla de origen de la sesión (la fila de mayor _id si hubiera repetidas): sale de la lista en vivo.
+  const allRoutines = useRoutines();
+  const originRoutine = useMemo(() => {
+    if (!session?.routineId || !Array.isArray(allRoutines)) return null;
+    return allRoutines
+      .filter(r => (r.routineId ?? r.id) === session.routineId)
+      .reduce((best, r) => (!best || r._id > best._id ? r : best), null);
+  }, [allRoutines, session?.routineId]);
 
   // ── Active blocks ──────────────────────────────────────────────────────────
   const [blocksRefresh,  setBlocksRefresh]  = useState(0);
@@ -690,6 +764,10 @@ export default function ActiveSession({
           onCancel={() => setShowFinishModal(false)}
           analysis={buildSessionAnalysis({ sessionName: session.name, currentExercises: exercises, history })}
           barUnit={barUnit}
+          origin={originRoutine && !originRoutine.archived ? originRoutine : null}
+          hadOrigin={!!session.routineId}
+          routines={Array.isArray(allRoutines) ? allRoutines : []}
+          exercises={exercises}
         />
       )}
 
@@ -1189,26 +1267,7 @@ export default function ActiveSession({
         >
           Finalizar Misión
         </button>
-        {session.routineId && originRoutine && (
-          <button
-            onClick={() => setShowUpdateRoutine(true)}
-            className="md:col-span-2 w-full py-2.5 bg-slate-800 text-slate-400 rounded-lg font-bold text-xs border border-slate-700 hover:bg-slate-700 hover:text-slate-200 transition flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw size={13} /> Actualizar plantilla
-          </button>
-        )}
       </div>
-
-      {showUpdateRoutine && (
-        <UpdateRoutineModal
-          open={showUpdateRoutine}
-          onClose={() => setShowUpdateRoutine(false)}
-          routine={originRoutine}
-          session={session}
-          onUpdated={() => setShowUpdateRoutine(false)}
-          barUnit={barUnit}
-        />
-      )}
 
       <div className="h-16"></div>
 

@@ -1,57 +1,97 @@
 import { db } from '../db/database';
-import { sameExercise, normalizeExerciseName } from './exerciseName';
+import { sameExercise } from './exerciseName';
+import { stripRuntimeFields } from './runtimeFields';
 
-export const diffRoutineVsSession = (routine, session) => {
+// "Actualizar plantilla" desde una sesión. Una sola fuente de verdad: planRoutineUpdate (pura) calcula tanto la
+// lista de cambios que muestra el modal como los ejercicios que se guardan.
+//
+// Qué se actualiza: SOLO peso y reps de los sets completados (con reps; el peso puede ser 0) (y se agregan los sets / ejercicios nuevos con sets
+// completados). Todo lo demás de la plantilla queda como está: lo del Coach (notes, decisionAdaptativa, tag,
+// planned, plannedRpe, targetSeconds, restSeconds, type, rpe prescrito) y los sets / ejercicios que esta sesión no
+// tocó. El RPE que registraste en la sesión NO se copia a la plantilla.
+//
+// Cada ejercicio de la sesión se empareja con UN ejercicio distinto de la plantilla: primero por id (la sesión
+// copia los ids al iniciar) y después por nombre entre los que quedaron sin emparejar. Así un ejercicio repetido en
+// la sesión no duplica el de la plantilla (antes lo agregaba una vez por cada repetición).
+
+// Un set cuenta si está completado y tiene reps. El peso puede ser 0 o vacío (peso corporal sin lastre): también
+// actualiza las reps de la plantilla.
+const completedSetsOf = (ex) =>
+  (Array.isArray(ex?.sets) ? ex.sets : []).filter((s) => s?.completed && parseFloat(s.reps) > 0);
+const wOf = (s) => Number(s?.weight) || 0;
+
+const matchExercises = (routineExs, sessionExs) => {
+  const matchOf = new Map(); // índice en sessionExs -> índice en routineExs
+  const used = new Set();
+  sessionExs.forEach((se, si) => {
+    if (se?.id == null) return;
+    const ri = routineExs.findIndex((re, i) => !used.has(i) && re?.id != null && re.id === se.id);
+    if (ri >= 0) { matchOf.set(si, ri); used.add(ri); }
+  });
+  sessionExs.forEach((se, si) => {
+    if (matchOf.has(si)) return;
+    const ri = routineExs.findIndex((re, i) => !used.has(i) && (sameExercise(re?.name, se?.name) || (re?.exerciseId != null && re.exerciseId === se?.exerciseId)));
+    if (ri >= 0) { matchOf.set(si, ri); used.add(ri); }
+  });
+  return matchOf;
+};
+
+export const planRoutineUpdate = (routine, session) => {
   const changes = [];
-  if (!routine || !session) return changes;
+  if (!routine || !session) return { changes, exercises: Array.isArray(routine?.exercises) ? routine.exercises : [] };
 
   const routineExs = Array.isArray(routine.exercises) ? routine.exercises : [];
   const sessionExs = Array.isArray(session.exercises) ? session.exercises : [];
+  const matchOf = matchExercises(routineExs, sessionExs);
+  const next = routineExs.slice();
+  const added = [];
+  const stamp = Date.now();
 
-  for (const sessionEx of sessionExs) {
-    const routineEx = routineExs.find(re =>
-      sameExercise(re.name, sessionEx.name) || re.exerciseId === sessionEx.exerciseId
-    );
+  sessionExs.forEach((sessionEx, si) => {
+    const completed = completedSetsOf(sessionEx);
+    const ri = matchOf.get(si);
 
-    const completedSets = (sessionEx.sets || []).filter(s => s.completed && s.weight && s.reps);
-
-    if (!routineEx) {
-      if (completedSets.length > 0) {
-        changes.push({ type: 'add_exercise', exercise: sessionEx, sets: completedSets });
-      }
-      continue;
+    if (ri === undefined) {
+      if (completed.length === 0) return;
+      changes.push({ type: 'add_exercise', exercise: sessionEx, sets: completed });
+      const [clean] = stripRuntimeFields([{ ...sessionEx, sets: completed }]);
+      added.push({ ...clean, sets: clean.sets.map((s) => ({ ...s, weight: wOf(s), reps: Number(s.reps) })) });
+      return;
     }
+    if (completed.length === 0) return;
 
+    const routineEx = routineExs[ri];
     const routineSets = Array.isArray(routineEx.sets) ? routineEx.sets : [];
-
-    for (let i = 0; i < completedSets.length; i++) {
-      const sessionSet = completedSets[i];
-      const routineSet = routineSets[i];
-
-      if (!routineSet) {
-        changes.push({ type: 'add_set', exerciseName: sessionEx.name, set: sessionSet });
-        continue;
-      }
-
-      const wChanged = Number(routineSet.weight) !== Number(sessionSet.weight);
-      const rChanged = Number(routineSet.reps) !== Number(sessionSet.reps);
-      const rpeChanged = routineSet.rpe != null && sessionSet.rpe != null
-        && Number(routineSet.rpe) !== Number(sessionSet.rpe);
-
-      if (wChanged || rChanged || rpeChanged) {
-        changes.push({
-          type: 'update_set',
-          exerciseName: sessionEx.name,
-          setIndex: i,
-          before: { weight: routineSet.weight, reps: routineSet.reps, rpe: routineSet.rpe },
-          after:  { weight: sessionSet.weight,  reps: sessionSet.reps,  rpe: sessionSet.rpe },
+    const newSets = routineSets.slice();
+    completed.forEach((cs, i) => {
+      const rs = routineSets[i];
+      if (!rs) {
+        changes.push({ type: 'add_set', exerciseName: sessionEx.name, set: cs });
+        const last = routineSets[routineSets.length - 1];
+        newSets.push({
+          id: `set-upd-${stamp}-${si}-${i}`, type: cs.type || 'normal', weight: wOf(cs), reps: Number(cs.reps),
+          rpe: '', notes: '', completed: false, ...(last?.restSeconds != null ? { restSeconds: last.restSeconds } : {}),
         });
+        return;
       }
-    }
-  }
+      const wChanged = wOf(rs) !== wOf(cs);
+      const rChanged = Number(rs.reps) !== Number(cs.reps);
+      if (wChanged || rChanged) {
+        changes.push({
+          type: 'update_set', exerciseName: sessionEx.name, setIndex: i,
+          before: { weight: rs.weight, reps: rs.reps, rpe: rs.rpe },
+          after: { weight: cs.weight, reps: cs.reps, rpe: rs.rpe }, // el RPE de la plantilla no cambia
+        });
+        newSets[i] = { ...rs, weight: wOf(cs), reps: Number(cs.reps) };
+      }
+    });
+    next[ri] = { ...routineEx, sets: newSets };
+  });
 
-  return changes;
+  return { changes, exercises: [...next, ...added] };
 };
+
+export const diffRoutineVsSession = (routine, session) => planRoutineUpdate(routine, session).changes;
 
 export const updateRoutineFromSession = async (routineId, session) => {
   if (!routineId || !session) return { ok: false, reason: 'invalid-args' };
@@ -63,68 +103,13 @@ export const updateRoutineFromSession = async (routineId, session) => {
     console.warn('[update routine] backup failed:', e);
   }
 
-  const routine = await db.routines.where('routineId').equals(routineId).first();
+  // Si quedaran filas repetidas con ese routineId, se usa la de mayor _id (la misma que actualiza saveRoutine).
+  const rows = await db.routines.where('routineId').equals(routineId).toArray();
+  const routine = rows.reduce((best, r) => (!best || r._id > best._id ? r : best), null);
   if (!routine) return { ok: false, reason: 'routine-not-found' };
 
-  const updatedExercises = [];
-  const sessionExs = Array.isArray(session.exercises) ? session.exercises : [];
-  const handledNames = new Set();
-
-  for (const sessionEx of sessionExs) {
-    const existingEx = (routine.exercises || []).find(re =>
-      sameExercise(re.name, sessionEx.name) || re.exerciseId === sessionEx.exerciseId
-    );
-
-    const sessionSets = (Array.isArray(sessionEx.sets) ? sessionEx.sets : [])
-      .filter(s => s.completed && s.weight && s.reps);
-
-    if (sessionSets.length === 0) {
-      if (existingEx) {
-        updatedExercises.push(existingEx);
-        handledNames.add(normalizeExerciseName(existingEx.name));
-      }
-      continue;
-    }
-
-    if (existingEx) {
-      const newSets = sessionSets.map((s, i) => ({
-        weight: Number(s.weight),
-        reps:   Number(s.reps),
-        rpe:    s.rpe != null ? Number(s.rpe) : (existingEx.sets?.[i]?.rpe ?? 0),
-        type:   existingEx.sets?.[i]?.type || s.type || 'normal',
-        rest:   existingEx.sets?.[i]?.rest || existingEx.sets?.[0]?.rest || 90,
-      }));
-      updatedExercises.push({ ...existingEx, sets: newSets });
-      handledNames.add(normalizeExerciseName(existingEx.name));
-    } else {
-      updatedExercises.push({
-        exerciseId: sessionEx.exerciseId,
-        name:       sessionEx.name,
-        equipment:  sessionEx.equipment ?? null,
-        sets: sessionSets.map(s => ({
-          weight: Number(s.weight),
-          reps:   Number(s.reps),
-          rpe:    s.rpe != null ? Number(s.rpe) : 0,
-          type:   s.type || 'normal',
-          rest:   90,
-        })),
-      });
-      handledNames.add(normalizeExerciseName(sessionEx.name));
-    }
-  }
-
-  for (const routineEx of (routine.exercises || [])) {
-    if (!handledNames.has(normalizeExerciseName(routineEx.name))) {
-      updatedExercises.push(routineEx);
-    }
-  }
-
-  const updated = {
-    ...routine,
-    exercises:     updatedExercises,
-    lastUpdatedAt: new Date().toISOString(),
-  };
-
+  const { exercises } = planRoutineUpdate(routine, session);
+  const updated = { ...routine, exercises, lastUpdatedAt: new Date().toISOString() };
   await db.routines.put(updated);
   return { ok: true, routine: updated };
 };
